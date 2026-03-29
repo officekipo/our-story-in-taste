@@ -1,0 +1,16 @@
+{
+  "name": "Our Story in Taste",
+  "short_name": "our_taste",
+  "description": "커플 맛지도 서비스",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#FF8080",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

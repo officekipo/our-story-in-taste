@@ -17,7 +17,16 @@ export const TAGS = [
     '기념일', '데이트', '분위기맛집', '가성비', '웨이팅필요',
     '로맨틱', '야식', '여행', '첫경험', '고급'
 ] as const;
+
+export const SORT = [
+    { l: '최신순', v: 'latest' },
+    { l: '평점순', v: 'rating' },
+    { l: '추억순', v: 'memory' },
+    { l: '거리순', v: 'distance' }
+] as const;
+
 // as const 를 붙이면 배열 안 값들이 타입으로 사용 가능해집니다
 export type SidoType = typeof SIDO[number];
 export type CuisineType = typeof CUISINES[number];
 export type TagType = typeof TAGS[number];
+export type SortType = typeof SORT[number]['v'];
