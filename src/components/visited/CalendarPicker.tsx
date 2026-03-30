@@ -1,128 +1,78 @@
-"use client";
-import { useState } from "react";
+// src/components/visited/CalendarPicker.tsx
+
 interface CalendarPickerProps {
-  value: string; // 현재 선택된 날짜 'YYYY-MM-DD'
+  value:    string;
   onChange: (v: string) => void;
-  onClose: () => void;
+  onClose:  () => void;
 }
+
+const ROSE     = "#C96B52";
+const ROSE_LT  = "#F2D5CC";
+const ROSE_DK  = "#8C4A38";
+const INK      = "#1A1412";
+const MUTED    = "#8A8078";
+const MUTED_LT = "#E2DDD8";
+
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
-export function CalendarPicker({
-  value,
-  onChange,
-  onClose,
-}: CalendarPickerProps) {
-  const today = new Date();
+
+export function CalendarPicker({ value, onChange, onClose }: CalendarPickerProps) {
+  const today   = new Date();
   const initDate = value ? new Date(value + "T00:00:00") : today;
-  const [year, setYear] = useState(initDate.getFullYear());
-  const [month, setMonth] = useState(initDate.getMonth()); // 0-indexed
-  /* 선택된 날짜 파싱 */
-  const selected = value ? new Date(value + "T00:00:00") : null;
-  /* 이번 달 1일의 요일, 마지막 날 */
-  const firstDay = new Date(year, month, 1).getDay();
-  const lastDate = new Date(year, month + 1, 0).getDate();
-  /* 달력 행 배열 생성 */
+
+  const [year,  setYear]  = React.useState(initDate.getFullYear());
+  const [month, setMonth] = React.useState(initDate.getMonth());
+
+  const selected  = value ? new Date(value + "T00:00:00") : null;
+  const firstDay  = new Date(year, month, 1).getDay();
+  const lastDate  = new Date(year, month + 1, 0).getDate();
+
   const weeks: number[][] = [];
-  let day = 1 - firstDay;
-  while (day <= lastDate) {
+  let d = 1 - firstDay;
+  while (d <= lastDate) {
     const row: number[] = [];
-    for (let i = 0; i < 7; i++, day++) row.push(day);
+    for (let i = 0; i < 7; i++, d++) row.push(d);
     weeks.push(row);
   }
-  /* 날짜 선택 */
-  const pick = (d: number) => {
-    if (d < 1 || d > lastDate) return;
+
+  const pick = (day: number) => {
+    if (day < 1 || day > lastDate) return;
     const mm = String(month + 1).padStart(2, "0");
-    const dd = String(d).padStart(2, "0");
+    const dd = String(day).padStart(2, "0");
     onChange(`${year}-${mm}-${dd}`);
     onClose();
   };
-  /* 이전 달 */
-  const prevMonth = () => {
-    if (month === 0) {
-      setYear((y) => y - 1);
-      setMonth(11);
-    } else setMonth((m) => m - 1);
-  };
-  /* 다음 달 */
-  const nextMonth = () => {
-    if (month === 11) {
-      setYear((y) => y + 1);
-      setMonth(0);
-    } else setMonth((m) => m + 1);
-  };
+
+  const prevMonth = () => month === 0 ? (setYear(y => y - 1), setMonth(11)) : setMonth(m => m - 1);
+  const nextMonth = () => month === 11 ? (setYear(y => y + 1), setMonth(0)) : setMonth(m => m + 1);
+
   return (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      className="bg-white rounded-2xl p-4 shadow-xl min-w-[280px] animate-scale-in"
-    >
-      {/* 헤더: 이전/다음 버튼 + 년/월 */}
-      <div className="flex items-center justify-between mb-3">
-        <button
-          onClick={prevMonth}
-          className="w-7 h-7 text-muted text-xl flex items-center justify-center"
-        >
-          ‹
-        </button>
-        <span className="text-sm font-bold text-ink">
-          {year}년 {month + 1}월
-        </span>
-        <button
-          onClick={nextMonth}
-          className="w-7 h-7 text-muted text-xl flex items-center justify-center"
-        >
-          ›
-        </button>
+    <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, padding: 16, boxShadow: "0 8px 32px rgba(0,0,0,0.16)", minWidth: 280, animation: "scaleIn 0.18s ease both" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <button onClick={prevMonth} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: MUTED, width: 28, height: 28 }}>‹</button>
+        <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>{year}년 {month + 1}월</span>
+        <button onClick={nextMonth} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: MUTED, width: 28, height: 28 }}>›</button>
       </div>
-      {/* 요일 헤더 */}
-      <div className="grid grid-cols-7 mb-1">
-        {DAY_LABELS.map((d, i) => (
-          <div
-            key={d}
-            className={`text-center text-[10px] font-semibold py-0.5 ${
-              i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "textmuted"
-            }`}
-          >
-            {d}
-          </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 4 }}>
+        {DAY_LABELS.map((dl, i) => (
+          <div key={dl} style={{ textAlign: "center", fontSize: 10, fontWeight: 600, padding: "2px 0", color: i === 0 ? "#EF4444" : i === 6 ? "#3B82F6" : MUTED }}>{dl}</div>
         ))}
       </div>
-      {/* 날짜 셀 */}
+
       {weeks.map((row, wi) => (
-        <div key={wi} className="grid grid-cols-7 mb-0.5">
-          {row.map((d, di) => {
-            const valid = d >= 1 && d <= lastDate;
-            const isSel =
-              selected &&
-              valid &&
-              selected.getDate() === d &&
-              selected.getMonth() === month &&
-              selected.getFullYear() === year;
-            const isToday =
-              valid &&
-              today.getDate() === d &&
-              today.getMonth() === month &&
-              today.getFullYear() === year;
+        <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 1 }}>
+          {row.map((day, di) => {
+            const valid   = day >= 1 && day <= lastDate;
+            const isSel   = selected && valid && selected.getDate() === day && selected.getMonth() === month && selected.getFullYear() === year;
+            const isToday = valid && today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
+            const textColor = !valid ? MUTED_LT : isSel ? "#fff" : isToday ? ROSE_DK : di === 0 ? "#EF4444" : di === 6 ? "#3B82F6" : INK;
             return (
               <div
                 key={di}
-                onClick={() => pick(d)}
-                className={[
-                  "text-center py-1 rounded-md text-xs",
-                  valid ? "cursor-pointer" : "cursor-default",
-                  isSel
-                    ? "bg-rose text-white font-bold"
-                    : isToday
-                      ? "bg-rose-light text-rose-dark font-bold"
-                      : valid
-                        ? di === 0
-                          ? "text-red-400"
-                          : di === 6
-                            ? "text-blue-400"
-                            : "text-ink"
-                        : "text-muted-light",
-                ].join(" ")}
+                onClick={() => pick(day)}
+                style={{ textAlign: "center", padding: "5px 0", borderRadius: 6, fontSize: 12, cursor: valid ? "pointer" : "default", background: isSel ? ROSE : isToday ? ROSE_LT : "transparent", color: textColor, fontWeight: isSel || isToday ? 700 : 400 }}
               >
-                {valid ? d : ""}
+                {valid ? day : ""}
               </div>
             );
           })}
@@ -131,3 +81,5 @@ export function CalendarPicker({
     </div>
   );
 }
+
+import React from "react";

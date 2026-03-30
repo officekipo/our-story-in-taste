@@ -1,36 +1,23 @@
+// src/components/visited/GalleryGrid.tsx
 "use client";
+
 import type { VisitedRecord } from "@/types";
 import { useUIStore } from "@/store/uiStore";
-interface GalleryGridProps {
-  items: VisitedRecord[];
-}
-export function GalleryGrid({ items }: GalleryGridProps) {
+
+const CREAM = "#F0EBE3";
+
+export function GalleryGrid({ items }: { items: VisitedRecord[] }) {
   const { openDetail } = useUIStore();
   return (
-    /* gap-[3px]: 셀 사이 3px 간격 */
-    <div className="grid grid-cols-3 gap-[3px]">
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 3 }}>
       {items.map((r) => (
-        <div
-          key={r.id}
-          onClick={() => openDetail(r)}
-          className="relative aspect-square overflow-hidden cursor-pointer rounded-[4px]"
-        >
-          {/* 사진이 있으면 이미지, 없으면 이모지 */}
+        <div key={r.id} onClick={() => openDetail(r)} style={{ position: "relative", aspectRatio: "1/1", overflow: "hidden", cursor: "pointer", borderRadius: 4 }}>
           {r.imgUrls.length > 0 ? (
-            <img
-              src={r.imgUrls[0]}
-              alt={r.name}
-              className="w-full h-full object-cover"
-            />
+            <img src={r.imgUrls[0]} alt={r.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           ) : (
-            <div className="w-full h-full bg-cream flex items-center justifycenter text-3xl">
-              {r.emoji}
-            </div>
+            <div style={{ width: "100%", height: "100%", background: CREAM, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>{r.emoji}</div>
           )}
-          {/* 재방문 하트 — 우상단 */}
-          <div className="absolute top-1.5 right-1.5 text-sm">
-            {r.revisit === true ? " " : " "}
-          </div>
+          <div style={{ position: "absolute", top: 6, right: 6, fontSize: 14 }}>{r.revisit === true ? "💗" : "🤍"}</div>
         </div>
       ))}
     </div>

@@ -1,105 +1,63 @@
+// src/components/wishlist/WishModal.tsx
 "use client";
+
 import { useState } from "react";
 import { SIDO, CUISINES } from "@/types";
-import { cn } from "@/lib/utils/cn";
+
+const ROSE   = "#C96B52";
+const SAGE   = "#6B9E7E";
+const INK    = "#1A1412";
+const MUTED  = "#8A8078";
+const BORDER = "#E2DDD8";
+const WARM   = "#FAF7F3";
+
 interface WishModalProps {
   onClose: () => void;
-  onSave: (data: {
-    name: string;
-    sido: string;
-    district: string;
-    cuisine: string;
-    note: string;
-  }) => void;
+  onSave:  (data: { name: string; sido: string; district: string; cuisine: string; note: string }) => void;
 }
+
 export function WishModal({ onClose, onSave }: WishModalProps) {
-  const [name, setName] = useState("");
-  const [sido, setSido] = useState("서울");
+  const [name,     setName]     = useState("");
+  const [sido,     setSido]     = useState("서울");
   const [district, setDistrict] = useState("");
-  const [cuisine, setCuisine] = useState("");
-  const [note, setNote] = useState("");
-  const inp =
-    "w-full px-3.5 py-3 bg-warm border border-muted-light rounded-xl text-sm text-ink mb-3";
+  const [cuisine,  setCuisine]  = useState("");
+  const [note,     setNote]     = useState("");
+
+  const inp: React.CSSProperties = { width: "100%", padding: "12px 14px", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 10, color: INK, fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
+
   return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 bg-black/55 z-[700] flex items-end justifycenter"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-app bg-white rounded-t-2xl px-6 pt-6 pb-[calc(24px+64px)] animate-slide-up"
-      >
-        <div className="w-9 h-1 bg-muted-light rounded-full mx-auto mb-4" />
-        <h2 className="text-base font-bold text-ink mb-4">가고 싶은 곳 추가</h2>
-        <input
-          placeholder="식당 이름 *"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className={inp}
-        />
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 700, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: "#fff", borderRadius: "20px 20px 0 0", padding: "24px 24px calc(24px + 64px)", animation: "slideUp 0.28s cubic-bezier(0.32,1,0.4,1) both" }}>
+        <div style={{ width: 36, height: 4, background: BORDER, borderRadius: 2, margin: "0 auto 16px" }} />
+        <p style={{ fontSize: 16, fontWeight: 700, color: INK, marginBottom: 16 }}>가고 싶은 곳 추가</p>
+
+        <input placeholder="식당 이름 *" value={name} onChange={e => setName(e.target.value)} style={{ ...inp, marginBottom: 12 }} />
+
         {/* 지역 */}
-        <div className="flex gap-2 mb-3">
-          <div className="relative shrink-0">
-            <select
-              value={sido}
-              onChange={(e) => setSido(e.target.value)}
-              className={cn(inp, "mb-0 pr-7 w-auto cursor-pointer")}
-            >
-              {SIDO.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <select value={sido} onChange={e => setSido(e.target.value)} style={{ ...inp, width: "auto", paddingRight: 28, cursor: "pointer" }}>
+              {SIDO.map(s => <option key={s}>{s}</option>)}
             </select>
-            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted pointer-events-none">
-              ▾
-            </span>
+            <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: MUTED, pointerEvents: "none" }}>▾</span>
           </div>
-          <input
-            placeholder="상세 지역"
-            value={district}
-            onChange={(e) => setDistrict(e.target.value)}
-            className={cn(inp, "mb-0 flex-1")}
-          />
+          <input placeholder="상세 지역" value={district} onChange={e => setDistrict(e.target.value)} style={{ ...inp, flex: 1 }} />
         </div>
+
         {/* 음식 종류 */}
-        <div className="relative mb-3">
-          <select
-            value={cuisine}
-            onChange={(e) => setCuisine(e.target.value)}
-            className={cn(inp, "mb-0 pr-7 cursor-pointer")}
-          >
+        <div style={{ position: "relative", marginBottom: 12 }}>
+          <select value={cuisine} onChange={e => setCuisine(e.target.value)} style={{ ...inp, paddingRight: 28, cursor: "pointer" }}>
             <option value="">음식 종류 선택</option>
-            {CUISINES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
+            {CUISINES.map(c => <option key={c}>{c}</option>)}
           </select>
-          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted pointer-events-none">
-            ▾
-          </span>
+          <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: MUTED, pointerEvents: "none" }}>▾</span>
         </div>
-        <textarea
-          placeholder="가고 싶은 이유"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={3}
-          className={cn(inp, "resize-none")}
-        />
-        <div className="flex gap-2.5">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 bg-warm border border-muted-light rounded-xl text-muted text-sm"
-          >
-            취소
-          </button>
-          <button
-            onClick={() => {
-              if (!name) return;
-              onSave({ name, sido, district, cuisine, note });
-              onClose();
-            }}
-            className="flex-[2] py-3 bg-sage text-white rounded-xl text-sm font-bold"
-          >
-            저장
-          </button>
+
+        <textarea placeholder="가고 싶은 이유" value={note} onChange={e => setNote(e.target.value)} rows={3} style={{ ...inp, resize: "none", marginBottom: 16 }} />
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: 13, background: WARM, border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>취소</button>
+          <button onClick={() => { if (!name.trim()) return; onSave({ name, sido, district, cuisine, note }); onClose(); }} style={{ flex: 2, padding: 13, background: SAGE, border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>저장</button>
         </div>
       </div>
     </div>

@@ -1,86 +1,36 @@
+// src/components/layout/BottomNav.tsx
 "use client";
+
 import { useRouter } from "next/navigation";
-import {
-  HomeIcon,
-  StarTabIcon,
-  MapIcon,
-  ChartIcon,
-  ChatIcon,
-} from "@/components/common/Icons";
-import { cn } from "@/lib/utils/cn";
-/* 탭 타입 */
+import { HomeIcon, StarTabIcon, MapPinIcon, ChartIcon, ChatIcon } from "@/components/common/Icons";
+
 export type TabId = "visited" | "wishlist" | "map" | "stats" | "community";
-/* 탭 설정 배열 */
-const TABS: {
-  id: TabId;
-  label: string;
-  path: string;
-  icon: (active: boolean) => React.ReactNode;
-}[] = [
-  {
-    id: "visited",
-    label: "다녀온 곳",
-    path: "/",
-    icon: (a) => <HomeIcon color={a ? "#C96B52" : "#8A8078"} />,
-  },
-  {
-    id: "wishlist",
-    label: "가고싶어",
-    path: "/wishlist",
-    icon: (a) => <StarTabIcon color={a ? "#C96B52" : "#8A8078"} />,
-  },
-  {
-    id: "map",
-    label: "지도",
-    path: "/map",
-    icon: (a) => <MapIcon color={a ? "#C96B52" : "#8A8078"} />,
-  },
-  {
-    id: "stats",
-    label: "통계",
-    path: "/stats",
-    icon: (a) => <ChartIcon color={a ? "#C96B52" : "#8A8078"} />,
-  },
-  {
-    id: "community",
-    label: "추천",
-    path: "/community",
-    icon: (a) => <ChatIcon color={a ? "#C96B52" : "#8A8078"} />,
-  },
+
+const TABS: { id: TabId; label: string; path: string; Icon: React.ComponentType<{ color: string }> }[] = [
+  { id: "visited",   label: "다녀온 곳", path: "/",          Icon: HomeIcon    },
+  { id: "wishlist",  label: "가고싶어",  path: "/wishlist",  Icon: StarTabIcon },
+  { id: "map",       label: "지도",      path: "/map",       Icon: MapPinIcon  },
+  { id: "stats",     label: "통계",      path: "/stats",     Icon: ChartIcon   },
+  { id: "community", label: "추천",      path: "/community", Icon: ChatIcon    },
 ];
-interface BottomNavProps {
-  activeTab: TabId;
-}
-export function BottomNav({ activeTab }: BottomNavProps) {
+
+const ROSE  = "#C96B52";
+const MUTED = "#8A8078";
+
+export function BottomNav({ activeTab }: { activeTab: TabId }) {
   const router = useRouter();
   return (
-    /*
-     * fixed + left-1/2 + -translate-x-1/2 + max-w-app
-     * → 480px 컨테이너 가운데 정렬로 하단 고정
-     * z-50: 일반 콘텐츠 위, 모달(z-[700]~) 아래
-     */
-    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-app bg-white border-t border-muted-light flex z-50">
-      {TABS.map(({ id, label, path, icon }) => {
+    <nav style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: "#fff", borderTop: "1px solid #E2DDD8", display: "flex", zIndex: 50 }}>
+      {TABS.map(({ id, label, path, Icon }) => {
         const active = activeTab === id;
         return (
           <button
             key={id}
             onClick={() => router.push(path)}
-            className={cn(
-              "flex-1 flex flex-col items-center gap-0.5 py-2.5",
-              "border-t-2 transition-all duration-200",
-              active ? "border-rose" : "border-transparent",
-            )}
+            style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "10px 2px", border: "none", borderTop: `2px solid ${active ? ROSE : "transparent"}`, background: "none", cursor: "pointer", transition: "all 0.2s" }}
           >
-            {icon(active)}
-            <span
-              className={cn(
-                "text-[9px]",
-                active ? "text-rose font-bold" : "text-muted font-medium",
-              )}
-            >
-              {label}
-            </span>
+            <Icon color={active ? ROSE : MUTED} />
+            <span style={{ fontSize: 9, fontWeight: active ? 700 : 500, color: active ? ROSE : MUTED }}>{label}</span>
           </button>
         );
       })}

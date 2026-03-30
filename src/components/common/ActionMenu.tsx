@@ -1,42 +1,21 @@
-"use client";
+// src/components/common/ActionMenu.tsx
+
 interface ActionMenuProps {
-  onEdit: () => void; // 수정하기 클릭
-  onDelete: () => void; // 삭제하기 클릭
-  onClose: () => void; // 배경 클릭 or 닫기
+  onEdit:   () => void;
+  onDelete: () => void;
+  onClose:  () => void;
 }
+
 export function ActionMenu({ onEdit, onDelete, onClose }: ActionMenuProps) {
   return (
-    /* dim 레이어 — 클릭 시 메뉴 닫힘 */
-    <div
-      onClick={onClose}
-      className="fixed inset-0 bg-black/40 z-[700] flex items-end justifycenter"
-    >
-      {/* 바텀 시트 — 클릭 이벤트 전파 차단 */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-app bg-white rounded-t-2xl px-4 pt-4 pb-[calc(32px+64px)] /* 64px = 바텀탭 높이 */ animate-slide-up"
-      >
-        {/* 드래그 핸들 */}
-        <div className="w-9 h-1 bg-muted-light rounded-full mx-auto mb-5" />
-        {/* 수정하기 */}
-        <button
-          onClick={() => {
-            onEdit();
-            onClose();
-          }}
-          className="w-full flex items-center gap-3 px-4 py-4 mb-2.5 bg-warm border border-muted-light rounded-[14px] text-ink text-[15px] font-semibold cursor-pointer"
-        >
-          <span className="text-xl">✏</span> 수정하기
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 700, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: "#fff", borderRadius: "20px 20px 0 0", padding: "16px 16px calc(32px + 64px)", animation: "slideUp 0.28s cubic-bezier(0.32,1,0.4,1) both" }}>
+        <div style={{ width: 36, height: 4, background: "#E2DDD8", borderRadius: 2, margin: "0 auto 20px" }} />
+        <button onClick={() => { onEdit(); onClose(); }} style={{ width: "100%", padding: 16, marginBottom: 10, background: "#FAF7F3", border: "1px solid #E2DDD8", borderRadius: 14, color: "#1A1412", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 20 }}>✏️</span>수정하기
         </button>
-        {/* 삭제하기 */}
-        <button
-          onClick={() => {
-            onDelete();
-            onClose();
-          }}
-          className="w-full flex items-center gap-3 px-4 py-4 bg-[#FFF0F0] border border-red-200 rounded-[14px] text-red-500 text-[15px] font-semibold cursor-pointer"
-        >
-          <span className="text-xl"> </span> 삭제하기
+        <button onClick={() => { onDelete(); onClose(); }} style={{ width: "100%", padding: 16, background: "#FFF0F0", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 14, color: "#EF4444", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 20 }}>🗑️</span>삭제하기
         </button>
       </div>
     </div>

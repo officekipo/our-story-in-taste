@@ -1,112 +1,98 @@
-/* Pretendard 웹폰트 로드 */
-@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
+/* src/app/globals.css */
+/* Tailwind v4 방식 */
 @import "tailwindcss";
-@layer base {
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-  body {
-    font-family:
-      "Pretendard",
-      -apple-system,
-      sans-serif;
-    background-color: #f5f0eb;
-    color: #1a1412;
-  }
-  /* 스크롤바 숨김 — 모바일 앱처럼 보이게 */
-  ::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-  }
-  /* 포커스 시 테두리 색상 통일 */
-  input:focus,
-  textarea:focus,
-  select:focus {
-    outline: none;
-    border-color: #c96b52 !important;
-  }
-  /* select 기본 화살표 제거 (커스텀 ▾ 사용) */
-  select {
-    -webkit-appearance: none;
-    appearance: none;
-  }
+
+/* Pretendard 웹폰트 */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
+
+/* ── Tailwind v4: 커스텀 토큰을 CSS 변수로 등록 ── */
+@theme {
+  /* 색상 */
+  --color-rose:       #C96B52;
+  --color-rose-light: #F2D5CC;
+  --color-rose-dark:  #8C4A38;
+  --color-rose-pill:  #E8897A;
+
+  --color-sage:       #6B9E7E;
+  --color-sage-light: #C8DED1;
+  --color-sage-dark:  #4A7A5E;
+
+  --color-ink:        #1A1412;
+  --color-muted:      #8A8078;
+  --color-muted-light:#E2DDD8;
+  --color-muted-mid:  #C0B8B0;
+
+  --color-bg:         #F5F0EB;
+  --color-warm:       #FAF7F3;
+  --color-cream:      #F0EBE3;
+  --color-accent:     #D4956A;
+  --color-gold:       #E8A020;
+
+  --color-tag-bg:     #F0ECE8;
+  --color-tag-text:   #8A6A5A;
+
+  --color-border:     #EBE5DF;
+
+  /* 폰트 */
+  --font-sans: "Pretendard", -apple-system, sans-serif;
+
+  /* 최대 너비 */
+  --max-w-app: 480px;
+
+  /* 모서리 */
+  --radius-card: 16px;
+
+  /* 애니메이션 */
+  --animate-fade-up:  fadeUp  0.30s ease both;
+  --animate-fade-in:  fadeIn  0.20s ease both;
+  --animate-slide-up: slideUp 0.28s cubic-bezier(0.32,1,0.4,1) both;
+  --animate-scale-in: scaleIn 0.18s ease both;
 }
-/* ── 애니메이션 유틸 클래스 ── */
-@layer utilities {
-  .animate-fade-up {
-    animation: fadeUp 0.3s ease both;
-  }
-  .animate-fade-in {
-    animation: fadeIn 0.2s ease both;
-  }
-  .animate-slide-up {
-    animation: slideUp 0.28s cubic-bezier(0.32, 1, 0.4, 1) both;
-  }
-  .animate-scale-in {
-    animation: scaleIn 0.18s ease both;
-  }
-  .animate-img-right {
-    animation: imgRight 0.22s ease both;
-  }
-  .animate-img-left {
-    animation: imgLeft 0.22s ease both;
-  }
+
+/* ── 기본 스타일 ── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+}
+
+/* 스크롤바 숨김 (모바일 앱처럼) */
+::-webkit-scrollbar { width: 0; height: 0; }
+
+/* 포커스 시 테두리 색 통일 */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--color-rose) !important;
+}
+
+/* select 기본 화살표 제거 (커스텀 ▾ 사용) */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* ── 애니메이션 키프레임 ── */
 @keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 @keyframes slideUp {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
 }
 @keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-@keyframes imgRight {
-  from {
-    opacity: 0;
-    transform: translateX(24px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-@keyframes imgLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-24px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
 }

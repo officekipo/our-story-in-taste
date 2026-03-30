@@ -1,96 +1,52 @@
+// src/components/community/ReportModal.tsx
 "use client";
-import { useState } from "react";
-import { REPORT_R } from "@/types";
-import { cn } from "@/lib/utils/cn";
+
+import { useState }      from "react";
+import { REPORT_REASONS } from "@/types";
+
+const ROSE   = "#C96B52";
+const INK    = "#1A1412";
+const MUTED  = "#8A8078";
+const BORDER = "#E2DDD8";
+const WARM   = "#FAF7F3";
+
 interface ReportModalProps {
-  onClose: () => void;
+  onClose:  () => void;
   onReport: () => void;
 }
+
 export function ReportModal({ onClose, onReport }: ReportModalProps) {
   const [reason, setReason] = useState("");
   const [detail, setDetail] = useState("");
-  const [done, setDone] = useState(false);
+  const [done,   setDone]   = useState(false);
+
   return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 bg-black/55 z-[700] flex items-end justify-center"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-app bg-white rounded-t-2xl px-6 pt-6 pb-[calc(24px+64px)] max-h-[80vh] overflow-y-auto animate-slide-up"
-      >
-        <div className="w-9 h-1 bg-muted-light rounded-full mx-auto mb-4" />
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 700, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: "#fff", borderRadius: "20px 20px 0 0", padding: "24px 24px calc(24px + 64px)", maxHeight: "80vh", overflowY: "auto", animation: "slideUp 0.28s cubic-bezier(0.32,1,0.4,1) both" }}>
+        <div style={{ width: 36, height: 4, background: BORDER, borderRadius: 2, margin: "0 auto 16px" }} />
+
         {done ? (
-          <div className="text-center py-5">
-            <div className="text-5xl mb-3"></div>
-            <h3 className="text-base font-bold text-ink mb-2">
-              신고가 접수됐어요
-            </h3>
-            <p className="text-sm text-muted mb-5">검토 후 조치 예정입니다.</p>
-            <button
-              onClick={onClose}
-              className="px-9 py-3 bg-rose text-white rounded-xl text-sm font-bold"
-            >
-              확인
-            </button>
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>✅</div>
+            <p style={{ fontSize: 16, fontWeight: 700, color: INK, marginBottom: 8 }}>신고가 접수됐어요</p>
+            <p style={{ fontSize: 13, color: MUTED, marginBottom: 20 }}>검토 후 조치 예정입니다.</p>
+            <button onClick={onClose} style={{ padding: "12px 36px", background: ROSE, border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>확인</button>
           </div>
         ) : (
           <>
-            <h2 className="text-[15px] font-bold text-ink mb-4">
-              신고 사유를 선택해주세요
-            </h2>
-            {REPORT_R.map((r) => (
-              <div
-                key={r}
-                onClick={() => setReason(r)}
-                className={cn(
-                  "flex items-center gap-2.5 px-3.5 py-2.5 mb-1.5 rounded-xl cursor-pointer border",
-                  reason === r
-                    ? "bg-rose-light border-rose"
-                    : "bg-warm bordermuted-light",
-                )}
-              >
-                <div
-                  className={cn(
-                    "w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center shrink-0",
-                    reason === r ? "border-rose bg-rose" : "border-muted-mid",
-                  )}
-                >
-                  {reason === r && (
-                    <div className="w-1.5 h-1.5 rounded-full bgwhite" />
-                  )}
+            <p style={{ fontSize: 15, fontWeight: 700, color: INK, marginBottom: 16 }}>신고 사유를 선택해주세요</p>
+            {REPORT_REASONS.map(r => (
+              <div key={r} onClick={() => setReason(r)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", marginBottom: 6, background: reason === r ? "#F2D5CC" : WARM, border: `1px solid ${reason === r ? ROSE : BORDER}`, borderRadius: 12, cursor: "pointer" }}>
+                <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${reason === r ? ROSE : "#C0B8B0"}`, background: reason === r ? ROSE : "transparent", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {reason === r && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
                 </div>
-                <span className="text-sm text-ink">{r}</span>
+                <span style={{ fontSize: 13, color: INK }}>{r}</span>
               </div>
             ))}
-            <textarea
-              value={detail}
-              onChange={(e) => setDetail(e.target.value)}
-              placeholder="추가 설명 (선택)"
-              rows={3}
-              className="w-full mt-3 px-3.5 py-3 bg-warm border border-mutedlight rounded-xl text-sm resize-none"
-            />
-            <div className="flex gap-2.5 mt-3.5">
-              <button
-                onClick={onClose}
-                className="flex-1 py-3 bg-warm border border-muted-light rounded-xl text-muted text-sm"
-              >
-                취소
-              </button>
-              <button
-                onClick={() => {
-                  if (!reason) return;
-                  onReport();
-                  setDone(true);
-                }}
-                disabled={!reason}
-                className={cn(
-                  "flex-[2] py-3 rounded-xl text-white text-sm font-bold",
-                  reason ? "bg-red-500" : "bg-muted-light cursor-not-allowed",
-                )}
-              >
-                신고 제출
-              </button>
+            <textarea value={detail} onChange={e => setDetail(e.target.value)} placeholder="추가 설명 (선택)" rows={3} style={{ width: "100%", marginTop: 12, padding: "12px 14px", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 12, color: INK, fontSize: 13, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box" }} />
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button onClick={onClose} style={{ flex: 1, padding: 13, background: WARM, border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>취소</button>
+              <button onClick={() => { if (!reason) return; onReport(); setDone(true); }} disabled={!reason} style={{ flex: 2, padding: 13, background: reason ? "#EF4444" : "#C0B8B0", border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: reason ? "pointer" : "default", fontFamily: "inherit" }}>신고 제출</button>
             </div>
           </>
         )}

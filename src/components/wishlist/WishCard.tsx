@@ -1,102 +1,92 @@
+// src/components/wishlist/WishCard.tsx
 "use client";
 
 import type { WishRecord } from "@/types";
-import { useUIStore } from "@/store/uiStore";
-import { useAuthStore } from "@/store/authStore";
-import { cn } from "@/lib/utils/cn";
+import { useUIStore }      from "@/store/uiStore";
+import { useAuthStore }    from "@/store/authStore";
+import type { VisitedRecord } from "@/types";
+import { todayStr }        from "@/lib/utils/date";
+
+const ROSE    = "#C96B52";
+const ROSE_LT = "#F2D5CC";
+const SAGE    = "#6B9E7E";
+const SAGE_LT = "#C8DED1";
+const SAGE_DK = "#4A7A5E";
+const INK     = "#1A1412";
+const MUTED   = "#8A8078";
+const BORDER  = "#E2DDD8";
+const WARM    = "#FAF7F3";
+const CREAM   = "#F0EBE3";
+
 interface WishCardProps {
   record: WishRecord;
-  index: number; // 애니메이션 딜레이용
-  onDelete: () => void;
+  index:  number;
 }
-export function WishCard({ record, index, onDelete }: WishCardProps) {
-  const { name: myName } = useAuthStore();
+
+export function WishCard({ record, index }: WishCardProps) {
+  const { myName }                    = useAuthStore();
   const { openConfirm, openEditModal } = useUIStore();
   const isMe = record.addedByName === myName;
-  /* '다녀왔어요!' 클릭 → 위시 정보로 글쓰기 모달 미리 채우기 */
+
+  // "다녀왔어요!" → 위시 정보로 AddEditModal 미리 채워서 열기
   const handleVisited = () => {
-    /* VisitedRecord 형태로 변환해 editTarget에 임시 저장 */
-    openEditModal({
-      id: "", // 새 기록이므로 빈 문자열
-      coupleId: record.coupleId,
-      name: record.name,
-      sido: record.sido,
-      district: record.district,
-      cuisine: record.cuisine,
-      rating: 4,
-      date: new Date().toISOString().slice(0, 10),
-      memo: record.note,
-      tags: [],
-      revisit: null,
-      imgUrls: [],
-      emoji: record.emoji,
-      author: "",
-      authorName: myName,
-      lat: record.lat,
-      lng: record.lng,
+    const prefilled: VisitedRecord = {
+      id:          "",
+      coupleId:    record.coupleId,
+      name:        record.name,
+      sido:        record.sido,
+      district:    record.district,
+      cuisine:     record.cuisine,
+      rating:      4,
+      date:        todayStr(),
+      memo:        record.note,
+      tags:        [],
+      revisit:     null,
+      imgUrls:     [],
+      emoji:       record.emoji,
+      authorUid:   "",
+      authorName:  myName,
+      lat:         record.lat,
+      lng:         record.lng,
       shareToComm: false,
-      createdAt: "",
-      updatedAt: "",
-    });
+      createdAt:   "",
+      updatedAt:   "",
+    };
+    openEditModal(prefilled);
   };
+
+  const area = record.district ? `${record.sido} ${record.district}` : record.sido;
+
   return (
-    <div
-      className="bg-white rounded-card mb-4 overflow-hidden shadow-sm animatefade-up"
-      style={{ animationDelay: `${index * 0.05}s` }}
-    >
-      {/* 썸네일 영역 */}
-      <div className="relative w-full h-40 bg-cream flex items-center justify-center text-5xl">
+    <div style={{ background: "#fff", borderRadius: 16, marginBottom: 16, overflow: "hidden", boxShadow: "0 1px 6px rgba(0,0,0,0.06)", animationDelay: `${index * 0.05}s` }}>
+
+      {/* 썸네일 */}
+      <div style={{ position: "relative", width: "100%", height: 160, background: CREAM, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52 }}>
         <span>{record.emoji}</span>
         {/* 추가한 사람 배지 */}
-        <div
-          className={cn(
-            "absolute top-2.5 right-3 rounded-full px-2.5 py-0.5",
-            isMe ? "bg-rose-light" : "bg-sage-light",
-          )}
-        >
-          <span
-            className={cn(
-              "text-[10px] font-bold",
-              isMe ? "text-rose" : "text-sage-dark",
-            )}
-          >
-            {record.addedByName}
-          </span>
+        <div style={{ position: "absolute", top: 10, right: 12, background: isMe ? ROSE_LT : SAGE_LT, borderRadius: 20, padding: "3px 10px" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: isMe ? ROSE : SAGE_DK }}>👤 {record.addedByName}</span>
         </div>
       </div>
-      {/* 정보 영역 */}
-      <div className="p-4">
-        <h3 className="text-lg font-bold text-ink mb-1.5">{record.name}</h3>
-        <p className="text-xs text-muted mb-1">
-          {record.district ? `${record.sido} ${record.district}` : record.sido}{" "}
-          · {record.cuisine}
-        </p>
-        <p className="text-xs text-muted mb-3"> {record.addedDate} 추가</p>
+
+      {/* 정보 */}
+      <div style={{ padding: 16 }}>
+        <p style={{ fontSize: 18, fontWeight: 700, color: INK, marginBottom: 6 }}>{record.name}</p>
+        <p style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>📍 {area} · {record.cuisine}</p>
+        <p style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>📅 {record.addedDate} 추가</p>
+
         {record.note && (
-          <div className="bg-warm rounded-xl px-3.5 py-3 mb-3 text-sm textmuted leading-relaxed">
+          <div style={{ background: WARM, borderRadius: 10, padding: "12px 14px", marginBottom: 12, fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
             {record.note}
           </div>
         )}
-        <div className="flex items-center justify-between">
-          {/* 다녀왔어요 버튼 */}
-          <button
-            onClick={handleVisited}
-            className="px-4 py-2 bg-rose text-white text-xs font-semibold rounded-full"
-          >
-            다녀왔어요!
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <button onClick={handleVisited} style={{ padding: "8px 18px", background: ROSE, border: "none", borderRadius: 20, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+            ✅ 다녀왔어요!
           </button>
-          {/* 삭제 버튼 */}
-          <button
-            onClick={() =>
-              openConfirm(
-                record.id,
-                "wish",
-                `"${record.name}"을 위시리스트에서 제거할까요?`,
-              )
-            }
-            className="flex items-center gap-1 px-3 py-1.5 border border-red-200 rounded-full text-red-500 text-xs"
-          >
-            삭제
+          <button onClick={() => openConfirm(record.id, "wish", `"${record.name}"을 위시리스트에서 제거할까요?`)} style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 12px", background: "none", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 20, color: "#EF4444", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+            🗑️ 삭제
           </button>
         </div>
       </div>
