@@ -1,10 +1,11 @@
 // src/components/layout/Header.tsx
-// 변수명: useAuthStore에서 myName, partnerName, startDate, coupleId 사용
+// useAuthStore 에서 myName, partnerName, startDate, role 사용
 "use client";
 
 import { useAuthStore } from "@/store/authStore";
 import { calcDDay }     from "@/lib/utils/date";
 import { SIDO, CUISINES, SORT } from "@/types";
+import { useRouter } from "next/navigation";
 import type { TabId }   from "./BottomNav";
 
 const ROSE   = "#C96B52";
@@ -42,22 +43,27 @@ export function Header({
   onFilterSido, onFilterCui, onSort, onTimeline,
   onToggleSearch, onSearchText,
 }: HeaderProps) {
-  // ── authStore에서 flat하게 꺼냄 (변수명 기준 참고)
+  const router = useRouter();
   const { myName, partnerName, startDate } = useAuthStore();
   const dday      = calcDDay(startDate);
   const isVisited = activeTab === "visited";
 
-  const chipBase: React.CSSProperties = { padding: "7px 14px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: "none", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0 };
-  const chipActive:   React.CSSProperties = { ...chipBase, background: ROSE,  color: "#fff", border: `1px solid ${ROSE}` };
+  const chipBase: React.CSSProperties = {
+    padding: "7px 14px", borderRadius: 20, fontSize: 12,
+    cursor: "pointer", border: "none", fontFamily: "inherit",
+    whiteSpace: "nowrap", flexShrink: 0,
+  };
+  const chipActive:   React.CSSProperties = { ...chipBase, background: ROSE,  color: "#fff",  border: `1px solid ${ROSE}` };
   const chipInactive: React.CSSProperties = { ...chipBase, background: "#fff", color: MUTED, border: `1px solid ${BORDER}` };
 
   return (
     <header style={{ background: "#fff", borderBottom: `1px solid ${BORDER}`, padding: "0 20px", position: "sticky", top: 0, zIndex: 20 }}>
 
-      {/* ── 1행: 프로필 + 앱 이름 + 통계 ── */}
+      {/* ── 1행: 프로필 + 앱 이름 + 통계 + ⚙️ ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 14, paddingBottom: 12 }}>
+
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {/* 프로필 아이콘 (이니셜) */}
+          {/* 커플 프로필 아이콘 */}
           <div style={{ position: "relative", width: 44, height: 44, flexShrink: 0 }}>
             <div style={{ width: 44, height: 44, borderRadius: "50%", background: ROSE, border: "2px solid #F2D5CC", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 16 }}>
               {myName[0]}
@@ -66,6 +72,7 @@ export function Header({
               {partnerName[0]}
             </div>
           </div>
+
           {/* 앱 이름 */}
           <div>
             <p style={{ fontSize: 9, fontWeight: 600, color: "#D4956A", letterSpacing: 3, textTransform: "uppercase", lineHeight: 1 }}>OUR STORY IN TASTE</p>
@@ -73,14 +80,20 @@ export function Header({
           </div>
         </div>
 
-        {/* 통계 3개 */}
-        <div style={{ display: "flex", gap: 14 }}>
-          {[{ v: visitedCount, l: "방문했어" }, { v: avgRating, l: "평균" }, { v: wishCount, l: "가고싶은곳" }].map(({ v, l }) => (
+        {/* 우측: 통계 + ⚙️ */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          {[{ v: visitedCount, l: "방문" }, { v: avgRating, l: "평균" }, { v: wishCount, l: "위시" }].map(({ v, l }) => (
             <div key={l} style={{ textAlign: "center" }}>
-              <p style={{ fontSize: 17, fontWeight: 800, color: INK, lineHeight: 1 }}>{v}</p>
+              <p style={{ fontSize: 15, fontWeight: 800, color: INK, lineHeight: 1 }}>{v}</p>
               <p style={{ fontSize: 9, color: MUTED, marginTop: 2 }}>{l}</p>
             </div>
           ))}
+          {/* ⚙️ 설정 버튼 */}
+          <button
+            onClick={() => router.push("/settings")}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: MUTED, padding: "4px 2px", lineHeight: 1, marginLeft: 2 }}
+            aria-label="설정"
+          >⚙️</button>
         </div>
       </div>
 
@@ -90,21 +103,15 @@ export function Header({
           <span style={{ fontSize: 13, fontWeight: 600, color: INK }}>{myName}</span>
           <span style={{ fontSize: 13 }}>❤️</span>
           <span style={{ fontSize: 13, fontWeight: 600, color: INK }}>{partnerName}</span>
-          {/* D+N 배지 */}
           <div style={{ marginLeft: 6, background: "#F2D5CC", borderRadius: 20, padding: "2px 8px" }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: ROSE }}>💑 D+{dday}</span>
           </div>
         </div>
 
-        {/* 리스트 / 갤러리 토글 — visited 탭에서만 */}
         {isVisited && viewMode && onViewMode && (
           <div style={{ display: "flex", background: "#FAF7F3", borderRadius: 8, padding: 2, border: `1px solid ${BORDER}` }}>
             {(["list", "gallery"] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => onViewMode(v)}
-                style={{ width: 32, height: 28, borderRadius: 6, border: "none", background: viewMode === v ? "#fff" : "transparent", color: viewMode === v ? ROSE : "#C0B8B0", fontSize: 14, fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}
-              >
+              <button key={v} onClick={() => onViewMode(v)} style={{ width: 32, height: 28, borderRadius: 6, border: "none", background: viewMode === v ? "#fff" : "transparent", color: viewMode === v ? ROSE : "#C0B8B0", fontSize: 14, fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}>
                 {v === "list" ? "☰" : "⊞"}
               </button>
             ))}
@@ -112,12 +119,10 @@ export function Header({
         )}
       </div>
 
-      {/* ── 필터 바 — visited 탭에서만 ── */}
+      {/* ── 필터 바 ── */}
       {isVisited && (
         <div>
           <div style={{ display: "flex", gap: 8, padding: "10px 0", overflowX: "auto", alignItems: "center" }}>
-
-            {/* 지역 셀렉트 */}
             <div style={{ position: "relative", flexShrink: 0 }}>
               <select value={filterSido} onChange={(e) => onFilterSido?.(e.target.value)} style={{ ...filterSido ? chipActive : chipInactive, paddingRight: 26 }}>
                 <option value="">지역 전체</option>
@@ -125,8 +130,6 @@ export function Header({
               </select>
               <span style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: filterSido ? "#fff" : MUTED, pointerEvents: "none" }}>▾</span>
             </div>
-
-            {/* 음식 셀렉트 */}
             <div style={{ position: "relative", flexShrink: 0 }}>
               <select value={filterCui} onChange={(e) => onFilterCui?.(e.target.value)} style={{ ...filterCui ? chipActive : chipInactive, paddingRight: 26 }}>
                 <option value="">음식 전체</option>
@@ -134,29 +137,13 @@ export function Header({
               </select>
               <span style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: filterCui ? "#fff" : MUTED, pointerEvents: "none" }}>▾</span>
             </div>
-
-            {/* 정렬 */}
-            {SORT.map((o) => (
-              <button key={o.v} onClick={() => onSort?.(o.v)} style={sortBy === o.v ? chipActive : chipInactive}>{o.l}</button>
-            ))}
-
-            {/* 타임라인 */}
+            {SORT.map((o) => <button key={o.v} onClick={() => onSort?.(o.v)} style={sortBy === o.v ? chipActive : chipInactive}>{o.l}</button>)}
             <button onClick={onTimeline} style={timeline ? chipActive : chipInactive}>📅 타임라인</button>
-
-            {/* 검색 토글 */}
-            <button onClick={onToggleSearch} style={{ ...(showSearch ? { ...chipActive, background: "#F2D5CC", color: ROSE, border: `1px solid ${ROSE}` } : chipInactive), marginLeft: "auto" }}>🔍</button>
+            <button onClick={onToggleSearch} style={{ ...(showSearch ? { ...chipActive, background: "#F2D5CC", color: ROSE } : chipInactive), marginLeft: "auto" }}>🔍</button>
           </div>
-
-          {/* 검색 인풋 */}
           {showSearch && (
             <div style={{ paddingBottom: 10 }}>
-              <input
-                value={searchText}
-                onChange={(e) => onSearchText?.(e.target.value)}
-                placeholder="식당, 지역, 추억 검색..."
-                autoFocus
-                style={{ width: "100%", padding: "11px 16px", background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 10, color: INK, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}
-              />
+              <input value={searchText} onChange={(e) => onSearchText?.(e.target.value)} placeholder="식당, 지역, 추억 검색..." autoFocus style={{ width: "100%", padding: "11px 16px", background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 10, color: INK, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
             </div>
           )}
         </div>

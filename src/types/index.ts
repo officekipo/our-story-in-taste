@@ -1,6 +1,4 @@
 // src/types/index.ts
-// 앱 전체 타입 & 상수 — 여기서만 정의, 다른 파일은 여기서 import
-
 export const SIDO = [
   "서울","경기","인천","부산","대구","광주","대전","울산",
   "강원","충북","충남","전북","전남","경북","경남","제주","해외",
@@ -31,82 +29,49 @@ export type SidoType    = (typeof SIDO)[number];
 export type CuisineType = (typeof CUISINES)[number];
 export type TagType     = (typeof TAGS)[number];
 
+// ── 회원 등급 ─────────────────────────────────────────────
+// admin : 전체 커뮤니티 게시물 삭제·신고 처리 권한
+// user  : 일반 회원
+export type UserRole = "admin" | "user";
+
 export interface VisitedRecord {
-  id:          string;
-  coupleId:    string;
-  name:        string;
-  sido:        string;
-  district:    string;
-  cuisine:     string;
-  rating:      1 | 2 | 3 | 4 | 5;
-  date:        string;
-  memo:        string;
-  tags:        string[];
-  revisit:     boolean | null;
-  imgUrls:     string[];
-  emoji:       string;
-  authorUid:   string;
-  authorName:  string;
-  lat?:        number;
-  lng?:        number;
-  shareToComm: boolean;
-  createdAt:   string;
-  updatedAt:   string;
+  id: string; coupleId: string; name: string; sido: string; district: string;
+  cuisine: string; rating: 1|2|3|4|5; date: string; memo: string;
+  tags: string[]; revisit: boolean|null; imgUrls: string[]; emoji: string;
+  authorUid: string; authorName: string; lat?: number; lng?: number;
+  shareToComm: boolean; createdAt: string; updatedAt: string;
 }
 
 export type VisitedFormData = Omit<
-  VisitedRecord,
-  "id" | "coupleId" | "authorUid" | "authorName" | "createdAt" | "updatedAt"
+  VisitedRecord, "id"|"coupleId"|"authorUid"|"authorName"|"createdAt"|"updatedAt"
 >;
 
 export interface WishRecord {
-  id:          string;
-  coupleId:    string;
-  name:        string;
-  sido:        string;
-  district:    string;
-  cuisine:     string;
-  note:        string;
-  addedByUid:  string;
-  addedByName: string;
-  emoji:       string;
-  lat?:        number;
-  lng?:        number;
-  addedDate:   string;
+  id: string; coupleId: string; name: string; sido: string; district: string;
+  cuisine: string; note: string; addedByUid: string; addedByName: string;
+  emoji: string; lat?: number; lng?: number; addedDate: string;
 }
 
 export type WishFormData = Omit<
-  WishRecord,
-  "id" | "coupleId" | "addedByUid" | "addedByName" | "addedDate"
+  WishRecord, "id"|"coupleId"|"addedByUid"|"addedByName"|"addedDate"
 >;
 
 export interface CommunityRecord {
-  id:          string;
-  coupleId:    string;
-  name:        string;
-  sido:        string;
-  district:    string;
-  cuisine:     string;
-  coupleLabel: string;
-  memo:        string;
-  tags:        string[];
-  emoji:       string;
-  imgUrls:     string[];
-  likes:       number;
-  createdAt:   string;
+  id: string; coupleId: string; name: string; sido: string; district: string;
+  cuisine: string; coupleLabel: string; memo: string; tags: string[];
+  emoji: string; imgUrls: string[]; likes: number; createdAt: string;
 }
 
+// role 필드 추가
 export interface AppUser {
   uid:      string;
   name:     string;
   email:    string;
   coupleId: string | null;
+  role:     UserRole;   // "admin" | "user"
 }
 
 export interface CoupleDoc {
-  id:         string;
-  user1Uid:   string;
-  user2Uid:   string | null;
-  startDate:  string;
-  inviteCode: string;
+  id: string; user1Uid: string; user2Uid: string|null;
+  startDate: string; inviteCode: string;
 }

@@ -15,7 +15,7 @@ const WARM   = "#FAF7F3";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setMyUid, setMyName, setCoupleId, setPartnerName, setStartDate, setInitialized } = useAuthStore();
+  const { setMyUid, setMyName, setCoupleId, setPartnerName, setStartDate, setRole, setInitialized } = useAuthStore();
 
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
@@ -39,6 +39,7 @@ export default function LoginPage() {
       setMyUid(user.uid);
       setMyName(user.name);
       setCoupleId(user.coupleId);
+      setRole(user.role ?? "user");
       setInitialized(true);
 
       // 커플 정보 로드

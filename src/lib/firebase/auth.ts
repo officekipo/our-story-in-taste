@@ -36,6 +36,7 @@ export async function signUp(
     name,
     email,
     coupleId:  null,
+    role:      "user",
     createdAt: serverTimestamp(),
   });
 
