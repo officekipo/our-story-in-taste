@@ -4,6 +4,7 @@
 import { useState, useRef }       from "react";
 import { useUIStore }             from "@/store/uiStore";
 import { useAuthStore }           from "@/store/authStore";
+import { Modal }                from "@/components/common/Modal";
 import { CalendarPicker }         from "./CalendarPicker";
 import { StarRating }             from "@/components/common/StarRating";
 import { SIDO, CUISINES, TAGS }   from "@/types";
@@ -63,8 +64,8 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
   };
 
   return (
-    <div onClick={() => { setShowCal(false); closeModal(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 750, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 440, background: "#fff", borderRadius: 20, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)", animation: "scaleIn 0.18s ease both" }}>
+    <Modal onClose={() => { setShowCal(false); closeModal(); }} maxWidth={440}>
+      <div>
 
         {/* 헤더 */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 20px 0" }}>
@@ -202,6 +203,6 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
