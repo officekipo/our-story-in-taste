@@ -1,9 +1,10 @@
 /* src/app/globals.css */
+/* Pretendard 웹폰트 */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
+
 /* Tailwind v4 방식 */
 @import "tailwindcss";
 
-/* Pretendard 웹폰트 */
-@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
 
 /* ── Tailwind v4: 커스텀 토큰을 CSS 변수로 등록 ── */
 @theme {
