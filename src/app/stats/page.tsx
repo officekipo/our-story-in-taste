@@ -15,7 +15,7 @@ import { SAMPLE_VISITED }        from "@/lib/sample-data";
 import { useVisited }            from "@/hooks/useVisited";
 
 // ── 전환 스위치 ──────────────────────────────────────────
-const DUMMY_MODE = true;
+const DUMMY_MODE = false;
 // ────────────────────────────────────────────────────────
 
 const ROSE = "#C96B52";

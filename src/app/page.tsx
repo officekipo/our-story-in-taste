@@ -23,7 +23,7 @@ import type { VisitedRecord, VisitedFormData } from "@/types";
 // ── 전환 스위치 ──────────────────────────────────────────
 // true  = 더미 데이터 (Firebase 연동 전)
 // false = Firestore 실시간 데이터 (Firebase 연동 후)
-const DUMMY_MODE = true;
+const DUMMY_MODE = false;
 // ────────────────────────────────────────────────────────
 
 const ROSE = "#C96B52";

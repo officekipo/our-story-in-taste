@@ -17,7 +17,7 @@ import { useWishlist }       from "@/hooks/useWishlist";
 import type { WishRecord }   from "@/types";
 
 // ── 전환 스위치 ──────────────────────────────────────────
-const DUMMY_MODE = true;
+const DUMMY_MODE = false;
 // ────────────────────────────────────────────────────────
 
 type WishTab = "all" | "me" | "partner" | "both";

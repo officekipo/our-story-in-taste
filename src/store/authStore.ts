@@ -41,13 +41,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   //   myUid: "",  myName: "",  partnerName: "",
   //   startDate: "",  coupleId: null,  initialized: false,
   // ──────────────────────────────────────────────────────
-  myUid:       "sample-uid-me",
-  myName:      "치즈",
-  partnerName: "민준",
-  startDate:   "2023-03-28",
-  coupleId:    "sample-couple-001",
+  myUid:       "",
+  myName:      "",
+  partnerName: "",
+  startDate:   "",
+  coupleId:    "null",
   role:        "user",
-  initialized: true,
+  initialized: false,
 
   setMyUid:       (myUid)       => set({ myUid }),
   setMyName:      (myName)      => set({ myName }),
@@ -75,7 +75,6 @@ export async function setupAuthListener() {
   // Step 06 Firebase Auth 연동 전까지 아무것도 하지 않음
   // 연동 후 아래 코드를 활성화하세요.
 
-  /*
   const { initAuthListener, fetchUser, fetchCouple } = await import("@/lib/firebase/auth");
 
   return initAuthListener(async (firebaseUser) => {
@@ -116,7 +115,6 @@ export async function setupAuthListener() {
 
     store.setInitialized(true);
   });
-  */
 
   // 더미 모드: 즉시 initialized = true 처리
   useAuthStore.getState().setInitialized(true);
