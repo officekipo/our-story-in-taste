@@ -63,9 +63,11 @@ export function Header({
             <div style={{ width: 42, height: 42, borderRadius: "50%", background: ROSE, border: "2.5px solid #F2D5CC", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 16, letterSpacing: -0.5 }}>
               {myName[0]}
             </div>
-            <div style={{ position: "absolute", bottom: -2, right: -7, width: 24, height: 24, borderRadius: "50%", background: "#6B9E7E", border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 9 }}>
-              {partnerName[0]}
-            </div>
+            {partnerName[0] && (
+              <div style={{ position: "absolute", bottom: -2, right: -7, width: 24, height: 24, borderRadius: "50%", background: "#6B9E7E", border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 9 }}>
+                {partnerName[0]}
+              </div>
+            )}
           </div>
 
           {/* 앱 이름 */}
@@ -111,8 +113,12 @@ export function Header({
         {/* 커플명 + D-Day 배지 */}
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: INK, lineHeight: 1 }}>{myName}</span>
-          <span style={{ fontSize: 12, lineHeight: 1 }}>❤️</span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: INK, lineHeight: 1 }}>{partnerName}</span>
+          {partnerName && (
+            <>
+              <span style={{ fontSize: 12, lineHeight: 1 }}>❤️</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: INK, lineHeight: 1 }}>{partnerName}</span>
+            </>
+          )}
 
           {/* D+N 배지 — lineHeight:1 + padding으로 세로 정렬 정확하게 */}
           <div style={{
@@ -177,7 +183,7 @@ export function Header({
       {/* ── 필터 바 — visited 탭에서만 ── */}
       {isVisited && (
         <div>
-          <div style={{ display: "flex", gap: 7, padding: "10px 0", overflowX: "auto", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 7, padding: "10px 2px", overflowX: "auto", alignItems: "center" }}>
 
             <div style={{ position: "relative", flexShrink: 0 }}>
               <select value={filterSido} onChange={(e) => onFilterSido?.(e.target.value)} style={{ ...filterSido ? chipActive : chipInactive, paddingRight: 24 }}>

@@ -7,7 +7,11 @@ export const metadata: Metadata = {
   title: "우리의 맛지도",
   description: "함께한 모든 순간을 기억해요",
   manifest: "/manifest.json",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "우리의 맛지도" },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "우리의 맛지도",
+  },
 };
 
 export const viewport: Viewport = {
@@ -17,7 +21,11 @@ export const viewport: Viewport = {
   themeColor: "#C96B52",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="ko">
       <body>
