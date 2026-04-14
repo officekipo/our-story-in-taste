@@ -1,102 +1,104 @@
-// src/store/authStore.ts
-
-import { create } from "zustand";
-import type { UserRole } from "@/types";
+// ============================================================
+//  authStore.ts  적용 경로: src/store/authStore.ts
+// ============================================================
+import { create }             from "zustand";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc }        from "firebase/firestore";
+import { auth, db }           from "@/lib/firebase/config";
 
 interface AuthState {
-  myUid: string;
-  myName: string;
-  partnerName: string;
-  startDate: string;
-  coupleId: string | null;
-  role: UserRole;
-  initialized: boolean;
+  myUid:           string;
+  myName:          string;
+  partnerName:     string;
+  startDate:       string;
+  coupleId:        string | null;
+  role:            "admin" | "user";
+  initialized:     boolean;
+  profileImgUrl:   string | null;
 
-  setMyUid: (uid: string) => void;
-  setMyName: (name: string) => void;
-  setPartnerName: (name: string) => void;
-  setStartDate: (date: string) => void;
-  setCoupleId: (id: string | null) => void;
-  setRole: (role: UserRole) => void;
-  setInitialized: (v: boolean) => void;
-  reset: () => void;
+  setAuth:          (data: Partial<Omit<AuthState, "setAuth" | "setProfileImgUrl" | "setCoupleId" | "setStartDate" | "reset">>) => void;
+  setProfileImgUrl: (url: string)  => void;
+  setCoupleId:      (id: string)   => void;
+  setStartDate:     (date: string) => void;
+  reset:            () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  myUid: "",
-  myName: "",
-  partnerName: "",
-  startDate: "",
-  coupleId: null,
-  role: "user",
-  initialized: false, // false → 로딩 스피너 표시
+const initialState = {
+  myUid:         "",
+  myName:        "",
+  partnerName:   "",
+  startDate:     "",
+  coupleId:      null,
+  role:          "user" as const,
+  initialized:   false,
+  profileImgUrl: null,
+};
 
-  setMyUid: (myUid) => set({ myUid }),
-  setMyName: (myName) => set({ myName }),
-  setPartnerName: (partnerName) => set({ partnerName }),
-  setStartDate: (startDate) => set({ startDate }),
-  setCoupleId: (coupleId) => set({ coupleId }),
-  setRole: (role) => set({ role }),
-  setInitialized: (initialized) => set({ initialized }),
-  reset: () =>
-    set({
-      myUid: "",
-      myName: "",
-      partnerName: "",
-      startDate: "",
-      coupleId: null,
-      role: "user",
-      initialized: false,
-    }),
+export const useAuthStore = create<AuthState>((set) => ({
+  ...initialState,
+  setAuth:          (data) => set((s) => ({ ...s, ...data })),
+  setProfileImgUrl: (url)  => set({ profileImgUrl: url }),
+  setCoupleId:      (id)   => set({ coupleId: id }),
+  setStartDate:     (date) => set({ startDate: date }),
+  reset:            ()     => set({ ...initialState, initialized: true }),
 }));
 
-// ══════════════════════════════════════════════════════
-//  setupAuthListener
-//  providers.tsx useEffect 에서 앱 시작 시 한 번 호출
-//  Firebase Auth 상태 변화를 감지해 authStore 자동 업데이트
-// ══════════════════════════════════════════════════════
-export async function setupAuthListener() {
-  const { initAuthListener, fetchUser, fetchCouple } =
-    await import("@/lib/firebase/auth");
-
-  return initAuthListener(async (firebaseUser) => {
-    const store = useAuthStore.getState();
-
-    if (!firebaseUser) {
-      // 로그아웃 — 스토어 초기화
-      store.reset();
-      store.setInitialized(true);
-      return;
-    }
-
-    // Firestore 유저 정보 로드
-    const user = await fetchUser(firebaseUser.uid);
-    if (!user) {
-      store.setInitialized(true);
-      return;
-    }
-
-    store.setMyUid(user.uid);
-    store.setMyName(user.name);
-    store.setCoupleId(user.coupleId);
-    store.setRole(user.role ?? "user");
-
-    // 커플 정보 로드
-    if (user.coupleId) {
-      const couple = await fetchCouple(user.coupleId);
-      if (couple) {
-        store.setStartDate(couple.startDate);
-        const partnerUid =
-          couple.user1Uid === firebaseUser.uid
-            ? couple.user2Uid
-            : couple.user1Uid;
-        if (partnerUid) {
-          const partner = await fetchUser(partnerUid);
-          if (partner) store.setPartnerName(partner.name);
-        }
+// ── Firebase Auth 상태 감지
+// providers.tsx 호출 방식: setupAuthListener().then(unsub => { unsubscribe = unsub })
+// → Promise<() => void> 반환
+export function setupAuthListener(): Promise<() => void> {
+  return new Promise((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        useAuthStore.getState().reset();
+        // 최초 1회 resolve (unsubscribe 함수 전달)
+        resolve(unsubscribe);
+        return;
       }
-    }
 
-    store.setInitialized(true);
+      try {
+        const userSnap = await getDoc(doc(db, "users", user.uid));
+        const userData = userSnap.exists() ? userSnap.data() : {};
+
+        let partnerName = "";
+        let startDate   = "";
+
+        if (userData.coupleId) {
+          const coupleSnap = await getDoc(doc(db, "couples", userData.coupleId));
+          if (coupleSnap.exists()) {
+            const coupleData = coupleSnap.data();
+            startDate = coupleData.startDate ?? "";
+
+            const partnerUid =
+              coupleData.user1Uid === user.uid
+                ? coupleData.user2Uid
+                : coupleData.user1Uid;
+
+            if (partnerUid) {
+              const partnerSnap = await getDoc(doc(db, "users", partnerUid));
+              if (partnerSnap.exists()) {
+                partnerName = partnerSnap.data().name ?? "";
+              }
+            }
+          }
+        }
+
+        useAuthStore.getState().setAuth({
+          myUid:         user.uid,
+          myName:        userData.name          ?? user.displayName ?? "",
+          partnerName,
+          startDate,
+          coupleId:      userData.coupleId      ?? null,
+          role:          userData.role          ?? "user",
+          profileImgUrl: userData.profileImgUrl ?? user.photoURL   ?? null,
+          initialized:   true,
+        });
+      } catch (err) {
+        console.error("setupAuthListener error:", err);
+        useAuthStore.getState().setAuth({ initialized: true });
+      }
+
+      resolve(unsubscribe);
+    });
   });
 }

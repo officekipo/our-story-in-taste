@@ -1,12 +1,11 @@
 // src/app/(auth)/login/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter }           from "next/navigation";
+import { useState }     from "react";
+import { useRouter }    from "next/navigation";
 import {
   signIn,
   signInWithGoogle,
-  getGoogleRedirectResult,
   fetchUser,
   fetchCouple,
 } from "@/lib/firebase/auth";
@@ -39,18 +38,10 @@ export default function LoginPage() {
     boxSizing: "border-box", marginBottom: 12,
   };
 
-  /* ── 모바일 Google 리디렉션 결과 처리 ── */
-  useEffect(() => {
-    getGoogleRedirectResult().then(async (fbUser) => {
-      if (!fbUser) return;
-      await loadUserAndNavigate(fbUser.uid);
-    });
-  }, []);
-
-  /* ── 로그인 후 공통 처리 ── */
-  const loadUserAndNavigate = async (uid: string) => {
+  // 로그인 후 공통 처리
+  const loadAndNavigate = async (uid: string) => {
     const user = await fetchUser(uid);
-    if (!user) return;
+    if (!user) throw new Error("유저 정보를 불러올 수 없습니다.");
 
     setMyUid(user.uid);
     setMyName(user.name);
@@ -62,7 +53,8 @@ export default function LoginPage() {
       const couple = await fetchCouple(user.coupleId);
       if (couple) {
         setStartDate(couple.startDate);
-        const partnerUid = couple.user1Uid === uid ? couple.user2Uid : couple.user1Uid;
+        const partnerUid =
+          couple.user1Uid === uid ? couple.user2Uid : couple.user1Uid;
         if (partnerUid) {
           const partner = await fetchUser(partnerUid);
           if (partner) setPartnerName(partner.name);
@@ -74,17 +66,17 @@ export default function LoginPage() {
     }
   };
 
-  /* ── 이메일 로그인 ── */
+  // 이메일 로그인
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
       const fbUser = await signIn(email, password);
-      await loadUserAndNavigate(fbUser.uid);
+      await loadAndNavigate(fbUser.uid);
     } catch (err: any) {
       const code = err.code ?? "";
-      if (code === "auth/user-not-found" || code === "auth/wrong-password" || code === "auth/invalid-credential") {
+      if (["auth/user-not-found", "auth/wrong-password", "auth/invalid-credential"].includes(code)) {
         setError("이메일 또는 비밀번호가 올바르지 않습니다.");
       } else if (code === "auth/invalid-email") {
         setError("올바른 이메일 형식을 입력해주세요.");
@@ -96,20 +88,18 @@ export default function LoginPage() {
     }
   };
 
-  /* ── Google 로그인 ── */
+  // Google 로그인
   const handleGoogle = async () => {
     setError("");
     setGLoading(true);
     try {
       const fbUser = await signInWithGoogle();
-      if (fbUser) {
-        // 팝업 방식(데스크톱): 결과 바로 처리
-        await loadUserAndNavigate(fbUser.uid);
-      }
-      // 리디렉션 방식(모바일): useEffect에서 처리
+      await loadAndNavigate(fbUser.uid);
     } catch (err: any) {
-      if (err.code !== "auth/popup-closed-by-user") {
-        setError("Google 로그인 중 오류가 발생했습니다.");
+      // 팝업을 닫은 경우는 오류 표시 안 함
+      if (err.code !== "auth/popup-closed-by-user" &&
+          err.code !== "auth/cancelled-popup-request") {
+        setError("Google 로그인에 실패했습니다. 다시 시도해주세요.");
       }
     } finally {
       setGLoading(false);
@@ -127,19 +117,9 @@ export default function LoginPage() {
         <p style={{ fontSize: 13, color: MUTED }}>우리의 맛지도에 로그인하세요</p>
       </div>
 
-      {/* 이메일 / 비밀번호 */}
-      <input
-        type="email" placeholder="이메일"
-        value={email} onChange={(e) => setEmail(e.target.value)}
-        style={inp} required
-      />
-      <input
-        type="password" placeholder="비밀번호"
-        value={password} onChange={(e) => setPassword(e.target.value)}
-        style={inp} required
-      />
+      <input type="email"    placeholder="이메일"   value={email}    onChange={e => setEmail(e.target.value)}    style={inp} required />
+      <input type="password" placeholder="비밀번호" value={password} onChange={e => setPassword(e.target.value)} style={inp} required />
 
-      {/* 오류 메시지 */}
       {error && (
         <div style={{ background: "#FFF0F0", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "10px 12px", marginBottom: 12, marginTop: -4 }}>
           <p style={{ fontSize: 12, color: "#EF4444" }}>⚠️ {error}</p>
@@ -147,10 +127,7 @@ export default function LoginPage() {
       )}
 
       {/* 이메일 로그인 버튼 */}
-      <button
-        type="submit" disabled={loading}
-        style={{ width: "100%", padding: 14, background: loading ? "#C0B8B0" : ROSE, border: "none", borderRadius: 14, color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "inherit", boxShadow: loading ? "none" : "0 4px 16px rgba(201,107,82,0.3)", marginBottom: 14 }}
-      >
+      <button type="submit" disabled={loading} style={{ width: "100%", padding: 14, background: loading ? "#C0B8B0" : ROSE, border: "none", borderRadius: 14, color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "inherit", boxShadow: loading ? "none" : "0 4px 16px rgba(201,107,82,0.3)", marginBottom: 14 }}>
         {loading ? "로그인 중..." : "로그인"}
       </button>
 
@@ -162,13 +139,7 @@ export default function LoginPage() {
       </div>
 
       {/* Google 로그인 버튼 */}
-      <button
-        type="button"
-        onClick={handleGoogle}
-        disabled={gLoading}
-        style={{ width: "100%", padding: 14, background: "#fff", border: `1.5px solid ${BORDER}`, borderRadius: 14, color: INK, fontSize: 14, fontWeight: 600, cursor: gLoading ? "default" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 14 }}
-      >
-        {/* Google 로고 SVG */}
+      <button type="button" onClick={handleGoogle} disabled={gLoading} style={{ width: "100%", padding: 14, background: "#fff", border: `1.5px solid ${BORDER}`, borderRadius: 14, color: INK, fontSize: 14, fontWeight: 600, cursor: gLoading ? "default" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 14 }}>
         <svg width="18" height="18" viewBox="0 0 18 18">
           <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
           <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
@@ -179,11 +150,7 @@ export default function LoginPage() {
       </button>
 
       {/* 회원가입 */}
-      <button
-        type="button"
-        onClick={() => router.push("/signup")}
-        style={{ width: "100%", padding: 14, background: WARM, border: `1.5px solid ${BORDER}`, borderRadius: 14, color: INK, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-      >
+      <button type="button" onClick={() => router.push("/signup")} style={{ width: "100%", padding: 14, background: WARM, border: `1.5px solid ${BORDER}`, borderRadius: 14, color: INK, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
         처음이에요 — 회원가입
       </button>
     </form>

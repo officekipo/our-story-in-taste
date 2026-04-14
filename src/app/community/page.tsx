@@ -1,110 +1,185 @@
-// src/app/community/page.tsx
-// DUMMY_MODE = true  → SAMPLE_COMMUNITY 사용
-// DUMMY_MODE = false → Firestore community 컬렉션 사용 (Firebase 연동 후)
+// ============================================================
+//  community/page.tsx  적용 경로: src/app/community/page.tsx
+//
+//  Fix 4, 5:
+//    - CommunityCard props 에 맞게 isLiked/isWished 전달
+//    - Firestore 데이터 → CommunityRecord 형태로 정규화
+//    - likeCount(숫자) → likes 로 매핑, NaN 방지
+//    - isLiked: likedBy 배열에 myUid 포함 여부
+//    - isWished: 로컬 state 로 관리
+// ============================================================
 "use client";
 
-import { useState }            from "react";
-import { AppShell }            from "@/components/layout/AppShell";
-import { CommunityCard }       from "@/components/community/CommunityCard";
-import { ReportModal }         from "@/components/community/ReportModal";
-import { Toast }               from "@/components/common/Toast";
-import { useAuthStore }        from "@/store/authStore";
-import { SAMPLE_COMMUNITY }    from "@/lib/sample-data";
-import type { CommunityRecord, WishRecord } from "@/types";
+import { useEffect, useState, useCallback } from "react";
+import {
+  collection, query, orderBy, onSnapshot,
+  doc, updateDoc, arrayUnion, arrayRemove, increment,
+} from "firebase/firestore";
+import { db }            from "@/lib/firebase/config";
+import { useAuthStore }  from "@/store/authStore";
+import { useWishlist }   from "@/hooks/useWishlist";
+import { AppShell }      from "@/components/layout/AppShell";
+import { CommunityCard } from "@/components/community/CommunityCard";
+import { ReportModal }   from "@/components/community/ReportModal";
+import { Toast }         from "@/components/common/Toast";
 
-// ── 전환 스위치 ──────────────────────────────────────────
-const DUMMY_MODE = false;
-// ────────────────────────────────────────────────────────
+const INK    = "#1A1412";
+const MUTED  = "#8A8078";
+const BORDER = "#E2DDD8";
+const WARM   = "#FAF7F3";
+const HIDE_THRESHOLD = 3;
 
-const ROSE  = "#C96B52";
+// Firestore raw → CommunityCard 가 기대하는 CommunityRecord 형태로 변환
+function toRecord(raw: any) {
+  return {
+    id:          raw.id          ?? "",
+    coupleId:    raw.coupleId    ?? "",
+    visitedId:   raw.visitedId   ?? "",
+    name:        raw.name        ?? raw.restaurantName ?? "",   // ★ 이름 통일
+    cuisine:     raw.cuisine     ?? "",
+    sido:        raw.sido        ?? "",
+    district:    raw.district    ?? "",
+    rating:      raw.rating      ?? 0,
+    memo:        raw.memo        ?? "",
+    tags:        Array.isArray(raw.tags)       ? raw.tags       : [],
+    imgUrls:     Array.isArray(raw.imgUrls)    ? raw.imgUrls    : [],
+    emoji:       raw.emoji       ?? "🍽️",
+    authorUid:   raw.authorUid   ?? "",
+    authorName:  raw.authorName  ?? "",
+    // CommunityCard 에서 표시할 커플 라벨
+    coupleLabel: raw.showAuthorName === false
+      ? "익명 커플"
+      : (raw.authorName ? `${raw.authorName}의 추천` : "커플 추천"),
+    likes:       typeof raw.likeCount === "number" ? raw.likeCount : 0, // ★ NaN 방지
+    likedBy:     Array.isArray(raw.likedBy)    ? raw.likedBy    : [],
+    reportedBy:  Array.isArray(raw.reportedBy) ? raw.reportedBy : [],
+    createdAt:   raw.createdAt   ?? "",
+  };
+}
 
 export default function CommunityPage() {
-  const { myName, coupleId } = useAuthStore();
+  const { myUid, coupleId, myName } = useAuthStore();
+  const firebaseWish                = useWishlist();
 
-  const [records,  setRecords]  = useState<CommunityRecord[]>(SAMPLE_COMMUNITY);
-  const [liked,    setLiked]    = useState<Set<string>>(new Set());
-  const [wished,   setWished]   = useState<Set<string>>(new Set());
-  const [reportId, setReportId] = useState<string | null>(null);
-  const [toast,    setToast]    = useState<string | null>(null);
+  const [records,      setRecords]      = useState<ReturnType<typeof toRecord>[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [reportTarget, setReportTarget] = useState<any | null>(null);
+  const [toast,        setToast]        = useState<string | null>(null);
+  // 위시 추가된 visitedId 목록 (로컬 관리)
+  const [wishedIds, setWishedIds] = useState<Set<string>>(new Set());
 
-  // 좋아요 토글
-  const toggleLike = (id: string) => {
-    setLiked(prev => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
+  // ── 실시간 구독 ─────────────────────────────────────────
+  useEffect(() => {
+    const q = query(collection(db, "community"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      setRecords(
+        snap.docs
+          .map((d) => toRecord({ id: d.id, ...d.data() }))
+          .filter((r) => r.reportedBy.length < HIDE_THRESHOLD)
+      );
+      setLoading(false);
     });
-  };
+    return () => unsub();
+  }, []);
 
-  // 위시 추가
-  const handleWish = (id: string, name: string) => {
-    if (wished.has(id)) {
-      setToast("이미 위시리스트에 있어요 😊");
+  // ── 좋아요 토글 ─────────────────────────────────────────
+  const handleLike = useCallback(async (record: ReturnType<typeof toRecord>) => {
+    if (!myUid) return;
+    const liked = record.likedBy.includes(myUid);
+    try {
+      await updateDoc(doc(db, "community", record.id), {
+        likedBy:   liked ? arrayRemove(myUid) : arrayUnion(myUid),
+        likeCount: increment(liked ? -1 : 1),
+      });
+    } catch (e) { console.error("좋아요 오류:", e); }
+  }, [myUid]);
+
+  // ── 위시 추가 ─────────────────────────────────────────
+  const handleWish = useCallback(async (record: ReturnType<typeof toRecord>) => {
+    if (!coupleId || !myUid || !myName) return;
+    if (wishedIds.has(record.id)) {
+      setToast("이미 위시리스트에 추가했어요 ⭐");
       return;
     }
-    setWished(prev => new Set([...prev, id]));
-    setToast(`⭐ "${name}" 위시리스트에 추가했어요!`);
+    try {
+      await firebaseWish.add({
+        name:     record.name,
+        sido:     record.sido     ?? "",
+        district: record.district ?? "",
+        cuisine:  record.cuisine  ?? "",
+        note:     `추천 탭에서 담은 맛집 (${record.authorName || "익명"})`,
+        emoji:    record.emoji    ?? "🍽️",
+        imgUrls:  record.imgUrls  ?? [],
+      });
+      setWishedIds(prev => new Set([...prev, record.id]));
+      setToast("⭐ 위시리스트에 추가했어요!");
+    } catch (e) {
+      console.error("위시 오류:", e);
+      setToast("❌ 추가에 실패했어요.");
+    }
+  }, [coupleId, myUid, myName, wishedIds, firebaseWish]);
 
-    // TODO (Firebase 모드): Firestore wishlist에 저장
-    // const rec = records.find(r => r.id === id);
-    // if (rec && coupleId) {
-    //   addWish(coupleId, myUid, myName, {
-    //     name: rec.name, sido: rec.sido, district: rec.district,
-    //     cuisine: rec.cuisine, note: rec.memo, emoji: rec.emoji,
-    //   });
-    // }
-  };
+  // ── 신고 ─────────────────────────────────────────────────
+  const handleReport = useCallback(async (record: ReturnType<typeof toRecord>) => {
+    if (!myUid) return;
+    if (record.reportedBy.includes(myUid)) { setToast("이미 신고한 게시글이에요."); return; }
+    setReportTarget(record);
+  }, [myUid]);
 
-  // 신고 처리
-  const handleReport = () => {
-    setRecords(prev =>
-      prev.map(r => r.id === reportId ? { ...r, id: "reported-" + r.id } : r)
-    );
-    setReportId(null);
-    setToast("신고가 접수됐어요. 검토 후 조치합니다.");
-  };
-
-  // 신고된 게시물 필터
-  const visible = records.filter(r => !r.id.startsWith("reported-"));
+  const submitReport = useCallback(async (record: any) => {
+    if (!myUid) return;
+    await updateDoc(doc(db, "community", record.id), { reportedBy: arrayUnion(myUid) });
+    setReportTarget(null);
+    setToast("신고가 접수됐어요.");
+  }, [myUid]);
 
   return (
-    <AppShell
-      activeTab="community"
-      headerProps={{ visitedCount: 6, avgRating: "4.5", wishCount: 3 }}
-    >
-      <div style={{ padding: "20px 20px 12px" }}>
-        <h2 style={{ fontSize: 20, fontWeight: 800, color: "#1A1412", marginBottom: 4 }}>
-          다른 커플들의 추천 맛집
-        </h2>
-        <p style={{ fontSize: 13, color: "#8A8078" }}>
-          사랑하는 사람과 함께 가면 좋을 곳들이에요 💕
-        </p>
-      </div>
+    <AppShell activeTab="community">
+      <div style={{ padding: "16px 0" }}>
+        <div style={{ margin: "0 16px 16px", padding: "12px 14px", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 12, fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+          💡 커플들이 공유한 맛집이에요. 글쓰기 시 <strong>커뮤니티 공유</strong>를 켜면 여기에 올라와요.
+        </div>
 
-      <div style={{ padding: "0 16px" }}>
-        {visible.map(r => (
-          <CommunityCard
-            key={r.id}
-            record={r}
-            isLiked={liked.has(r.id)}
-            isWished={wished.has(r.id)}
-            onLike={() => toggleLike(r.id)}
-            onWish={() => handleWish(r.id, r.name)}
-            onReport={() => setReportId(r.id)}
-          />
-        ))}
-        {visible.length === 0 && (
-          <div style={{ textAlign: "center", padding: "48px 0", color: "#C0B8B0" }}>
-            <div style={{ fontSize: 44 }}>💬</div>
-            <p style={{ marginTop: 10, fontSize: 14 }}>추천 게시물이 없어요</p>
+        {loading && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "0 16px" }}>
+            {[1,2,3].map(i => (
+              <div key={i} style={{ height: 260, background: WARM, borderRadius: 16, opacity: 0.6 }} />
+            ))}
+          </div>
+        )}
+
+        {!loading && records.length === 0 && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "80px 32px", gap: 12 }}>
+            <div style={{ fontSize: 56 }}>🌐</div>
+            <div style={{ fontWeight: 700, fontSize: 16, color: INK }}>아직 공유된 맛집이 없어요</div>
+            <div style={{ fontSize: 13, color: MUTED, textAlign: "center", lineHeight: 1.6 }}>
+              다녀온 곳을 기록할 때<br />커뮤니티 공유를 켜면 여기에 올라와요!
+            </div>
+          </div>
+        )}
+
+        {!loading && records.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", padding: "0 16px" }}>
+            {records.map((record) => (
+              <CommunityCard
+                key={record.id}
+                record={record}
+                isLiked={!!myUid && record.likedBy.includes(myUid)}   // ★
+                isWished={wishedIds.has(record.id)}                    // ★
+                onLike={()   => handleLike(record)}
+                onWish={()   => handleWish(record)}
+                onReport={()  => handleReport(record)}
+              />
+            ))}
           </div>
         )}
       </div>
 
-      {reportId && (
+      {reportTarget && (
         <ReportModal
-          onClose={() => setReportId(null)}
-          onReport={handleReport}
+          post={reportTarget}
+          onConfirm={() => submitReport(reportTarget)}
+          onClose={() => setReportTarget(null)}
         />
       )}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}

@@ -1,94 +1,170 @@
-// src/lib/firebase/firestore.ts
-// Firestore CRUD 함수 — 컴포넌트/훅에서 이 파일만 import
+// ============================================================
+//  firestore.ts  적용 경로: src/lib/firebase/firestore.ts
+//
+//  Fix 3: 새글이 하위로 등록되는 문제
+//    - subscribeVisited 정렬을 createdAt desc 기준으로 변경
+//      (date 는 유저가 과거 날짜 선택 가능 → 정렬 혼선)
+//    - 필요 Firestore 복합 인덱스:
+//      visited:  coupleId(asc) + createdAt(desc)
+//      wishlist: coupleId(asc) + addedDate(desc)
+// ============================================================
 
 import {
-  collection, doc,
-  addDoc, updateDoc, deleteDoc,
-  query, where, orderBy,
-  onSnapshot, serverTimestamp,
-  type Unsubscribe,
+  collection, doc, addDoc, updateDoc, deleteDoc,
+  getDocs, getDoc, query, where, orderBy,
+  onSnapshot, writeBatch, type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "./config";
-import type { VisitedRecord, VisitedFormData, WishRecord, WishFormData } from "@/types";
+import type { VisitedRecord, WishRecord, CommunityPost } from "@/types";
 
-// ── 방문 기록 실시간 구독 ─────────────────────────────────
+// ══════════════════════════════════════════════════════════
+//  VISITED
+// ══════════════════════════════════════════════════════════
+
+export async function addVisited(
+  data: Omit<VisitedRecord, "id" | "createdAt" | "updatedAt">
+): Promise<string> {
+  const now = new Date().toISOString();
+  const ref = await addDoc(collection(db, "visited"), {
+    ...data,
+    createdAt: now,
+    updatedAt: now,
+  });
+  if (data.shareToComm) {
+    await addDoc(collection(db, "community"), buildCommunityPost(ref.id, data));
+  }
+  return ref.id;
+}
+
+export async function updateVisited(
+  id: string,
+  data: Partial<Omit<VisitedRecord, "id" | "createdAt">>
+): Promise<void> {
+  const batch      = writeBatch(db);
+  const visitedRef = doc(db, "visited", id);
+
+  batch.update(visitedRef, { ...data, updatedAt: new Date().toISOString() });
+
+  const commQ    = query(collection(db, "community"), where("visitedId", "==", id));
+  const commSnap = await getDocs(commQ);
+
+  if (data.shareToComm === true) {
+    if (commSnap.empty) {
+      const snap   = await getDoc(visitedRef);
+      const merged = { ...(snap.data() as VisitedRecord), ...data };
+      batch.set(doc(collection(db, "community")), buildCommunityPost(id, merged));
+    } else {
+      commSnap.docs.forEach((d) =>
+        batch.update(d.ref, {
+          restaurantName: data.name,     cuisine:  data.cuisine,
+          sido:           data.sido,     district: data.district,
+          rating:         data.rating,   memo:     data.memo,
+          tags:           data.tags,     imgUrls:  data.imgUrls,
+          emoji:          data.emoji,
+        })
+      );
+    }
+  } else if (data.shareToComm === false) {
+    commSnap.docs.forEach((d) => batch.delete(d.ref));
+  }
+
+  await batch.commit();
+}
+
+export async function deleteVisited(id: string): Promise<void> {
+  const batch    = writeBatch(db);
+  batch.delete(doc(db, "visited", id));
+  const commSnap = await getDocs(query(collection(db, "community"), where("visitedId", "==", id)));
+  commSnap.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
+}
+
+// ★ createdAt desc 정렬 → 새 글이 항상 맨 위
 export function subscribeVisited(
   coupleId: string,
-  callback: (records: VisitedRecord[]) => void,
+  callback: (records: VisitedRecord[]) => void
 ): Unsubscribe {
   const q = query(
     collection(db, "visited"),
     where("coupleId", "==", coupleId),
-    orderBy("date", "desc"),
+    orderBy("createdAt", "desc")   // ← date → createdAt 변경
   );
-  return onSnapshot(q, snap => {
-    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })) as VisitedRecord[]);
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as VisitedRecord)));
   });
 }
 
-// ── 방문 기록 추가 ────────────────────────────────────────
-export async function addVisited(
-  coupleId:   string,
-  authorUid:  string,
-  authorName: string,
-  data:       VisitedFormData,
-): Promise<string> {
-  const ref = await addDoc(collection(db, "visited"), {
-    ...data,
-    coupleId,
-    authorUid,
-    authorName,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+// ══════════════════════════════════════════════════════════
+//  WISHLIST
+// ══════════════════════════════════════════════════════════
+
+export async function addWish(data: Omit<WishRecord, "id">): Promise<string> {
+  if (!data || typeof data !== "object") throw new Error("addWish: WishRecord 객체를 전달하세요.");
+  if (!data.coupleId)                    throw new Error("addWish: coupleId가 없습니다.");
+  const ref = await addDoc(collection(db, "wishlist"), data);
   return ref.id;
 }
 
-// ── 방문 기록 수정 ────────────────────────────────────────
-export async function updateVisited(
-  id:   string,
-  data: Partial<VisitedFormData>,
-): Promise<void> {
-  await updateDoc(doc(db, "visited", id), { ...data, updatedAt: serverTimestamp() });
+export async function updateWish(id: string, data: Partial<Omit<WishRecord, "id">>): Promise<void> {
+  await updateDoc(doc(db, "wishlist", id), data);
 }
 
-// ── 방문 기록 삭제 ────────────────────────────────────────
-export async function deleteVisited(id: string): Promise<void> {
-  await deleteDoc(doc(db, "visited", id));
+export async function deleteWish(id: string): Promise<void> {
+  await deleteDoc(doc(db, "wishlist", id));
 }
 
-// ── 위시리스트 실시간 구독 ───────────────────────────────
 export function subscribeWishlist(
   coupleId: string,
-  callback: (records: WishRecord[]) => void,
+  callback: (records: WishRecord[]) => void
 ): Unsubscribe {
   const q = query(
     collection(db, "wishlist"),
     where("coupleId", "==", coupleId),
-    orderBy("addedDate", "desc"),
+    orderBy("addedDate", "desc")
   );
-  return onSnapshot(q, snap => {
-    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })) as WishRecord[]);
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WishRecord)));
   });
 }
 
-// ── 위시리스트 추가 ───────────────────────────────────────
-export async function addWish(
-  coupleId:    string,
-  addedByUid:  string,
-  addedByName: string,
-  data:        WishFormData,
-): Promise<void> {
-  await addDoc(collection(db, "wishlist"), {
-    ...data,
-    coupleId,
-    addedByUid,
-    addedByName,
-    addedDate: new Date().toISOString().slice(0, 10),
-  });
+// ══════════════════════════════════════════════════════════
+//  COMMUNITY
+// ══════════════════════════════════════════════════════════
+
+function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): Omit<CommunityPost, "id"> {
+  return {
+    coupleId:       data.coupleId    ?? "",
+    visitedId,
+    restaurantName: data.name        ?? "",
+    name:           data.name        ?? "",   // CommunityCard 호환
+    cuisine:        data.cuisine     ?? "",
+    sido:           data.sido        ?? "",
+    district:       data.district    ?? "",
+    rating:         data.rating      ?? 0,
+    memo:           data.memo        ?? "",
+    tags:           data.tags        ?? [],
+    imgUrls:        data.imgUrls     ?? [],
+    emoji:          data.emoji       ?? "🍽️",
+    authorUid:      data.authorUid   ?? "",
+    authorName:     data.authorName  ?? "",
+    showAuthorName: true,
+    likeCount:      0,
+    likedBy:        [],
+    reportedBy:     [],
+    createdAt:      new Date().toISOString(),
+  };
 }
 
-// ── 위시리스트 삭제 ───────────────────────────────────────
-export async function deleteWish(id: string): Promise<void> {
-  await deleteDoc(doc(db, "wishlist", id));
+// ══════════════════════════════════════════════════════════
+//  USER / COUPLE
+// ══════════════════════════════════════════════════════════
+
+export async function getUser(uid: string) {
+  const snap = await getDoc(doc(db, "users", uid));
+  return snap.exists() ? { uid, ...snap.data() } : null;
+}
+
+export async function getCoupleDoc(coupleId: string) {
+  const snap = await getDoc(doc(db, "couples", coupleId));
+  return snap.exists() ? { id: coupleId, ...snap.data() } : null;
 }

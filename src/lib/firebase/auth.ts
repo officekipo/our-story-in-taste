@@ -1,6 +1,5 @@
 // src/lib/firebase/auth.ts
-// 회원가입, 로그인, 소셜 로그인, 로그아웃, 커플 연동 함수
-// 컴포넌트에서 Firebase를 직접 import하지 않고 이 파일의 함수만 사용합니다.
+// 이메일·Google 로그인, 커플 연동 함수
 
 import {
   createUserWithEmailAndPassword,
@@ -10,8 +9,6 @@ import {
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -22,9 +19,7 @@ import {
 import { auth, db } from "./config";
 import type { AppUser, CoupleDoc } from "@/types";
 
-/* ════════════════════════════════
-   이메일 회원가입
-════════════════════════════════ */
+/* ── 이메일 회원가입 ── */
 export async function signUp(
   email: string,
   password: string,
@@ -32,8 +27,6 @@ export async function signUp(
 ): Promise<FirebaseUser> {
   const { user } = await createUserWithEmailAndPassword(auth, email, password);
   await updateProfile(user, { displayName: name });
-
-  // Firestore users 문서 생성 (Firebase 프로젝트명: Our Taste)
   await setDoc(doc(db, "users", user.uid), {
     uid:      user.uid,
     name,
@@ -43,13 +36,10 @@ export async function signUp(
     provider: "email",
     createdAt: serverTimestamp(),
   });
-
   return user;
 }
 
-/* ════════════════════════════════
-   이메일 로그인
-════════════════════════════════ */
+/* ── 이메일 로그인 ── */
 export async function signIn(
   email: string,
   password: string,
@@ -58,57 +48,29 @@ export async function signIn(
   return user;
 }
 
-/* ════════════════════════════════
-   Google 소셜 로그인
-   모바일: Redirect 방식 (앱처럼 동작)
-   데스크톱: Popup 방식
-════════════════════════════════ */
+/* ── Google 로그인 ──
+   팝업 방식으로 통일 (모바일/데스크톱 모두)
+   리디렉션 방식은 PWA에서 팝업이 막힐 때 사용
+*/
 const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope("email");
+googleProvider.addScope("profile");
 googleProvider.setCustomParameters({ prompt: "select_account" });
 
-export async function signInWithGoogle(): Promise<FirebaseUser | null> {
-  const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-
-  if (isMobile) {
-    // 모바일: 리디렉션 (페이지 이동 후 getGoogleRedirectResult로 결과 처리)
-    await signInWithRedirect(auth, googleProvider);
-    return null; // 리디렉션 후 결과는 getGoogleRedirectResult에서 처리
-  } else {
-    // 데스크톱: 팝업
-    const result = await signInWithPopup(auth, googleProvider);
-    await ensureUserDoc(result.user, "google");
-    return result.user;
-  }
+export async function signInWithGoogle(): Promise<FirebaseUser> {
+  const result = await signInWithPopup(auth, googleProvider);
+  await ensureUserDoc(result.user, "google");
+  return result.user;
 }
 
-/* ════════════════════════════════
-   Google 리디렉션 결과 처리
-   모바일에서 Google 로그인 후 돌아왔을 때 호출
-   login/page.tsx의 useEffect에서 호출하세요.
-════════════════════════════════ */
-export async function getGoogleRedirectResult(): Promise<FirebaseUser | null> {
-  try {
-    const result = await getRedirectResult(auth);
-    if (!result) return null;
-    await ensureUserDoc(result.user, "google");
-    return result.user;
-  } catch {
-    return null;
-  }
-}
-
-/* ════════════════════════════════
-   소셜 로그인 유저 — Firestore 문서가 없으면 생성
-   (처음 가입하는 경우에만 생성)
-════════════════════════════════ */
+/* 소셜 로그인 첫 가입 시 Firestore 문서 생성 */
 async function ensureUserDoc(
   user: FirebaseUser,
   provider: "google" | "kakao",
 ): Promise<void> {
   const ref  = doc(db, "users", user.uid);
   const snap = await getDoc(ref);
-  if (snap.exists()) return; // 이미 있으면 스킵
-
+  if (snap.exists()) return;
   await setDoc(ref, {
     uid:       user.uid,
     name:      user.displayName ?? "이름없음",
@@ -120,31 +82,31 @@ async function ensureUserDoc(
   });
 }
 
-/* ════════════════════════════════
-   로그아웃
-════════════════════════════════ */
+/* ── 로그아웃 ── */
 export async function logOut(): Promise<void> {
   await signOut(auth);
 }
 
-/* ════════════════════════════════
-   Firestore 유저 정보 조회
-════════════════════════════════ */
+/* ── Firestore 유저 조회 ── */
 export async function fetchUser(uid: string): Promise<AppUser | null> {
   const snap = await getDoc(doc(db, "users", uid));
   if (!snap.exists()) return null;
   return snap.data() as AppUser;
 }
 
-/* ════════════════════════════════
-   커플 방 생성 (초대 코드 발급)
-════════════════════════════════ */
+/* ── 커플 방 생성 (초대 코드 발급) ── */
 export async function createCouple(
   myUid: string,
   startDate: string,
 ): Promise<{ coupleId: string; inviteCode: string }> {
-  const inviteCode = "TASTE-" + Math.random().toString(36).slice(2, 8).toUpperCase();
-  const coupleId   = "couple-" + Date.now().toString(36);
+  // TASTE- + 6자리 대문자 영숫자 = 총 12자리
+  const chars      = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 혼동되는 문자 제외
+  let   randomPart = "";
+  for (let i = 0; i < 6; i++) {
+    randomPart += chars[Math.floor(Math.random() * chars.length)];
+  }
+  const inviteCode = "TASTE-" + randomPart;
+  const coupleId   = "couple-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
   await setDoc(doc(db, "couples", coupleId), {
     id:         coupleId,
@@ -154,14 +116,11 @@ export async function createCouple(
     inviteCode,
     createdAt:  serverTimestamp(),
   });
-
   await updateDoc(doc(db, "users", myUid), { coupleId });
   return { coupleId, inviteCode };
 }
 
-/* ════════════════════════════════
-   초대 코드로 커플 연결
-════════════════════════════════ */
+/* ── 초대 코드로 커플 연결 ── */
 export async function joinCouple(
   inviteCode: string,
   myUid: string,
@@ -183,24 +142,19 @@ export async function joinCouple(
   if (coupleData.user1Uid === myUid)
     throw new Error("본인이 만든 코드는 사용할 수 없습니다.");
 
-  await updateDoc(coupleDoc.ref,            { user2Uid: myUid });
-  await updateDoc(doc(db, "users", myUid),  { coupleId: coupleDoc.id });
+  await updateDoc(coupleDoc.ref,           { user2Uid: myUid });
+  await updateDoc(doc(db, "users", myUid), { coupleId: coupleDoc.id });
   return coupleDoc.id;
 }
 
-/* ════════════════════════════════
-   커플 정보 조회
-════════════════════════════════ */
+/* ── 커플 정보 조회 ── */
 export async function fetchCouple(coupleId: string): Promise<CoupleDoc | null> {
   const snap = await getDoc(doc(db, "couples", coupleId));
   if (!snap.exists()) return null;
   return snap.data() as CoupleDoc;
 }
 
-/* ════════════════════════════════
-   Auth 상태 변화 감지 리스너
-   authStore.ts의 setupAuthListener에서 사용
-════════════════════════════════ */
+/* ── Auth 상태 변화 감지 ── */
 export function initAuthListener(
   cb: (user: FirebaseUser | null) => void,
 ) {
