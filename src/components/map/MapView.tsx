@@ -2,10 +2,9 @@
 //  MapView.tsx  적용 경로: src/components/map/MapView.tsx
 //
 //  Fix:
-//    - filter prop ("all" | "visited" | "wish") 추가
-//    - flex:1 + height:100% → 부모 높이 100% 채움
-//    - maxHeight 제거 (page.tsx 에서 flex:1 래퍼로 제어)
-//    - 줌 버튼 우하단 유지
+//    - height:100% → 부모(flex:1 래퍼) 높이 전부 채움
+//    - 범례 / 안내 텍스트 → 지도 내부 absolute overlay
+//    - filter prop ("all" | "visited" | "wish") 지원
 // ============================================================
 "use client";
 
@@ -99,7 +98,7 @@ export default function MapView({ filter = "all" }: Props) {
     };
   }, []);
 
-  // ── 마커 갱신 (filter 변경 시도 재실행) ────────────────
+  // ── 마커 갱신 (filter 변경 시 재실행) ──────────────────
   useEffect(() => {
     if (!mapReady || !mapInst.current) return;
 
@@ -153,31 +152,49 @@ export default function MapView({ filter = "all" }: Props) {
     filter === "wish"    ? wishlist.length === 0 :
     visited.length === 0 && wishlist.length === 0;
 
+  const legendRows =
+    filter === "all"     ? 2 :
+    filter === "visited" ? 1 : 1;
+
   return (
-    // height:100% → page.tsx 의 flex:1 래퍼가 높이를 결정
-    <div style={{ position: "relative", width: "100%", height: "100%",  borderRadius:  "20px", overflow: "hidden" }}>
-      <div ref={mapRef} style={{ width: "100%", height: "100%", color: "#333" }} />
+    // 부모(flex:1 래퍼)가 높이를 결정 → 여기서는 width/height 100% 로 꽉 채움
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+
+      {/* 지도 캔버스 */}
+      <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
 
       {/* 로딩 오버레이 */}
       {loading && (
-        <div style={{ position: "absolute", inset: 0, background: "rgba(245,240,235,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+        <div style={{
+          position: "absolute", inset: 0,
+          background: "rgba(245,240,235,0.85)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 1000,
+        }}>
           <div style={{ color: MUTED, fontSize: 14 }}>지도 불러오는 중…</div>
         </div>
       )}
 
-      {/* 범례: 좌상단 */}
+      {/* ── 범례 (좌상단, 지도 내부 overlay) ── */}
       {!loading && (
-        <div style={{ position: "absolute", top: 10, left: 10, background: "rgba(255,255,255,0.94)", borderRadius: 10, padding: "7px 11px", zIndex: 500, fontSize: 11, boxShadow: "0 1px 6px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{
+          position: "absolute", top: 10, left: 10,
+          background: "rgba(255,255,255,0.94)",
+          borderRadius: 10, padding: "7px 11px",
+          zIndex: 500, fontSize: 11,
+          boxShadow: "0 1px 6px rgba(0,0,0,0.12)",
+          display: "flex", flexDirection: "column", gap: 4,
+        }}>
           {(filter === "all" || filter === "visited") && (
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <div style={{ width: 10, height: 10, borderRadius: "50%", background: ROSE }} />
-              <span>방문한 곳 ({visited.filter(r => r.lat != null).length})</span>
+              <span style={{ color: INK }}>방문한 곳 ({visited.filter(r => r.lat != null).length})</span>
             </div>
           )}
           {(filter === "all" || filter === "wish") && (
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <div style={{ width: 10, height: 10, borderRadius: "50%", background: SAGE }} />
-              <span>위시리스트 ({wishlist.filter(r => r.lat != null).length})</span>
+              <span style={{ color: INK }}>위시리스트 ({wishlist.filter(r => r.lat != null).length})</span>
             </div>
           )}
         </div>
@@ -185,39 +202,84 @@ export default function MapView({ filter = "all" }: Props) {
 
       {/* 위치 미등록 안내 */}
       {!loading && noPinCount > 0 && (
-        <div style={{ position: "absolute", top: filter === "all" ? 68 : 44, left: 10, background: "rgba(26,20,18,0.70)", color: "#fff", borderRadius: 16, padding: "5px 12px", fontSize: 11, zIndex: 500 }}>
+        <div style={{
+          position: "absolute",
+          top: 10 + (legendRows * 26) + 14,   // 범례 높이 아래
+          left: 10,
+          background: "rgba(26,20,18,0.70)", color: "#fff",
+          borderRadius: 16, padding: "5px 12px",
+          fontSize: 11, zIndex: 500,
+        }}>
           📍 위치 미등록 {noPinCount}개
         </div>
       )}
 
-      {/* 핀 탭하면 안내 */}
+      {/* 핀 탭 안내 (우하단, 줌버튼 위) */}
       {!loading && !isEmpty && (
-        <div style={{ position: "absolute", bottom: selected ? 170 : 16, right: 10, background: "rgba(26,20,18,0.60)", color: "#fff", borderRadius: 16, padding: "5px 12px", fontSize: 11, zIndex: 500, transition: "bottom 0.25s", pointerEvents: "none" }}>
+        <div style={{
+          position: "absolute",
+          bottom: selected ? 180 : 48,   // 하단 패널 열리면 위로
+          left: "50%", transform: "translateX(-50%)",
+          background: "rgba(26,20,18,0.60)", color: "#fff",
+          borderRadius: 16, padding: "5px 14px",
+          fontSize: 11, zIndex: 500,
+          whiteSpace: "nowrap",
+          transition: "bottom 0.25s",
+          pointerEvents: "none",
+        }}>
           핀을 탭하면 상세 정보를 볼 수 있어요
         </div>
       )}
 
       {/* 빈 상태 */}
       {!loading && isEmpty && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(0,0,0,0.45)", pointerEvents: "none", zIndex: 400, color: WARM }}>
+        <div style={{
+          position: "absolute", inset: 0,
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          gap: 8,
+          background: "rgba(0,0,0,0.45)",
+          pointerEvents: "none", zIndex: 400, color: WARM,
+        }}>
           <div style={{ fontSize: 48 }}>🗺️</div>
           <div style={{ fontWeight: 600 }}>아직 기록이 없어요</div>
-          <div style={{ fontSize: 13, textAlign: "center" }}>식당 검색으로 등록하면<br />지도 핀이 자동으로 꽂혀요</div>
+          <div style={{ fontSize: 13, textAlign: "center" }}>
+            식당 검색으로 등록하면<br />지도 핀이 자동으로 꽂혀요
+          </div>
         </div>
       )}
 
       {/* 하단 상세 패널 */}
       {selected && (
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: WARM, borderTop: `1px solid ${BORDER}`, borderRadius: "18px 18px 0 0", padding: "18px 20px 28px", zIndex: 1000, boxShadow: "0 -4px 20px rgba(0,0,0,0.12)" }}>
-          <button onClick={() => setSelected(null)}
-            style={{ position: "absolute", top: 14, right: 16, background: "none", border: "none", fontSize: 20, cursor: "pointer", color: MUTED }}>✕</button>
+        <div style={{
+          position: "absolute", bottom: 0, left: 0, right: 0,
+          background: WARM,
+          borderTop: `1px solid ${BORDER}`,
+          borderRadius: "18px 18px 0 0",
+          padding: "18px 20px 28px",
+          zIndex: 1000,
+          boxShadow: "0 -4px 20px rgba(0,0,0,0.12)",
+        }}>
+          <button
+            onClick={() => setSelected(null)}
+            style={{ position: "absolute", top: 14, right: 16, background: "none", border: "none", fontSize: 20, cursor: "pointer", color: MUTED }}
+          >✕</button>
 
-          <div style={{ display: "inline-block", padding: "2px 10px", borderRadius: 20, background: selected.type === "visited" ? "#F2D5CC" : "#C8DED1", color: selected.type === "visited" ? ROSE : SAGE, fontSize: 11, fontWeight: 700, marginBottom: 10 }}>
+          <div style={{
+            display: "inline-block", padding: "2px 10px", borderRadius: 20,
+            background: selected.type === "visited" ? "#F2D5CC" : "#C8DED1",
+            color: selected.type === "visited" ? ROSE : SAGE,
+            fontSize: 11, fontWeight: 700, marginBottom: 10,
+          }}>
             {selected.type === "visited" ? "✅ 다녀온 곳" : "⭐ 가고싶은 곳"}
           </div>
 
           <div style={{ display: "flex", gap: 12 }}>
-            <div style={{ width: 60, height: 60, borderRadius: 10, background: BG, overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>
+            <div style={{
+              width: 60, height: 60, borderRadius: 10, background: BG,
+              overflow: "hidden", flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26,
+            }}>
               {selected.data.imgUrls?.[0]
                 ? <img src={selected.data.imgUrls[0]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 : (selected.data.emoji || "🍽️")}

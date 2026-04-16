@@ -2,13 +2,9 @@
 //  KakaoPlaceSearch.tsx
 //  적용 경로: src/components/common/KakaoPlaceSearch.tsx
 //
-//  Fix: Modal 안에서 드롭다운이 잘리는 문제 해결
-//    - dropdownTarget: document.body 에 Portal 로 렌더링
-//    - 입력 필드 위치 계산해서 드롭다운 절대 위치 지정
-//
-//  Fix2: category_group_code 복수 값(FD6,CE7) → 400 오류 수정
-//    - FD6(음식점) / CE7(카페) 를 Promise.all 로 각각 호출 후 병합
-//    - query.trim() 으로 검색어 끝 공백 제거
+//  Fix1: category_group_code 복수 값 → Promise.all 분리 호출
+//  Fix2: createPortal(document.body) SSR 접근 → mounted 가드
+//        (Vercel 배포 시 React hydration error #418 방지)
 // ============================================================
 "use client";
 
@@ -41,11 +37,11 @@ function parseCuisine(category: string): string {
   if (category.includes("중식"))    return "중식";
   if (category.includes("양식"))    return "양식";
   if (category.includes("분식"))    return "분식";
-  if (category.includes("카페")||category.includes("디저트")) return "카페/디저트";
+  if (category.includes("카페") || category.includes("디저트")) return "카페/디저트";
   if (category.includes("패스트"))  return "패스트푸드";
-  if (category.includes("치킨")||category.includes("피자"))  return "치킨/피자";
+  if (category.includes("치킨") || category.includes("피자"))   return "치킨/피자";
   if (category.includes("해산물"))  return "해산물";
-  if (category.includes("고기")||category.includes("구이"))  return "고기/구이";
+  if (category.includes("고기") || category.includes("구이"))   return "고기/구이";
   return "기타";
 }
 
@@ -71,9 +67,15 @@ export function KakaoPlaceSearch({ value, onChange, onSelect, style }: Props) {
   const [open,      setOpen]      = useState(false);
   const [searching, setSearching] = useState(false);
   const [dropPos,   setDropPos]   = useState({ top: 0, left: 0, width: 0 });
+  // ★ mounted 가드: CSR에서만 Portal 렌더링 (hydration error #418 방지)
+  const [mounted,   setMounted]   = useState(false);
 
-  const inputRef  = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // 드롭다운 위치 계산
   const calcPos = useCallback(() => {
@@ -98,7 +100,7 @@ export function KakaoPlaceSearch({ value, onChange, onSelect, style }: Props) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // 카테고리 1개씩 호출 (카카오 API는 category_group_code 단일 값만 허용)
+  // 카테고리 단일 호출 (카카오 API는 복수 값 미지원)
   const fetchByCategory = async (keyword: string, code: string): Promise<KakaoPlace[]> => {
     const res = await fetch(
       `https://dapi.kakao.com/v2/local/search/keyword.json` +
@@ -166,44 +168,46 @@ export function KakaoPlaceSearch({ value, onChange, onSelect, style }: Props) {
     ...style,
   };
 
-  // 드롭다운을 Portal 로 body 에 렌더링 → Modal overflow:hidden 영향 없음
-  const dropdown = open && results.length > 0 ? createPortal(
-    <div
-      data-kakao-drop="true"
-      style={{
-        position: "absolute",
-        top:    dropPos.top,
-        left:   dropPos.left,
-        width:  dropPos.width,
-        background: "#fff",
-        border: `1px solid ${BORDER}`,
-        borderRadius: 12,
-        boxShadow: "0 6px 24px rgba(0,0,0,0.14)",
-        zIndex: 99999,
-        maxHeight: 260,
-        overflowY: "auto",
-      }}
-    >
-      {results.map((place, i) => (
-        <button
-          key={i}
-          onMouseDown={(e) => { e.preventDefault(); handleSelect(place); }}
+  // ★ mounted 체크 후 Portal 렌더링 (SSR 시 document.body 접근 차단)
+  const dropdown = mounted && open && results.length > 0
+    ? createPortal(
+        <div
+          data-kakao-drop="true"
           style={{
-            width: "100%", padding: "11px 14px", border: "none",
-            background: "none", textAlign: "left", cursor: "pointer",
-            borderBottom: i < results.length - 1 ? `1px solid ${BORDER}` : "none",
-            fontFamily: "inherit",
+            position: "absolute",
+            top:    dropPos.top,
+            left:   dropPos.left,
+            width:  dropPos.width,
+            background: "#fff",
+            border: `1px solid ${BORDER}`,
+            borderRadius: 12,
+            boxShadow: "0 6px 24px rgba(0,0,0,0.14)",
+            zIndex: 99999,
+            maxHeight: 260,
+            overflowY: "auto",
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 600, color: INK }}>{place.name}</div>
-          <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
-            📍 {place.address} · {place.cuisine}
-          </div>
-        </button>
-      ))}
-    </div>,
-    document.body
-  ) : null;
+          {results.map((place, i) => (
+            <button
+              key={i}
+              onMouseDown={(e) => { e.preventDefault(); handleSelect(place); }}
+              style={{
+                width: "100%", padding: "11px 14px", border: "none",
+                background: "none", textAlign: "left", cursor: "pointer",
+                borderBottom: i < results.length - 1 ? `1px solid ${BORDER}` : "none",
+                fontFamily: "inherit",
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 600, color: INK }}>{place.name}</div>
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+                📍 {place.address} · {place.cuisine}
+              </div>
+            </button>
+          ))}
+        </div>,
+        document.body
+      )
+    : null;
 
   return (
     <div style={{ position: "relative" }}>
