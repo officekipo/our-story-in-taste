@@ -1,9 +1,10 @@
 // src/components/wishlist/WishModal.tsx
 "use client";
 
-import { useState }           from "react";
-import { SIDO, CUISINES }     from "@/types";
-import { Modal, ModalHeader } from "@/components/common/Modal";
+import { useState }                              from "react";
+import { SIDO, CUISINES }                        from "@/types";
+import { Modal, ModalHeader }                    from "@/components/common/Modal";
+import { KakaoPlaceSearch, KakaoPlace }          from "@/components/common/KakaoPlaceSearch";
 
 const SAGE   = "#6B9E7E";
 const INK    = "#1A1412";
@@ -16,6 +17,7 @@ interface WishModalProps {
   onSave:  (data: {
     name: string; sido: string; district: string;
     cuisine: string; note: string; imgUrls: string[];
+    lat?: number; lng?: number;
   }) => void;
 }
 
@@ -26,12 +28,24 @@ export function WishModal({ onClose, onSave }: WishModalProps) {
   const [cuisine,  setCuisine]  = useState("");
   const [note,     setNote]     = useState("");
   const [imgUrls,  setImgUrls]  = useState<string[]>([]);
+  const [lat,      setLat]      = useState<number | undefined>();
+  const [lng,      setLng]      = useState<number | undefined>();
 
   const inp: React.CSSProperties = {
     width: "100%", padding: "11px 13px",
     background: WARM, border: `1px solid ${BORDER}`,
     borderRadius: 10, color: INK, fontSize: 14,
     fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+  };
+
+  // 카카오 검색에서 장소 선택 시 자동 입력
+  const handlePlaceSelect = (place: KakaoPlace) => {
+    setName(place.name);
+    setSido(place.sido);
+    setDistrict(place.district);
+    setCuisine(place.cuisine);
+    setLat(place.lat);
+    setLng(place.lng);
   };
 
   // 사진 추가 (로컬 미리보기 — Firebase 연동 후 Storage 업로드로 교체)
@@ -73,8 +87,27 @@ export function WishModal({ onClose, onSave }: WishModalProps) {
           </div>
         </div>
 
-        {/* 식당 이름 */}
-        <input placeholder="식당 이름 *" value={name} onChange={e => setName(e.target.value)} style={inp} />
+        {/* 식당 이름 검색 (카카오) */}
+        <div>
+          <p style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6 }}>
+            🔍 식당 검색
+            {lat && lng && (
+              <span style={{ marginLeft: 8, color: SAGE, fontWeight: 500 }}>
+                📍 위치 등록됨
+              </span>
+            )}
+          </p>
+          <KakaoPlaceSearch
+            value={name}
+            onChange={(v) => {
+              setName(v);
+              // 직접 수정 시 좌표 초기화
+              setLat(undefined);
+              setLng(undefined);
+            }}
+            onSelect={handlePlaceSelect}
+          />
+        </div>
 
         {/* 지역 */}
         <div style={{ display: "flex", gap: 8 }}>
@@ -105,7 +138,11 @@ export function WishModal({ onClose, onSave }: WishModalProps) {
           <button
             onClick={() => {
               if (!name.trim()) return;
-              onSave({ name, sido, district, cuisine, note, imgUrls });
+              onSave({
+                name, sido, district, cuisine, note, imgUrls,
+                ...(lat != null && { lat }),
+                ...(lng != null && { lng }),
+              });
               onClose();
             }}
             style={{ flex: 2, padding: 13, background: SAGE, border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}

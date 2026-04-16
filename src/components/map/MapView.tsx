@@ -2,9 +2,10 @@
 //  MapView.tsx  적용 경로: src/components/map/MapView.tsx
 //
 //  Fix:
-//    - flex:1 + minHeight:0 → 부모 높이 100% 채움
-//    - 줌 버튼(우상단) 과 텍스트 겹침 해결 → 안내 텍스트 위치 조정
-//    - 범례 위치 좌상단 → 줌 버튼 아래로 이동
+//    - filter prop ("all" | "visited" | "wish") 추가
+//    - flex:1 + height:100% → 부모 높이 100% 채움
+//    - maxHeight 제거 (page.tsx 에서 flex:1 래퍼로 제어)
+//    - 줌 버튼 우하단 유지
 // ============================================================
 "use client";
 
@@ -12,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { useVisited }  from "@/hooks/useVisited";
 import { useWishlist } from "@/hooks/useWishlist";
 import type { VisitedRecord, WishRecord } from "@/types";
+import type { MapFilter } from "@/app/map/page";
 
 const ROSE  = "#C96B52";
 const SAGE  = "#6B9E7E";
@@ -25,7 +27,11 @@ type PinTarget =
   | { type: "visited"; data: VisitedRecord }
   | { type: "wish";    data: WishRecord };
 
-export default function MapView() {
+interface Props {
+  filter?: MapFilter;
+}
+
+export default function MapView({ filter = "all" }: Props) {
   const mapRef     = useRef<HTMLDivElement>(null);
   const mapInst    = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
@@ -71,10 +77,9 @@ export default function MapView() {
       const map = L.map(mapRef.current!, {
         center:      [37.5665, 126.978],
         zoom:        11,
-        zoomControl: false,   // ★ 기본 줌 컨트롤 제거
+        zoomControl: false,
       });
 
-      // ★ 줌 컨트롤 우하단 배치 (텍스트 안 가림)
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -94,7 +99,7 @@ export default function MapView() {
     };
   }, []);
 
-  // ── 마커 갱신 ───────────────────────────────────────────
+  // ── 마커 갱신 (filter 변경 시도 재실행) ────────────────
   useEffect(() => {
     if (!mapReady || !mapInst.current) return;
 
@@ -102,10 +107,18 @@ export default function MapView() {
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
 
-      const pins: PinTarget[] = [
-        ...visited.filter(r  => r.lat != null && r.lng != null).map(r  => ({ type: "visited" as const, data: r  })),
-        ...wishlist.filter(r => r.lat != null && r.lng != null).map(r => ({ type: "wish"    as const, data: r })),
-      ];
+      const visitedPins: PinTarget[] = visited
+        .filter(r => r.lat != null && r.lng != null)
+        .map(r => ({ type: "visited" as const, data: r }));
+
+      const wishPins: PinTarget[] = wishlist
+        .filter(r => r.lat != null && r.lng != null)
+        .map(r => ({ type: "wish" as const, data: r }));
+
+      const pins: PinTarget[] =
+        filter === "visited" ? visitedPins :
+        filter === "wish"    ? wishPins    :
+        [...visitedPins, ...wishPins];
 
       pins.forEach((pin) => {
         const color = pin.type === "visited" ? ROSE : SAGE;
@@ -114,7 +127,7 @@ export default function MapView() {
         const icon = L.divIcon({
           className: "",
           html: `<div style="background:${color};color:#fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 2px 6px rgba(0,0,0,0.25)"><span style="transform:rotate(45deg)">${emoji}</span></div>`,
-          iconSize: [32,32], iconAnchor: [16,32],
+          iconSize: [32, 32], iconAnchor: [16, 32],
         });
 
         const m = L.marker([pin.data.lat!, pin.data.lng!], { icon })
@@ -124,52 +137,72 @@ export default function MapView() {
       });
 
       if (pins.length > 0) {
-        const bounds = L.latLngBounds(pins.map(p => [p.data.lat!, p.data.lng!] as [number,number]));
+        const bounds = L.latLngBounds(pins.map(p => [p.data.lat!, p.data.lng!] as [number, number]));
         mapInst.current.fitBounds(bounds, { padding: [48, 48] });
       }
     });
-  }, [mapReady, visited, wishlist]);
+  }, [mapReady, visited, wishlist, filter]);
 
-  const noPinCount = [...visited, ...wishlist].filter(r => r.lat == null).length;
+  const noPinCount =
+    filter === "visited" ? visited.filter(r => r.lat == null).length :
+    filter === "wish"    ? wishlist.filter(r => r.lat == null).length :
+    [...visited, ...wishlist].filter(r => r.lat == null).length;
+
+  const isEmpty =
+    filter === "visited" ? visited.length === 0 :
+    filter === "wish"    ? wishlist.length === 0 :
+    visited.length === 0 && wishlist.length === 0;
 
   return (
-    // ★ flex:1 + minHeight:0 → AppShell main 의 남은 높이 전부 차지
-    <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+    // height:100% → page.tsx 의 flex:1 래퍼가 높이를 결정
+    <div style={{ position: "relative", width: "100%", height: "100%",  borderRadius:  "20px", overflow: "hidden" }}>
       <div ref={mapRef} style={{ width: "100%", height: "100%", color: "#333" }} />
 
+      {/* 로딩 오버레이 */}
       {loading && (
         <div style={{ position: "absolute", inset: 0, background: "rgba(245,240,235,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
           <div style={{ color: MUTED, fontSize: 14 }}>지도 불러오는 중…</div>
         </div>
       )}
 
-      {/* ★ 범례: 좌상단 (줌 버튼은 우하단이므로 겹치지 않음) */}
+      {/* 범례: 좌상단 */}
       {!loading && (
         <div style={{ position: "absolute", top: 10, left: 10, background: "rgba(255,255,255,0.94)", borderRadius: 10, padding: "7px 11px", zIndex: 500, fontSize: 11, boxShadow: "0 1px 6px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <div style={{ width: 10, height: 10, borderRadius: "50%", background: ROSE }} />
-            <span>다녀온 곳 ({visited.filter(r => r.lat != null).length})</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <div style={{ width: 10, height: 10, borderRadius: "50%", background: SAGE }} />
-            <span>가고싶은 곳 ({wishlist.filter(r => r.lat != null).length})</span>
-          </div>
+          {(filter === "all" || filter === "visited") && (
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <div style={{ width: 10, height: 10, borderRadius: "50%", background: ROSE }} />
+              <span>방문한 곳 ({visited.filter(r => r.lat != null).length})</span>
+            </div>
+          )}
+          {(filter === "all" || filter === "wish") && (
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <div style={{ width: 10, height: 10, borderRadius: "50%", background: SAGE }} />
+              <span>위시리스트 ({wishlist.filter(r => r.lat != null).length})</span>
+            </div>
+          )}
         </div>
       )}
 
-      {/* ★ 위치 미등록 안내: 좌상단 범례 아래 */}
+      {/* 위치 미등록 안내 */}
       {!loading && noPinCount > 0 && (
-        <div style={{ position: "absolute", top: 68, left: 10, background: "rgba(26,20,18,0.70)", color: "#fff", borderRadius: 16, padding: "5px 12px", fontSize: 11, zIndex: 500 }}>
+        <div style={{ position: "absolute", top: filter === "all" ? 68 : 44, left: 10, background: "rgba(26,20,18,0.70)", color: "#fff", borderRadius: 16, padding: "5px 12px", fontSize: 11, zIndex: 500 }}>
           📍 위치 미등록 {noPinCount}개
         </div>
       )}
 
+      {/* 핀 탭하면 안내 */}
+      {!loading && !isEmpty && (
+        <div style={{ position: "absolute", bottom: selected ? 170 : 16, right: 10, background: "rgba(26,20,18,0.60)", color: "#fff", borderRadius: 16, padding: "5px 12px", fontSize: 11, zIndex: 500, transition: "bottom 0.25s", pointerEvents: "none" }}>
+          핀을 탭하면 상세 정보를 볼 수 있어요
+        </div>
+      )}
+
       {/* 빈 상태 */}
-      {!loading && visited.length === 0 && wishlist.length === 0 && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, pointerEvents: "none", zIndex: 400 }}>
+      {!loading && isEmpty && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(0,0,0,0.45)", pointerEvents: "none", zIndex: 400, color: WARM }}>
           <div style={{ fontSize: 48 }}>🗺️</div>
-          <div style={{ color: INK, fontWeight: 600 }}>아직 기록이 없어요</div>
-          <div style={{ color: MUTED, fontSize: 13, textAlign: "center" }}>식당 검색으로 등록하면<br/>지도 핀이 자동으로 꽂혀요</div>
+          <div style={{ fontWeight: 600 }}>아직 기록이 없어요</div>
+          <div style={{ fontSize: 13, textAlign: "center" }}>식당 검색으로 등록하면<br />지도 핀이 자동으로 꽂혀요</div>
         </div>
       )}
 
@@ -198,7 +231,7 @@ export default function MapView() {
               </div>
               {selected.type === "visited" && (
                 <div style={{ display: "flex", gap: 2, marginTop: 4 }}>
-                  {[1,2,3,4,5].map(s => (
+                  {[1, 2, 3, 4, 5].map(s => (
                     <span key={s} style={{ fontSize: 13, color: s <= (selected.data as VisitedRecord).rating ? ROSE : BORDER }}>★</span>
                   ))}
                 </div>
