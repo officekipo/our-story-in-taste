@@ -40,14 +40,26 @@ export function WishCard({ record, index, onVisited }: WishCardProps) {
     } else {
       // 폴백: AddEditModal 을 위시 데이터로 프리필해서 열기
       const prefilled: VisitedRecord = {
-        id: "", coupleId: record.coupleId,
-        name: record.name, sido: record.sido, district: record.district,
-        cuisine: record.cuisine, rating: 4, date: todayStr(),
-        memo: record.note, tags: [], revisit: null,
-        imgUrls: [], emoji: record.emoji,
-        authorUid: "", authorName: myName,
-        lat: record.lat, lng: record.lng,
-        shareToComm: false, createdAt: "", updatedAt: "",
+        id: "", 
+        coupleId: record.coupleId,
+        name: record.name, 
+        sido: record.sido, 
+        district: record.district,
+        cuisine: record.cuisine, 
+        rating: 4, date: todayStr(),
+        memo: record.note, 
+        tags: [], 
+        revisit: null,
+        imgUrls: [], 
+        emoji: record.emoji,
+        authorUid: "", 
+        authorName: myName,
+        lat: record.lat, 
+        lng: record.lng,
+        shareToComm: false, 
+        createdAt: "", 
+        updatedAt: "",
+        hideAuthor: false,
       };
       openEditModal(prefilled);
     }

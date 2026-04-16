@@ -52,6 +52,7 @@ export function useVisited() {
       imgUrls:     imgUrls     ?? [],
       emoji:       data.emoji  ?? "🍽️",
       shareToComm: data.shareToComm ?? false,
+      hideAuthor: false,
       // undefined 이면 필드 자체를 제외 (Firestore 오류 방지)
       ...(data.lat != null && { lat: data.lat }),
       ...(data.lng != null && { lng: data.lng }),

@@ -187,7 +187,7 @@ export function Header({
               </select>
               <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 8, color: filterCui ? "#fff" : MUTED, pointerEvents: "none" }}>▾</span>
             </div>
-            {(SORT as any[]).map((o: any) => (
+            {(SORT as readonly any[]).map((o: any) => (
               <button key={o.v} onClick={() => onSort?.(o.v)} style={sortBy === o.v ? chipActive : chipInactive}>{o.l}</button>
             ))}
             <button onClick={onTimeline} style={timeline ? chipActive : chipInactive}>📅 타임라인</button>

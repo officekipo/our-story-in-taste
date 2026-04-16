@@ -15,7 +15,7 @@ import {
   onSnapshot, writeBatch, type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "./config";
-import type { VisitedRecord, WishRecord, CommunityPost } from "@/types";
+import type { VisitedRecord, WishRecord } from "@/types";
 
 // ══════════════════════════════════════════════════════════
 //  VISITED
@@ -131,7 +131,7 @@ export function subscribeWishlist(
 //  COMMUNITY
 // ══════════════════════════════════════════════════════════
 
-function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): Omit<CommunityPost, "id"> {
+function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): any {
   return {
     coupleId:       data.coupleId    ?? "",
     visitedId,
@@ -140,7 +140,7 @@ function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): Om
     cuisine:        data.cuisine     ?? "",
     sido:           data.sido        ?? "",
     district:       data.district    ?? "",
-    rating:         data.rating      ?? 0,
+    rating:         data.rating      ?? 1,
     memo:           data.memo        ?? "",
     tags:           data.tags        ?? [],
     imgUrls:        data.imgUrls     ?? [],
