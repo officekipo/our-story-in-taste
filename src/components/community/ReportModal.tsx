@@ -12,6 +12,7 @@ const BORDER = "#E2DDD8";
 const WARM   = "#FAF7F3";
 
 interface ReportModalProps {
+  post: any;
   onClose:  () => void;
   onReport: () => void;
 }
