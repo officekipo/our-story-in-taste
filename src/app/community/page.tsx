@@ -178,7 +178,7 @@ export default function CommunityPage() {
       {reportTarget && (
         <ReportModal
           post={reportTarget}
-          onConfirm={() => submitReport(reportTarget)}
+          onReport={() => submitReport(reportTarget)}
           onClose={() => setReportTarget(null)}
         />
       )}
