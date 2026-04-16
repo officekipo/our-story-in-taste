@@ -73,7 +73,7 @@ export function KakaoPlaceSearch({ value, onChange, onSelect, style }: Props) {
   const [dropPos,   setDropPos]   = useState({ top: 0, left: 0, width: 0 });
 
   const inputRef  = useRef<HTMLInputElement>(null);
-  const timerRef  = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // 드롭다운 위치 계산
   const calcPos = useCallback(() => {
