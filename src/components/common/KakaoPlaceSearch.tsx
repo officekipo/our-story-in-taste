@@ -3,18 +3,18 @@
 //  적용 경로: src/components/common/KakaoPlaceSearch.tsx
 //
 //  Fix1: category_group_code 복수 값 → Promise.all 분리 호출
-//  Fix2: createPortal(document.body) SSR 접근 → mounted 가드
-//        (Vercel 배포 시 React hydration error #418 방지)
+//  Fix2: createPortal SSR → mounted 가드 (hydration 방지)
+//  Fix3: timerRef 타입 undefined 명시 (TS 빌드 오류 수정)
 // ============================================================
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 
-const INK   = "#1A1412";
-const MUTED = "#8A8078";
-const BORDER= "#E2DDD8";
-const WARM  = "#FAF7F3";
+const INK    = "#1A1412";
+const MUTED  = "#8A8078";
+const BORDER = "#E2DDD8";
+const WARM   = "#FAF7F3";
 
 const KAKAO_KEY = process.env.NEXT_PUBLIC_KAKAO_REST_KEY ?? "";
 
@@ -32,16 +32,16 @@ function parseSido(address: string): string {
 }
 
 function parseCuisine(category: string): string {
-  if (category.includes("한식"))    return "한식";
-  if (category.includes("일식"))    return "일식";
-  if (category.includes("중식"))    return "중식";
-  if (category.includes("양식"))    return "양식";
-  if (category.includes("분식"))    return "분식";
+  if (category.includes("한식"))                               return "한식";
+  if (category.includes("일식"))                               return "일식";
+  if (category.includes("중식"))                               return "중식";
+  if (category.includes("양식"))                               return "양식";
+  if (category.includes("분식"))                               return "분식";
   if (category.includes("카페") || category.includes("디저트")) return "카페/디저트";
-  if (category.includes("패스트"))  return "패스트푸드";
-  if (category.includes("치킨") || category.includes("피자"))   return "치킨/피자";
-  if (category.includes("해산물"))  return "해산물";
-  if (category.includes("고기") || category.includes("구이"))   return "고기/구이";
+  if (category.includes("패스트"))                             return "패스트푸드";
+  if (category.includes("치킨") || category.includes("피자"))  return "치킨/피자";
+  if (category.includes("해산물"))                             return "해산물";
+  if (category.includes("고기") || category.includes("구이"))  return "고기/구이";
   return "기타";
 }
 
@@ -67,12 +67,14 @@ export function KakaoPlaceSearch({ value, onChange, onSelect, style }: Props) {
   const [open,      setOpen]      = useState(false);
   const [searching, setSearching] = useState(false);
   const [dropPos,   setDropPos]   = useState({ top: 0, left: 0, width: 0 });
-  // ★ mounted 가드: CSR에서만 Portal 렌더링 (hydration error #418 방지)
+  // ★ SSR/CSR 불일치 방지: 클라이언트 마운트 후에만 Portal 렌더링
   const [mounted,   setMounted]   = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  // ★ TS 빌드 오류 수정: undefined 초기값 명시
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  // 마운트 감지 (SSR에서는 false 유지)
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -100,7 +102,7 @@ export function KakaoPlaceSearch({ value, onChange, onSelect, style }: Props) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // 카테고리 단일 호출 (카카오 API는 복수 값 미지원)
+  // 카테고리 단일 호출 (카카오 API는 복수 값 미지원 → 400 오류)
   const fetchByCategory = async (keyword: string, code: string): Promise<KakaoPlace[]> => {
     const res = await fetch(
       `https://dapi.kakao.com/v2/local/search/keyword.json` +
@@ -123,14 +125,17 @@ export function KakaoPlaceSearch({ value, onChange, onSelect, style }: Props) {
   };
 
   const search = async (keyword: string) => {
-    if (!keyword.trim() || keyword.length < 2) { setResults([]); setOpen(false); return; }
+    if (!keyword.trim() || keyword.length < 2) {
+      setResults([]);
+      setOpen(false);
+      return;
+    }
     if (!KAKAO_KEY) {
       console.warn("NEXT_PUBLIC_KAKAO_REST_KEY 가 설정되지 않았습니다.");
       return;
     }
     setSearching(true);
     try {
-      // FD6(음식점) + CE7(카페) 병렬 호출 후 최대 8개 병합
       const [restaurants, cafes] = await Promise.all([
         fetchByCategory(keyword, "FD6"),
         fetchByCategory(keyword, "CE7"),
@@ -168,23 +173,23 @@ export function KakaoPlaceSearch({ value, onChange, onSelect, style }: Props) {
     ...style,
   };
 
-  // ★ mounted 체크 후 Portal 렌더링 (SSR 시 document.body 접근 차단)
+  // ★ mounted === true 일 때만 createPortal 실행 → SSR에서 document.body 접근 차단
   const dropdown = mounted && open && results.length > 0
     ? createPortal(
         <div
           data-kakao-drop="true"
           style={{
-            position: "absolute",
-            top:    dropPos.top,
-            left:   dropPos.left,
-            width:  dropPos.width,
+            position:   "absolute",
+            top:        dropPos.top,
+            left:       dropPos.left,
+            width:      dropPos.width,
             background: "#fff",
-            border: `1px solid ${BORDER}`,
+            border:     `1px solid ${BORDER}`,
             borderRadius: 12,
-            boxShadow: "0 6px 24px rgba(0,0,0,0.14)",
-            zIndex: 99999,
-            maxHeight: 260,
-            overflowY: "auto",
+            boxShadow:  "0 6px 24px rgba(0,0,0,0.14)",
+            zIndex:     99999,
+            maxHeight:  260,
+            overflowY:  "auto",
           }}
         >
           {results.map((place, i) => (
@@ -220,7 +225,11 @@ export function KakaoPlaceSearch({ value, onChange, onSelect, style }: Props) {
         style={inp}
       />
       {searching && (
-        <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: MUTED, pointerEvents: "none" }}>
+        <div style={{
+          position: "absolute", right: 12, top: "50%",
+          transform: "translateY(-50%)",
+          fontSize: 11, color: MUTED, pointerEvents: "none",
+        }}>
           검색 중…
         </div>
       )}
