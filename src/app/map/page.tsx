@@ -51,7 +51,7 @@ export default function MapPage() {
       */}
       <div style={{
         flex:          1,
-        maxHeight:     "calc(100% - 100px)",
+        maxHeight:     "calc(100% - 64px)",
         minHeight:     0,
         display:       "flex",
         flexDirection: "column",
