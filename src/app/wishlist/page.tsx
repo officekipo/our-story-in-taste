@@ -1,5 +1,8 @@
 // ============================================================
 //  wishlist/page.tsx  적용 경로: src/app/wishlist/page.tsx
+//
+//  Fix: handleAddWish 에 lat/lng 타입 추가 + firebaseWish.add() 에 전달
+//       → 위시 등록 즉시 지도에 핀 반영
 // ============================================================
 "use client";
 
@@ -56,9 +59,11 @@ export default function WishlistPage() {
     records;
 
   // ── 위시 추가 ─────────────────────────────────────────────
+  // ★ Fix: lat?, lng? 타입 추가 → WishModal(KakaoPlaceSearch) 에서 전달받은 좌표 수신
   const handleAddWish = async (data: {
     name: string; sido: string; district: string;
     cuisine: string; note: string; imgUrls: string[];
+    lat?: number; lng?: number;
   }) => {
     if (DUMMY_MODE) {
       setDummyRecords(prev => [{
@@ -69,26 +74,24 @@ export default function WishlistPage() {
         emoji: "🍽️", imgUrls: data.imgUrls, addedDate: todayStr(),
       }, ...prev]);
     } else {
+      // ★ Fix: lat/lng 를 add() 에 전달 → Firestore 저장 → 즉시 지도 핀 반영
       await firebaseWish.add({
         name: data.name, sido: data.sido, district: data.district,
         cuisine: data.cuisine, note: data.note,
         emoji: "🍽️", imgUrls: data.imgUrls,
+        lat: data.lat, lng: data.lng,
       });
     }
     setToast(`⭐ "${data.name}" 위시리스트에 추가했어요!`);
   };
 
   // ── ★ 다녀왔어요: AddEditModal 로 프리필 후 저장 처리 ────
-  // WishCard 의 onVisited 가 이 함수를 통해 uiStore.openEditModal 호출
-  // → AddEditModal 이 열리고 onSave(handleSave) 로 저장
-  // → 저장 완료 후 wish 삭제
   const [pendingWish, setPendingWish] = useState<WishRecord | null>(null);
 
   const handleVisited = (wish: WishRecord) => {
     setPendingWish(wish);
-    // AddEditModal 을 위시 데이터로 프리필해서 열기
     const prefilled = {
-      id: "__from_wish__",   // 특수 ID → handleSave 에서 신규 등록으로 처리
+      id: "__from_wish__",
       coupleId: wish.coupleId,
       name: wish.name, sido: wish.sido, district: wish.district,
       cuisine: wish.cuisine, rating: 4 as const, date: todayStr(),
@@ -106,7 +109,6 @@ export default function WishlistPage() {
     if (DUMMY_MODE) return;
     try {
       await firebaseVisited.add(data, imgUrls);
-      // ★ 위시에서 온 경우 wish 삭제
       if (pendingWish) {
         await firebaseWish.remove(pendingWish.id);
         setPendingWish(null);
@@ -171,7 +173,7 @@ export default function WishlistPage() {
             key={r.id}
             record={r}
             index={i}
-            onVisited={() => handleVisited(r)}   // ★ 핸들러 주입
+            onVisited={() => handleVisited(r)}
           />
         ))}
         {displayed.length === 0 && (
@@ -189,7 +191,6 @@ export default function WishlistPage() {
         style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: "#6B9E7E", border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(107,158,126,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, fontSize: 28 }}>+</button>
 
       {showWishModal && <WishModal onClose={() => setWishModal(false)} onSave={handleAddWish} />}
-      {/* ★ AddEditModal: 다녀왔어요 + 일반 글쓰기 공통 사용 */}
       {addModalOpen  && <AddEditModal onSave={handleSave} />}
       {confirmTarget && <ConfirmDialog message={confirmTarget.msg} onConfirm={handleDelete} onCancel={closeConfirm} />}
       {toast         && <Toast message={toast} onClose={() => setToast(null)} />}

@@ -45,24 +45,33 @@ function GlobalLoader() {
   );
 }
 
-// ── 인증 가드: 로그인 안 된 유저 → /login 으로 ─────────
+// ── 인증 가드 ─────────────────────────────────────────
+// ★ Fix: router.replace 를 렌더 중 직접 호출 → useEffect 안으로 이동
+//   렌더 중 side-effect 는 SSR/CSR HTML 불일치(hydration error #418) 유발
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
+  const router   = useRouter();
   const pathname = usePathname();
   const { initialized, myUid } = useAuthStore();
 
-  // Firebase 초기화 완료 전 → 로딩
+  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+
+  // ★ 리다이렉트는 반드시 useEffect 안에서만 실행
+  useEffect(() => {
+    if (!initialized) return;
+    if (isPublic) return;
+    if (!myUid) {
+      router.replace("/login");
+    }
+  }, [initialized, myUid, isPublic, router]);
+
+  // Firebase 초기화 전 → 로딩
   if (!initialized) return <GlobalLoader />;
 
-  // 공개 경로는 통과
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  // 공개 경로는 바로 통과
   if (isPublic) return <>{children}</>;
 
-  // 로그인 안 됨 → /login 으로
-  if (!myUid) {
-    router.replace("/login");
-    return <GlobalLoader />;
-  }
+  // 비로그인 + 비공개 경로 → useEffect 가 리다이렉트할 때까지 로딩
+  if (!myUid) return <GlobalLoader />;
 
   return <>{children}</>;
 }
@@ -76,7 +85,6 @@ function AnniversaryToast() {
     if (!startDate) return;
     const anniv = checkAnniversary(startDate);
     if (anniv) {
-      // 앱 시작 후 2초 뒤 표시 (화면 로딩 후 보이도록)
       const t = setTimeout(() => {
         setMsg(anniv);
         setTimeout(() => setMsg(null), 5000);
