@@ -2,9 +2,8 @@
 //  MapView.tsx  적용 경로: src/components/map/MapView.tsx
 //
 //  Fix:
-//    - height:100% → 부모(flex:1 래퍼) 높이 전부 채움
-//    - 범례 / 안내 텍스트 → 지도 내부 absolute overlay
-//    - filter prop ("all" | "visited" | "wish") 지원
+//    1. 마커 사이즈 축소 (32→24px, font-size 15→11px)
+//    2. 하단 팝업에 카카오맵 / 네이버지도 "자세히 보기" 링크 추가
 // ============================================================
 "use client";
 
@@ -73,17 +72,10 @@ export default function MapView({ filter = "all" }: Props) {
         shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
       });
 
-      const map = L.map(mapRef.current!, {
-        center:      [37.5665, 126.978],
-        zoom:        11,
-        zoomControl: false,
-      });
-
+      const map = L.map(mapRef.current!, { center: [37.5665, 126.978], zoom: 11, zoomControl: false });
       L.control.zoom({ position: "bottomright" }).addTo(map);
-
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap contributors",
-        maxZoom: 19,
+        attribution: "© OpenStreetMap contributors", maxZoom: 19,
       }).addTo(map);
 
       mapInst.current = map;
@@ -98,7 +90,7 @@ export default function MapView({ filter = "all" }: Props) {
     };
   }, []);
 
-  // ── 마커 갱신 (filter 변경 시 재실행) ──────────────────
+  // ── 마커 갱신 ──────────────────────────────────────────
   useEffect(() => {
     if (!mapReady || !mapInst.current) return;
 
@@ -123,10 +115,11 @@ export default function MapView({ filter = "all" }: Props) {
         const color = pin.type === "visited" ? ROSE : SAGE;
         const emoji = pin.data.emoji || (pin.type === "visited" ? "🍽️" : "⭐");
 
+        // ★ 마커 사이즈 축소: 32→24px, font 15→11px
         const icon = L.divIcon({
           className: "",
-          html: `<div style="background:${color};color:#fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 2px 6px rgba(0,0,0,0.25)"><span style="transform:rotate(45deg)">${emoji}</span></div>`,
-          iconSize: [32, 32], iconAnchor: [16, 32],
+          html: `<div style="background:${color};color:#fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,0.22)"><span style="transform:rotate(45deg)">${emoji}</span></div>`,
+          iconSize: [24, 24], iconAnchor: [12, 24],
         });
 
         const m = L.marker([pin.data.lat!, pin.data.lng!], { icon })
@@ -142,6 +135,17 @@ export default function MapView({ filter = "all" }: Props) {
     });
   }, [mapReady, visited, wishlist, filter]);
 
+  // ★ 카카오맵 / 네이버지도 링크 생성
+  const getMapLinks = (pin: PinTarget) => {
+    const name = encodeURIComponent(pin.data.name);
+    const lat  = pin.data.lat!;
+    const lng  = pin.data.lng!;
+    return {
+      kakao:  `https://map.kakao.com/link/search/${name}`,
+      naver:  `https://map.naver.com/v5/search/${name}?c=${lng},${lat},15,0,0,0,dh`,
+    };
+  };
+
   const noPinCount =
     filter === "visited" ? visited.filter(r => r.lat == null).length :
     filter === "wish"    ? wishlist.filter(r => r.lat == null).length :
@@ -152,39 +156,22 @@ export default function MapView({ filter = "all" }: Props) {
     filter === "wish"    ? wishlist.length === 0 :
     visited.length === 0 && wishlist.length === 0;
 
-  const legendRows =
-    filter === "all"     ? 2 :
-    filter === "visited" ? 1 : 1;
+  const legendRows = filter === "all" ? 2 : 1;
 
   return (
-    // 부모(flex:1 래퍼)가 높이를 결정 → 여기서는 width/height 100% 로 꽉 채움
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
 
-      {/* 지도 캔버스 */}
       <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
 
-      {/* 로딩 오버레이 */}
       {loading && (
-        <div style={{
-          position: "absolute", inset: 0,
-          background: "rgba(245,240,235,0.85)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          zIndex: 1000,
-        }}>
+        <div style={{ position: "absolute", inset: 0, background: "rgba(245,240,235,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
           <div style={{ color: MUTED, fontSize: 14 }}>지도 불러오는 중…</div>
         </div>
       )}
 
-      {/* ── 범례 (좌상단, 지도 내부 overlay) ── */}
+      {/* 범례 */}
       {!loading && (
-        <div style={{
-          position: "absolute", top: 10, left: 10,
-          background: "rgba(255,255,255,0.94)",
-          borderRadius: 10, padding: "7px 11px",
-          zIndex: 500, fontSize: 11,
-          boxShadow: "0 1px 6px rgba(0,0,0,0.12)",
-          display: "flex", flexDirection: "column", gap: 4,
-        }}>
+        <div style={{ position: "absolute", top: 10, left: 10, background: "rgba(255,255,255,0.94)", borderRadius: 10, padding: "7px 11px", zIndex: 500, fontSize: 11, boxShadow: "0 1px 6px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column", gap: 4 }}>
           {(filter === "all" || filter === "visited") && (
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <div style={{ width: 10, height: 10, borderRadius: "50%", background: ROSE }} />
@@ -200,86 +187,40 @@ export default function MapView({ filter = "all" }: Props) {
         </div>
       )}
 
-      {/* 위치 미등록 안내 */}
       {!loading && noPinCount > 0 && (
-        <div style={{
-          position: "absolute",
-          top: 10 + (legendRows * 26) + 14,   // 범례 높이 아래
-          left: 10,
-          background: "rgba(26,20,18,0.70)", color: "#fff",
-          borderRadius: 16, padding: "5px 12px",
-          fontSize: 11, zIndex: 500,
-        }}>
+        <div style={{ position: "absolute", top: 10 + (legendRows * 26) + 14, left: 10, background: "rgba(26,20,18,0.70)", color: "#fff", borderRadius: 16, padding: "5px 12px", fontSize: 11, zIndex: 500 }}>
           📍 위치 미등록 {noPinCount}개
         </div>
       )}
 
-      {/* 핀 탭 안내 (우하단, 줌버튼 위) */}
       {!loading && !isEmpty && (
-        <div style={{
-          position: "absolute",
-          bottom: selected ? 180 : 48,   // 하단 패널 열리면 위로
-          left: "50%", transform: "translateX(-50%)",
-          background: "rgba(26,20,18,0.60)", color: "#fff",
-          borderRadius: 16, padding: "5px 14px",
-          fontSize: 11, zIndex: 500,
-          whiteSpace: "nowrap",
-          transition: "bottom 0.25s",
-          pointerEvents: "none",
-        }}>
+        <div style={{ position: "absolute", bottom: selected ? 220 : 48, left: "50%", transform: "translateX(-50%)", background: "rgba(26,20,18,0.60)", color: "#fff", borderRadius: 16, padding: "5px 14px", fontSize: 11, zIndex: 500, whiteSpace: "nowrap", transition: "bottom 0.25s", pointerEvents: "none" }}>
           핀을 탭하면 상세 정보를 볼 수 있어요
         </div>
       )}
 
-      {/* 빈 상태 */}
       {!loading && isEmpty && (
-        <div style={{
-          position: "absolute", inset: 0,
-          display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center",
-          gap: 8,
-          background: "rgba(0,0,0,0.45)",
-          pointerEvents: "none", zIndex: 400, color: WARM,
-        }}>
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(0,0,0,0.45)", pointerEvents: "none", zIndex: 400, color: WARM }}>
           <div style={{ fontSize: 48 }}>🗺️</div>
           <div style={{ fontWeight: 600 }}>아직 기록이 없어요</div>
-          <div style={{ fontSize: 13, textAlign: "center" }}>
-            식당 검색으로 등록하면<br />지도 핀이 자동으로 꽂혀요
-          </div>
+          <div style={{ fontSize: 13, textAlign: "center" }}>식당 검색으로 등록하면<br />지도 핀이 자동으로 꽂혀요</div>
         </div>
       )}
 
       {/* 하단 상세 패널 */}
       {selected && (
-        <div style={{
-          position: "absolute", bottom: 0, left: 0, right: 0,
-          background: WARM,
-          borderTop: `1px solid ${BORDER}`,
-          borderRadius: "18px 18px 0 0",
-          padding: "18px 20px 28px",
-          zIndex: 1000,
-          boxShadow: "0 -4px 20px rgba(0,0,0,0.12)",
-        }}>
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: WARM, borderTop: `1px solid ${BORDER}`, borderRadius: "18px 18px 0 0", padding: "18px 20px 28px", zIndex: 1000, boxShadow: "0 -4px 20px rgba(0,0,0,0.12)" }}>
           <button
             onClick={() => setSelected(null)}
             style={{ position: "absolute", top: 14, right: 16, background: "none", border: "none", fontSize: 20, cursor: "pointer", color: MUTED }}
           >✕</button>
 
-          <div style={{
-            display: "inline-block", padding: "2px 10px", borderRadius: 20,
-            background: selected.type === "visited" ? "#F2D5CC" : "#C8DED1",
-            color: selected.type === "visited" ? ROSE : SAGE,
-            fontSize: 11, fontWeight: 700, marginBottom: 10,
-          }}>
+          <div style={{ display: "inline-block", padding: "2px 10px", borderRadius: 20, background: selected.type === "visited" ? "#F2D5CC" : "#C8DED1", color: selected.type === "visited" ? ROSE : SAGE, fontSize: 11, fontWeight: 700, marginBottom: 10 }}>
             {selected.type === "visited" ? "✅ 다녀온 곳" : "⭐ 가고싶은 곳"}
           </div>
 
-          <div style={{ display: "flex", gap: 12 }}>
-            <div style={{
-              width: 60, height: 60, borderRadius: 10, background: BG,
-              overflow: "hidden", flexShrink: 0,
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26,
-            }}>
+          <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
+            <div style={{ width: 60, height: 60, borderRadius: 10, background: BG, overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>
               {selected.data.imgUrls?.[0]
                 ? <img src={selected.data.imgUrls[0]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 : (selected.data.emoji || "🍽️")}
@@ -299,12 +240,34 @@ export default function MapView({ filter = "all" }: Props) {
                 </div>
               )}
               {selected.type === "wish" && (selected.data as WishRecord).note && (
-                <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {(selected.data as WishRecord).note}
                 </div>
               )}
             </div>
           </div>
+
+          {/* ★ 카카오맵 / 네이버지도 링크 */}
+          {selected.data.lat != null && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <a
+                href={getMapLinks(selected).kakao}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 0", background: "#FEE500", borderRadius: 10, fontSize: 12, fontWeight: 700, color: "#3C1E1E", textDecoration: "none" }}
+              >
+                <span style={{ fontSize: 14 }}>🗺️</span> 카카오맵
+              </a>
+              <a
+                href={getMapLinks(selected).naver}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 0", background: "#03C75A", borderRadius: 10, fontSize: 12, fontWeight: 700, color: "#fff", textDecoration: "none" }}
+              >
+                <span style={{ fontSize: 14 }}>📍</span> 네이버지도
+              </a>
+            </div>
+          )}
         </div>
       )}
     </div>

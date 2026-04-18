@@ -1,4 +1,7 @@
 // src/app/providers.tsx
+//
+// Fix: GlobalLoader 내부 div/p 요소에 suppressHydrationWarning 추가
+//   → Dark Reader 등 브라우저 확장이 내부 요소의 속성을 수정해도 hydration 오류 미발생
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -8,13 +11,14 @@ import { setupAuthListener } from "@/store/authStore";
 import { useAuthStore } from "@/store/authStore";
 import { checkAnniversary } from "@/lib/firebase/notifications";
 
-// 로그인 없이 접근 가능한 경로
 const PUBLIC_PATHS = ["/onboarding", "/login", "/signup", "/couple"];
 
 // ── 전체 화면 로딩 스피너 ──────────────────────────────
 function GlobalLoader() {
   return (
+    // ★ suppressHydrationWarning: Dark Reader가 하위 요소 속성을 수정해도 오류 안 남
     <div
+      suppressHydrationWarning
       style={{
         position: "fixed",
         inset: 0,
@@ -26,8 +30,9 @@ function GlobalLoader() {
         zIndex: 9999,
       }}
     >
-      <div style={{ fontSize: 40, marginBottom: 20 }}>🍽️</div>
+      <div suppressHydrationWarning style={{ fontSize: 40, marginBottom: 20 }}>🍽️</div>
       <div
+        suppressHydrationWarning
         style={{
           width: 32,
           height: 32,
@@ -37,17 +42,15 @@ function GlobalLoader() {
           animation: "spin 0.8s linear infinite",
         }}
       />
-      <p style={{ marginTop: 16, fontSize: 13, color: "#8A8078" }}>
+      <p suppressHydrationWarning style={{ marginTop: 16, fontSize: 13, color: "#8A8078" }}>
         우리의 맛지도
       </p>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style suppressHydrationWarning>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
 // ── 인증 가드 ─────────────────────────────────────────
-// ★ Fix: router.replace 를 렌더 중 직접 호출 → useEffect 안으로 이동
-//   렌더 중 side-effect 는 SSR/CSR HTML 불일치(hydration error #418) 유발
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
   const pathname = usePathname();
@@ -55,7 +58,6 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
-  // ★ 리다이렉트는 반드시 useEffect 안에서만 실행
   useEffect(() => {
     if (!initialized) return;
     if (isPublic) return;
@@ -64,13 +66,8 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [initialized, myUid, isPublic, router]);
 
-  // Firebase 초기화 전 → 로딩
   if (!initialized) return <GlobalLoader />;
-
-  // 공개 경로는 바로 통과
   if (isPublic) return <>{children}</>;
-
-  // 비로그인 + 비공개 경로 → useEffect 가 리다이렉트할 때까지 로딩
   if (!myUid) return <GlobalLoader />;
 
   return <>{children}</>;

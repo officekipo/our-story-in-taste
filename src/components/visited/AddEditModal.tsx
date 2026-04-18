@@ -1,10 +1,7 @@
 // ============================================================
 //  AddEditModal.tsx  적용 경로: src/components/visited/AddEditModal.tsx
 //
-//  변경:
-//    - 식당 이름 input → KakaoPlaceSearch 로 교체
-//      선택 시 sido / district / cuisine / lat / lng 자동 입력
-//    - lat / lng state 추가 → onSave 시 data 에 포함
+//  Fix: 태그 목록 대폭 확장 (기존 TAGS import → 로컬 상세 태그 배열)
 // ============================================================
 "use client";
 
@@ -15,7 +12,7 @@ import { CalendarPicker }         from "./CalendarPicker";
 import { StarRating }             from "@/components/common/StarRating";
 import { Modal }                  from "@/components/common/Modal";
 import { KakaoPlaceSearch }       from "@/components/common/KakaoPlaceSearch";
-import { SIDO, CUISINES, TAGS }   from "@/types";
+import { SIDO, CUISINES }         from "@/types";
 import { todayStr }               from "@/lib/utils/date";
 import type { VisitedFormData }   from "@/types";
 
@@ -26,6 +23,23 @@ const INK   = "#1A1412";
 const MUTED = "#8A8078";
 const BORDER= "#E2DDD8";
 const WARM  = "#FAF7F3";
+
+// ★ 태그 목록 대폭 확장
+const EXPANDED_TAGS = [
+  // 분위기
+  "데이트", "분위기 좋은", "조용한", "왁자지껄", "인스타감성", "루프탑",
+  "야경 맛집", "감성 카페", "숨은 맛집", "현지인 맛집",
+  // 맛
+  "맛있어요", "또 가고 싶어요", "가성비 최고", "양 많음", "특별한 맛",
+  "담백해요", "진해요", "매워요", "달콤해요", "신선해요",
+  // 서비스/편의
+  "친절해요", "서비스 좋음", "주차 편함", "웨이팅 있음", "예약 필수",
+  "반려동물 동반", "아이 동반", "혼밥 가능", "단체 모임",
+  // 기념일/특별함
+  "기념일", "생일", "프로포즈", "첫 방문", "재방문", "특별한 날",
+  // 시간대
+  "점심 추천", "저녁 추천", "브런치", "야식",
+];
 
 const inp: React.CSSProperties = {
   width: "100%", padding: "11px 13px",
@@ -148,7 +162,7 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
           )}
         </div>
 
-        {/* ★ 식당 이름 — KakaoPlaceSearch */}
+        {/* 식당 이름 */}
         <div>
           <p style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6 }}>식당 이름 *</p>
           <KakaoPlaceSearch
@@ -219,11 +233,11 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
           <textarea value={memo} onChange={e => setMemo(e.target.value)} placeholder="이 순간을 기억하고 싶어요..." rows={4} style={{ ...inp, resize: "none", lineHeight: 1.6 }} />
         </div>
 
-        {/* 태그 */}
+        {/* ★ 태그 — 확장된 목록 */}
         <div>
           <p style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 8 }}>태그</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {TAGS.map(t => {
+            {EXPANDED_TAGS.map(t => {
               const on = tags.includes(t);
               return (
                 <button key={t} onClick={() => toggleTag(t)}

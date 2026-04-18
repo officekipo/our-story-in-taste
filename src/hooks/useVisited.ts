@@ -1,10 +1,10 @@
 // ============================================================
-//  useVisited.ts
-//  적용 경로: src/hooks/useVisited.ts
+//  useVisited.ts  적용 경로: src/hooks/useVisited.ts
 //
 //  Fix:
-//    add() 에 coupleId / authorUid / authorName 자동 주입
-//    → "Missing or insufficient permissions" 해결
+//    1. remove(): base64 URL을 Firebase Storage DELETE 호출하는 오류 수정
+//       → https://firebasestorage.googleapis.com 로 시작하는 URL만 삭제
+//    2. hideAuthor: data.hideAuthor ?? false (이전 수정 유지)
 // ============================================================
 "use client";
 
@@ -37,23 +37,22 @@ export function useVisited() {
     }
 
     const record: Omit<VisitedRecord, "id" | "createdAt" | "updatedAt"> = {
-      coupleId,                // ★ Firestore 보안 규칙 필수
-      authorUid:  myUid,       // ★ 필수
-      authorName: myName,      // ★ 필수
+      coupleId,
+      authorUid:   myUid,
+      authorName:  myName,
       name:        data.name,
       sido:        data.sido,
       district:    data.district,
       cuisine:     data.cuisine,
       rating:      data.rating,
       date:        data.date,
-      memo:        data.memo   ?? "",
-      tags:        data.tags   ?? [],
-      revisit:     data.revisit ?? null,
-      imgUrls:     imgUrls     ?? [],
-      emoji:       data.emoji  ?? "🍽️",
+      memo:        data.memo        ?? "",
+      tags:        data.tags        ?? [],
+      revisit:     data.revisit     ?? null,
+      imgUrls:     imgUrls          ?? [],
+      emoji:       data.emoji       ?? "🍽️",
       shareToComm: data.shareToComm ?? false,
-      hideAuthor: false,
-      // undefined 이면 필드 자체를 제외 (Firestore 오류 방지)
+      hideAuthor:  data.hideAuthor  ?? false,   // ★ 폼 값 반영
       ...(data.lat != null && { lat: data.lat }),
       ...(data.lng != null && { lng: data.lng }),
     };
@@ -66,7 +65,6 @@ export function useVisited() {
     id: string,
     data: Partial<Omit<VisitedRecord, "id" | "createdAt">>
   ) => {
-    // undefined 필드 제거
     const clean = Object.fromEntries(
       Object.entries(data).filter(([, v]) => v !== undefined)
     );
@@ -75,9 +73,16 @@ export function useVisited() {
 
   // ── 삭제 ─────────────────────────────────────────────────
   const remove = async (id: string, imgUrls: string[] = []) => {
-    if (imgUrls.length > 0) {
-      await deleteImages(imgUrls).catch(() => {}); // Storage 삭제 실패해도 계속
+    // ★ Fix: base64 데이터 URL은 Firebase Storage에 없으므로 제외
+    //   base64는 'data:' 로 시작 / Firebase Storage URL은 'https://firebasestorage.googleapis.com' 으로 시작
+    const storageUrls = imgUrls.filter(
+      (url) => url.startsWith("https://firebasestorage.googleapis.com")
+    );
+
+    if (storageUrls.length > 0) {
+      await deleteImages(storageUrls).catch(() => {}); // 실패해도 문서 삭제는 계속
     }
+
     return deleteVisited(id);
   };
 

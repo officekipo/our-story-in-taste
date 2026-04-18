@@ -1,8 +1,9 @@
 // ============================================================
 //  wishlist/page.tsx  적용 경로: src/app/wishlist/page.tsx
 //
-//  Fix: handleAddWish 에 lat/lng 타입 추가 + firebaseWish.add() 에 전달
-//       → 위시 등록 즉시 지도에 핀 반영
+//  Fix:
+//    - 위시 수정 기능 추가 (editingWish 상태 + WishModal editRecord prop)
+//    - handleSave: 본인 글만 wish 삭제 (이전 수정 유지)
 // ============================================================
 "use client";
 
@@ -38,9 +39,10 @@ export default function WishlistPage() {
 
   const [activeTab,     setActiveTab]  = useState<WishTab>("all");
   const [showWishModal, setWishModal]  = useState(false);
+  const [editingWish,   setEditingWish] = useState<WishRecord | null>(null);  // ★ 수정 대상
   const [toast,         setToast]      = useState<string | null>(null);
 
-  const { myName, partnerName, coupleId }             = useAuthStore();
+  const { myName, partnerName, coupleId, myUid } = useAuthStore();
   const { confirmTarget, closeConfirm, addModalOpen } = useUIStore();
 
   // ── 탭 필터 ──────────────────────────────────────────────
@@ -58,9 +60,8 @@ export default function WishlistPage() {
     activeTab === "both"    ? bothItems    :
     records;
 
-  // ── 위시 추가 ─────────────────────────────────────────────
-  // ★ Fix: lat?, lng? 타입 추가 → WishModal(KakaoPlaceSearch) 에서 전달받은 좌표 수신
-  const handleAddWish = async (data: {
+  // ── 위시 추가 / 수정 ──────────────────────────────────────
+  const handleSaveWish = async (data: {
     name: string; sido: string; district: string;
     cuisine: string; note: string; imgUrls: string[];
     lat?: number; lng?: number;
@@ -74,18 +75,30 @@ export default function WishlistPage() {
         emoji: "🍽️", imgUrls: data.imgUrls, addedDate: todayStr(),
       }, ...prev]);
     } else {
-      // ★ Fix: lat/lng 를 add() 에 전달 → Firestore 저장 → 즉시 지도 핀 반영
-      await firebaseWish.add({
-        name: data.name, sido: data.sido, district: data.district,
-        cuisine: data.cuisine, note: data.note,
-        emoji: "🍽️", imgUrls: data.imgUrls,
-        lat: data.lat, lng: data.lng,
-      });
+      if (editingWish) {
+        // ★ 수정 모드
+        await firebaseWish.update(editingWish.id, {
+          name: data.name, sido: data.sido, district: data.district,
+          cuisine: data.cuisine, note: data.note, imgUrls: data.imgUrls,
+          ...(data.lat != null && { lat: data.lat }),
+          ...(data.lng != null && { lng: data.lng }),
+        });
+        setToast(`✏️ "${data.name}" 수정했어요!`);
+      } else {
+        // 신규 추가
+        await firebaseWish.add({
+          name: data.name, sido: data.sido, district: data.district,
+          cuisine: data.cuisine, note: data.note,
+          emoji: "🍽️", imgUrls: data.imgUrls,
+          lat: data.lat, lng: data.lng,
+        });
+        setToast(`⭐ "${data.name}" 위시리스트에 추가했어요!`);
+      }
     }
-    setToast(`⭐ "${data.name}" 위시리스트에 추가했어요!`);
+    setEditingWish(null);
   };
 
-  // ── ★ 다녀왔어요: AddEditModal 로 프리필 후 저장 처리 ────
+  // ── 다녀왔어요 ────────────────────────────────────────────
   const [pendingWish, setPendingWish] = useState<WishRecord | null>(null);
 
   const handleVisited = (wish: WishRecord) => {
@@ -104,15 +117,18 @@ export default function WishlistPage() {
     useUIStore.getState().openEditModal(prefilled as any);
   };
 
-  // AddEditModal 저장 완료 콜백
   const handleSave = async (data: VisitedFormData, imgUrls: string[]) => {
     if (DUMMY_MODE) return;
     try {
       await firebaseVisited.add(data, imgUrls);
       if (pendingWish) {
-        await firebaseWish.remove(pendingWish.id);
+        if (pendingWish.addedByUid === myUid) {
+          await firebaseWish.remove(pendingWish.id);
+          setToast(`✅ "${data.name}" 다녀온 곳으로 이동했어요!`);
+        } else {
+          setToast(`✅ "${data.name}" 다녀온 곳에 추가했어요!`);
+        }
         setPendingWish(null);
-        setToast(`✅ "${data.name}" 다녀온 곳으로 이동했어요!`);
       } else {
         setToast(`🍽️ "${data.name}" 기록을 저장했어요!`);
       }
@@ -174,6 +190,7 @@ export default function WishlistPage() {
             record={r}
             index={i}
             onVisited={() => handleVisited(r)}
+            onEdit={() => { setEditingWish(r); setWishModal(true); }}  // ★
           />
         ))}
         {displayed.length === 0 && (
@@ -187,10 +204,16 @@ export default function WishlistPage() {
       </div>
 
       {/* FAB */}
-      <button onClick={() => setWishModal(true)}
+      <button onClick={() => { setEditingWish(null); setWishModal(true); }}
         style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: "#6B9E7E", border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(107,158,126,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, fontSize: 28 }}>+</button>
 
-      {showWishModal && <WishModal onClose={() => setWishModal(false)} onSave={handleAddWish} />}
+      {showWishModal && (
+        <WishModal
+          editRecord={editingWish ?? undefined}   // ★ 수정 모드 전달
+          onClose={() => { setWishModal(false); setEditingWish(null); }}
+          onSave={handleSaveWish}
+        />
+      )}
       {addModalOpen  && <AddEditModal onSave={handleSave} />}
       {confirmTarget && <ConfirmDialog message={confirmTarget.msg} onConfirm={handleDelete} onCancel={closeConfirm} />}
       {toast         && <Toast message={toast} onClose={() => setToast(null)} />}

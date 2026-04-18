@@ -1,5 +1,10 @@
 // ============================================================
 //  Header.tsx  적용 경로: src/components/layout/Header.tsx
+//
+//  Fix:
+//    1. 우측 설정 버튼 → 항상 사람 아이콘 고정 (프로필 사진 반영 X)
+//    2. 좌측 커플 아바타 작은 원 → 파트너 프로필 사진 적용
+//    3. 필터 영역 좌우 3px padding 추가 (양 끝 칩 짤림 방지)
 // ============================================================
 "use client";
 
@@ -11,6 +16,7 @@ import { SIDO, CUISINES, SORT } from "@/types";
 import type { TabId }    from "./BottomNav";
 
 const ROSE  = "#C96B52";
+const SAGE  = "#6B9E7E";
 const INK   = "#1A1412";
 const MUTED = "#8A8078";
 const BORDER= "#E2DDD8";
@@ -46,7 +52,8 @@ export function Header({
   onToggleSearch, onSearchText,
 }: HeaderProps) {
   const router = useRouter();
-  const { myName, partnerName, startDate, profileImgUrl } = useAuthStore();
+  // ★ partnerProfileImgUrl 추가
+  const { myName, partnerName, startDate, profileImgUrl, partnerProfileImgUrl } = useAuthStore();
 
   const stats         = useStatsStore();
   const _visitedCount = stats.visitedCount || visitedCount;
@@ -73,13 +80,17 @@ export function Header({
         {/* 좌측: 커플 아바타 + 앱명 */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ position: "relative", width: 40, height: 40, flexShrink: 0 }}>
+            {/* 내 프로필 — 큰 원 */}
             <div style={{ width: 40, height: 40, borderRadius: "50%", background: ROSE, border: "2.5px solid #F2D5CC", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 15 }}>
               {profileImgUrl
                 ? <img src={profileImgUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 : (myName || "?")[0]}
             </div>
-            <div style={{ position: "absolute", bottom: -2, right: -6, width: 22, height: 22, borderRadius: "50%", background: "#6B9E7E", border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 8 }}>
-              {(partnerName || "?")[0]}
+            {/* ★ 파트너 프로필 — 작은 원 (프로필 사진 or 이니셜) */}
+            <div style={{ position: "absolute", bottom: -2, right: -6, width: 22, height: 22, borderRadius: "50%", background: SAGE, border: "2px solid #fff", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 8 }}>
+              {partnerProfileImgUrl
+                ? <img src={partnerProfileImgUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : (partnerName || "?")[0]}
             </div>
           </div>
           <div>
@@ -90,13 +101,12 @@ export function Header({
 
         {/* 우측: 통계 칩들 + 설정 버튼 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {/* 통계 3개를 pill 형태로 묶음 */}
           <div style={{ display: "flex", alignItems: "center", background: "#FAF7F3", borderRadius: 20, border: `1px solid ${BORDER}`, padding: "5px 10px", gap: 10 }}>
             {[
               { v: _visitedCount, l: "방문" },
               { v: _avgRating,    l: "평균" },
               { v: _wishCount,    l: "위시" },
-            ].map(({ v, l }, i) => (
+            ].map(({ v, l }) => (
               <div key={l} style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <span style={{ fontSize: 14, fontWeight: 800, color: INK, lineHeight: 1 }}>{v}</span>
                 <span style={{ fontSize: 8, color: MUTED, marginTop: 1, lineHeight: 1 }}>{l}</span>
@@ -104,28 +114,23 @@ export function Header({
             ))}
           </div>
 
-          {/* ★ 설정 버튼 — 프로필 사진 or 이니셜 원형 */}
+          {/* ★ 설정 버튼 — 항상 사람 아이콘 고정 (프로필 사진 반영 X) */}
           <button
             onClick={() => router.push("/settings")}
             aria-label="설정"
             style={{
               width: 36, height: 36, borderRadius: "50%",
               background: ROSE, border: "2.5px solid #F2D5CC",
-              overflow: "hidden", flexShrink: 0,
+              flexShrink: 0,
               display: "flex", alignItems: "center", justifyContent: "center",
               cursor: "pointer", padding: 0,
               boxShadow: "0 2px 8px rgba(201,107,82,0.3)",
             }}
           >
-            {profileImgUrl
-              ? <img src={profileImgUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="8" r="4" fill="rgba(255,255,255,0.9)" />
-                  <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-                </svg>
-              )
-            }
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="8" r="4" fill="rgba(255,255,255,0.9)" />
+              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+            </svg>
           </button>
         </div>
       </div>
@@ -172,7 +177,8 @@ export function Header({
       {/* ── 필터 바 ── */}
       {isVisited && (
         <div>
-          <div style={{ display: "flex", gap: 7, padding: "10px 0", overflowX: "auto", alignItems: "center" }}>
+          {/* ★ padding: "10px 3px" → 좌우 3px 여유 추가 (칩 끝 짤림 방지) */}
+          <div style={{ display: "flex", gap: 7, padding: "10px 3px", overflowX: "auto", alignItems: "center", scrollbarWidth: "none" }}>
             <div style={{ position: "relative", flexShrink: 0 }}>
               <select value={filterSido} onChange={e => onFilterSido?.(e.target.value)} style={{ ...filterSido ? chipActive : chipInactive, paddingRight: 24 }}>
                 <option value="">지역 전체</option>

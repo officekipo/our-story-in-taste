@@ -1,237 +1,412 @@
-// src/app/admin/page.tsx
-// 관리자 전용 페이지 — role === "admin" 인 유저만 접근
-// role !== "admin" 이면 메인으로 자동 리디렉션
+// ============================================================
+//  admin/page.tsx  적용 경로: src/app/admin/page.tsx
+//
+//  추가:
+//    1. 앱 버전 관리 탭 — Firestore config 컬렉션에서 관리
+//    2. FAQ 관리 탭 — 추가/수정/삭제 (Firestore faq 컬렉션)
+//    3. 1:1 문의 탭 — Firestore contacts 컬렉션 읽기/답변 상태 변경
+//    4. 게시물/신고/회원 탭은 Firestore 실데이터 연동
+// ============================================================
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter }           from "next/navigation";
-import { useAuthStore }        from "@/store/authStore";
-import { SAMPLE_COMMUNITY }    from "@/lib/sample-data";
-import type { CommunityRecord } from "@/types";
+import { useEffect, useState, useCallback } from "react";
+import { useRouter }     from "next/navigation";
+import { useAuthStore }  from "@/store/authStore";
+import {
+  collection, query, orderBy, onSnapshot,
+  doc, updateDoc, deleteDoc, addDoc, getDocs,
+  getDoc, setDoc,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
 
 /* ── 색상 ── */
-const ROSE    = "#C96B52";
-const ROSE_LT = "#F2D5CC";
-const SAGE    = "#6B9E7E";
-const INK     = "#1A1412";
-const MUTED   = "#8A8078";
-const BORDER  = "#E2DDD8";
-const WARM    = "#FAF7F3";
-const PURPLE  = "#7B6BAE";
-const RED     = "#EF4444";
+const ROSE   = "#C96B52";
+const SAGE   = "#6B9E7E";
+const INK    = "#1A1412";
+const MUTED  = "#8A8078";
+const BORDER = "#E2DDD8";
+const WARM   = "#FAF7F3";
+const PURPLE = "#7B6BAE";
+const RED    = "#EF4444";
 
-/* ── 탭 타입 ── */
-type Tab = "reports" | "posts" | "users";
+/* ── 탭 ── */
+type Tab = "reports" | "posts" | "faq" | "contacts" | "config";
+
+/* ── 인터페이스 ── */
+interface FAQItem    { id: string; question: string; answer: string; order: number; }
+interface ContactItem { id: string; name: string; email: string; message: string; createdAt: string; status: "pending" | "done"; }
+interface ReportItem  { id: string; postId: string; postName: string; reason: string; reportedAt: string; status: "pending" | "resolved"; }
+interface PostItem    { id: string; name: string; emoji: string; coupleLabel: string; likes: number; authorUid: string; }
+interface ConfigItem  { appVersion: string; supportEmail: string; notice: string; }
 
 /* ── 토스트 ── */
 function Toast({ msg }: { msg: string }) {
   return (
-    <div style={{ position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)", background: "rgba(26,20,18,0.9)", color: "#fff", padding: "10px 20px", borderRadius: 24, fontSize: 13, fontWeight: 600, zIndex: 900, whiteSpace: "nowrap", animation: "fadeUp 0.3s ease both", pointerEvents: "none" }}>
+    <div style={{ position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)", background: "rgba(26,20,18,0.9)", color: "#fff", padding: "10px 20px", borderRadius: 24, fontSize: 13, fontWeight: 600, zIndex: 9999, whiteSpace: "nowrap", pointerEvents: "none" }}>
       {msg}
     </div>
   );
 }
 
-/* ── 신고 카드 ── */
-interface ReportItem {
-  id: string;
-  type: string;
-  targetName: string;
-  reason: string;
-  reportedAt: string;
-  status: "pending" | "resolved";
-}
-
-const DUMMY_REPORTS: ReportItem[] = [
-  { id: "r1", type: "게시물", targetName: "한남동 파스타집", reason: "스팸/광고성 게시물", reportedAt: "2026-03-29", status: "pending" },
-  { id: "r2", type: "게시물", targetName: "북촌 전통 찻집",  reason: "부적절한 사진",     reportedAt: "2026-03-28", status: "pending" },
-];
-
-/* ── 유저 행 ── */
-interface UserItem {
-  uid: string;
-  name: string;
-  email: string;
-  role: "admin" | "user";
-  createdAt: string;
-}
-
-const DUMMY_USERS: UserItem[] = [
-  { uid: "uid-me",      name: "치즈", email: "cheese@example.com", role: "admin", createdAt: "2023-03-28" },
-  { uid: "uid-partner", name: "민준", email: "minjun@example.com", role: "user",  createdAt: "2023-03-28" },
-];
-
 /* ── 메인 컴포넌트 ── */
 export default function AdminPage() {
   const router           = useRouter();
   const { role, myName } = useAuthStore();
-  const [tab,     setTab]     = useState<Tab>("reports");
-  const [posts,   setPosts]   = useState<CommunityRecord[]>(SAMPLE_COMMUNITY);
-  const [reports, setReports] = useState<ReportItem[]>(DUMMY_REPORTS);
-  const [users]               = useState<UserItem[]>(DUMMY_USERS);
-  const [toast,   setToast]   = useState<string | null>(null);
 
-  /* role 체크 — admin 아니면 메인으로 */
-  useEffect(() => {
-    if (role !== "admin") router.replace("/");
-  }, [role]);
+  const [tab,       setTab]      = useState<Tab>("reports");
+  const [toast,     setToast]    = useState<string | null>(null);
+  const [loading,   setLoading]  = useState(false);
+
+  // 데이터
+  const [reports,  setReports]  = useState<ReportItem[]>([]);
+  const [posts,    setPosts]    = useState<PostItem[]>([]);
+  const [faqs,     setFaqs]     = useState<FAQItem[]>([]);
+  const [contacts, setContacts] = useState<ContactItem[]>([]);
+  const [config,   setConfig]   = useState<ConfigItem>({ appVersion: "1.0.0", supportEmail: "", notice: "" });
+
+  // FAQ 편집
+  const [faqEdit,  setFaqEdit]  = useState<FAQItem | null>(null);
+  const [faqQ,     setFaqQ]     = useState("");
+  const [faqA,     setFaqA]     = useState("");
+
+  // Config 편집
+  const [cfgEdit,  setCfgEdit]  = useState(false);
+  const [cfgDraft, setCfgDraft] = useState<ConfigItem>(config);
+
+  /* role 체크 */
+  useEffect(() => { if (role !== "admin") router.replace("/"); }, [role]);
   if (role !== "admin") return null;
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2200);
-  };
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
 
-  /* 게시물 삭제 */
-  const deletePost = (id: string, name: string) => {
-    setPosts(prev => prev.filter(p => p.id !== id));
+  /* ── 신고 구독 ── */
+  useEffect(() => {
+    const q = query(collection(db, "community_reports"), orderBy("reportedAt", "desc"));
+    return onSnapshot(q, (snap) => {
+      setReports(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReportItem)));
+    });
+  }, []);
+
+  /* ── 게시물 구독 ── */
+  useEffect(() => {
+    const q = query(collection(db, "community"), orderBy("createdAt", "desc"));
+    return onSnapshot(q, (snap) => {
+      setPosts(snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id:          d.id,
+          name:        data.name ?? data.restaurantName ?? "",
+          emoji:       data.emoji ?? "🍽️",
+          coupleLabel: data.showAuthorName === false ? "익명 커플" : (data.authorName ? `${data.authorName}의 추천` : "커플 추천"),
+          likes:       data.likeCount ?? 0,
+          authorUid:   data.authorUid ?? "",
+        };
+      }));
+    });
+  }, []);
+
+  /* ── FAQ 구독 ── */
+  useEffect(() => {
+    const q = query(collection(db, "faq"), orderBy("order", "asc"));
+    return onSnapshot(q, (snap) => {
+      setFaqs(snap.docs.map((d) => ({ id: d.id, ...d.data() } as FAQItem)));
+    });
+  }, []);
+
+  /* ── 문의 구독 ── */
+  useEffect(() => {
+    const q = query(collection(db, "contacts"), orderBy("createdAt", "desc"));
+    return onSnapshot(q, (snap) => {
+      setContacts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ContactItem)));
+    });
+  }, []);
+
+  /* ── Config 구독 ── */
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "config", "app"), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data() as ConfigItem;
+        setConfig(d);
+        setCfgDraft(d);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  /* ── 게시물 삭제 ── */
+  const deletePost = useCallback(async (id: string, name: string) => {
+    await deleteDoc(doc(db, "community", id));
     showToast(`"${name}" 게시물을 삭제했어요`);
-  };
+  }, []);
 
-  /* 신고 처리 */
-  const resolveReport = (id: string) => {
-    setReports(prev => prev.map(r => r.id === id ? { ...r, status: "resolved" as const } : r));
+  /* ── 신고 처리 ── */
+  const resolveReport = useCallback(async (id: string) => {
+    await updateDoc(doc(db, "community_reports", id), { status: "resolved" });
     showToast("신고를 처리 완료했어요");
-  };
+  }, []);
 
-  const pendingCount = reports.filter(r => r.status === "pending").length;
+  /* ── FAQ 저장 ── */
+  const saveFaq = useCallback(async () => {
+    if (!faqQ.trim() || !faqA.trim()) return;
+    if (faqEdit) {
+      await updateDoc(doc(db, "faq", faqEdit.id), { question: faqQ, answer: faqA });
+      showToast("FAQ를 수정했어요");
+    } else {
+      await addDoc(collection(db, "faq"), { question: faqQ, answer: faqA, order: faqs.length });
+      showToast("FAQ를 추가했어요");
+    }
+    setFaqEdit(null); setFaqQ(""); setFaqA("");
+  }, [faqQ, faqA, faqEdit, faqs.length]);
 
-  const TABS: { id: Tab; icon: string; label: string; count?: number }[] = [
-    { id: "reports", icon: "🚨", label: "신고",    count: pendingCount },
-    { id: "posts",   icon: "📋", label: "게시물",  count: posts.length },
-    { id: "users",   icon: "👥", label: "회원",    count: users.length },
+  /* ── FAQ 삭제 ── */
+  const deleteFaq = useCallback(async (id: string) => {
+    await deleteDoc(doc(db, "faq", id));
+    showToast("FAQ를 삭제했어요");
+  }, []);
+
+  /* ── 문의 처리 완료 ── */
+  const doneContact = useCallback(async (id: string) => {
+    await updateDoc(doc(db, "contacts", id), { status: "done" });
+    showToast("문의를 처리 완료했어요");
+  }, []);
+
+  /* ── Config 저장 ── */
+  const saveConfig = useCallback(async () => {
+    await setDoc(doc(db, "config", "app"), cfgDraft, { merge: true });
+    setCfgEdit(false);
+    showToast("설정을 저장했어요");
+  }, [cfgDraft]);
+
+  const pendingReports  = reports.filter((r) => r.status === "pending").length;
+  const pendingContacts = contacts.filter((c) => c.status === "pending").length;
+
+  const TABS: { id: Tab; icon: string; label: string; badge?: number }[] = [
+    { id: "reports",  icon: "🚨", label: "신고",   badge: pendingReports },
+    { id: "posts",    icon: "📋", label: "게시물", badge: posts.length },
+    { id: "faq",      icon: "❓", label: "FAQ" },
+    { id: "contacts", icon: "📩", label: "문의",   badge: pendingContacts },
+    { id: "config",   icon: "⚙️", label: "설정" },
   ];
+
+  const inp: React.CSSProperties = {
+    width: "100%", padding: "10px 12px", background: WARM,
+    border: `1px solid ${BORDER}`, borderRadius: 10, fontSize: 13,
+    fontFamily: "inherit", outline: "none", color: INK, boxSizing: "border-box",
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: "#F5F0EB", maxWidth: 480, margin: "0 auto", fontFamily: "inherit", paddingBottom: 40 }}>
 
-      {/* ── 헤더 ── */}
+      {/* 헤더 */}
       <div style={{ background: INK, padding: "14px 20px 0", position: "sticky", top: 0, zIndex: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-          <button onClick={() => router.back()} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 24, color: "#fff", lineHeight: 1, padding: "0 4px 0 0" }}>‹</button>
+          <button onClick={() => router.back()} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 24, color: "#fff", lineHeight: 1 }}>‹</button>
           <p style={{ fontSize: 17, fontWeight: 700, color: "#fff", flex: 1 }}>관리자 페이지</p>
           <div style={{ background: PURPLE, borderRadius: 20, padding: "3px 10px" }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: "#fff" }}>{myName} · ADMIN</span>
           </div>
         </div>
-
-        {/* 탭 바 */}
         <div style={{ display: "flex" }}>
-          {TABS.map(({ id, icon, label, count }) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              style={{ flex: 1, padding: "10px 4px 12px", border: "none", borderBottom: `2px solid ${tab === id ? ROSE : "transparent"}`, background: "none", color: tab === id ? "#fff" : "rgba(255,255,255,0.45)", fontSize: 12, fontWeight: tab === id ? 700 : 400, cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}
-            >
-              <span style={{ fontSize: 16 }}>{icon}</span>
-              <span>{label} {count !== undefined && `(${count})`}</span>
+          {TABS.map(({ id, icon, label, badge }) => (
+            <button key={id} onClick={() => setTab(id)}
+              style={{ flex: 1, padding: "8px 2px 10px", border: "none", borderBottom: `2px solid ${tab === id ? ROSE : "transparent"}`, background: "none", color: tab === id ? "#fff" : "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: tab === id ? 700 : 400, cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, position: "relative" }}>
+              <span style={{ fontSize: 14 }}>{icon}</span>
+              <span>{label}{badge !== undefined && badge > 0 ? ` (${badge})` : ""}</span>
             </button>
           ))}
         </div>
       </div>
 
-      {/* ══ 신고 탭 ══ */}
-      {tab === "reports" && (
-        <div style={{ padding: "16px 16px 0" }}>
-          {reports.length === 0 ? (
-            <div style={{ background: "#fff", borderRadius: 16, padding: "40px 20px", textAlign: "center", boxShadow: "0 1px 6px rgba(0,0,0,0.05)" }}>
-              <div style={{ fontSize: 44, marginBottom: 12 }}>🎉</div>
-              <p style={{ fontSize: 14, fontWeight: 600, color: INK }}>처리 대기 중인 신고가 없어요</p>
-            </div>
-          ) : (
-            reports.map(r => (
+      <div style={{ padding: "16px 16px 0" }}>
+
+        {/* ══ 신고 탭 ══ */}
+        {tab === "reports" && (
+          reports.length === 0
+            ? <EmptyBox icon="🎉" text="처리 대기 중인 신고가 없어요" />
+            : reports.map((r) => (
               <div key={r.id} style={{ background: "#fff", borderRadius: 14, marginBottom: 10, padding: "14px 16px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                      <div style={{ background: r.status === "pending" ? "#FFF0F0" : WARM, borderRadius: 20, padding: "2px 8px" }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: r.status === "pending" ? RED : SAGE }}>
-                          {r.status === "pending" ? "처리 대기" : "처리 완료"}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: 11, color: MUTED }}>{r.type}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                      <Badge text={r.status === "pending" ? "대기" : "완료"} color={r.status === "pending" ? RED : SAGE} />
                     </div>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: INK }}>{r.targetName}</p>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: INK }}>{r.postName}</p>
                     <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>사유: {r.reason}</p>
-                    <p style={{ fontSize: 11, color: "#C0B8B0", marginTop: 2 }}>{r.reportedAt}</p>
+                    <p style={{ fontSize: 11, color: "#C0B8B0", marginTop: 2 }}>{r.reportedAt?.slice(0, 10)}</p>
                   </div>
                   {r.status === "pending" && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <button
-                        onClick={() => resolveReport(r.id)}
-                        style={{ padding: "6px 12px", background: SAGE, border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-                      >처리 완료</button>
-                      <button
-                        onClick={() => { setPosts(prev => prev.filter(p => p.name !== r.targetName)); resolveReport(r.id); showToast(`"${r.targetName}" 삭제 처리됐어요`); }}
-                        style={{ padding: "6px 12px", background: "#FFF0F0", border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 10, color: RED, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-                      >게시물 삭제</button>
+                      <button onClick={() => resolveReport(r.id)} style={{ ...btnStyle(SAGE) }}>완료</button>
+                      <button onClick={async () => { await deleteDoc(doc(db, "community", r.postId)); await resolveReport(r.id); showToast("게시물을 삭제했어요"); }} style={{ ...btnStyle(RED, true) }}>삭제</button>
                     </div>
                   )}
                 </div>
               </div>
             ))
-          )}
-        </div>
-      )}
+        )}
 
-      {/* ══ 게시물 탭 ══ */}
-      {tab === "posts" && (
-        <div style={{ padding: "16px 16px 0" }}>
-          {posts.length === 0 ? (
-            <div style={{ background: "#fff", borderRadius: 16, padding: "40px 20px", textAlign: "center" }}>
-              <p style={{ fontSize: 14, color: MUTED }}>게시물이 없어요</p>
-            </div>
-          ) : posts.map(p => (
-            <div key={p.id} style={{ background: "#fff", borderRadius: 14, marginBottom: 10, padding: "14px 16px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: 30, flexShrink: 0 }}>{p.emoji}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 14, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</p>
-                <p style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{p.coupleLabel} · ❤️ {p.likes}</p>
+        {/* ══ 게시물 탭 ══ */}
+        {tab === "posts" && (
+          posts.length === 0
+            ? <EmptyBox icon="📋" text="게시물이 없어요" />
+            : posts.map((p) => (
+              <div key={p.id} style={{ background: "#fff", borderRadius: 14, marginBottom: 10, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+                <span style={{ fontSize: 28 }}>{p.emoji}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</p>
+                  <p style={{ fontSize: 11, color: MUTED }}>{p.coupleLabel} · ❤️ {p.likes}</p>
+                </div>
+                <button onClick={() => deletePost(p.id, p.name)} style={{ ...btnStyle(RED, true), flexShrink: 0 }}>삭제</button>
               </div>
-              <button
-                onClick={() => deletePost(p.id, p.name)}
-                style={{ padding: "6px 12px", background: "#FFF0F0", border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 10, color: RED, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}
-              >삭제</button>
-            </div>
-          ))}
-        </div>
-      )}
+            ))
+        )}
 
-      {/* ══ 회원 탭 ══ */}
-      {tab === "users" && (
-        <div style={{ padding: "16px 16px 0" }}>
-          {/* 안내 박스 */}
-          <div style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", marginBottom: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
-            <p style={{ fontSize: 13, fontWeight: 600, color: INK, marginBottom: 6 }}>회원 등급 변경 방법</p>
-            <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.6, marginBottom: 10 }}>Firebase 콘솔 → Firestore → users → 해당 uid 문서의 <strong>role</strong> 필드를 변경하세요.</p>
-            <div style={{ background: WARM, borderRadius: 8, padding: "8px 12px", fontFamily: "monospace", fontSize: 11, color: MUTED }}>
-              role: "user" → "admin" 으로 변경
-            </div>
-          </div>
-
-          {/* 유저 목록 (더미) */}
-          {users.map(u => (
-            <div key={u.uid} style={{ background: "#fff", borderRadius: 14, marginBottom: 10, padding: "14px 16px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", display: "flex", alignItems: "center", gap: 12 }}>
-              {/* 아바타 */}
-              <div style={{ width: 40, height: 40, borderRadius: "50%", background: u.role === "admin" ? PURPLE : ROSE, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
-                {u.name[0]}
+        {/* ══ FAQ 탭 ══ */}
+        {tab === "faq" && (
+          <>
+            {/* 추가/수정 폼 */}
+            <div style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", marginBottom: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 10 }}>
+                {faqEdit ? "FAQ 수정" : "FAQ 추가"}
+              </p>
+              <input value={faqQ} onChange={(e) => setFaqQ(e.target.value)} placeholder="질문" style={{ ...inp, marginBottom: 8 }} />
+              <textarea value={faqA} onChange={(e) => setFaqA(e.target.value)} placeholder="답변" rows={3} style={{ ...inp, resize: "none", marginBottom: 10 }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                {faqEdit && (
+                  <button onClick={() => { setFaqEdit(null); setFaqQ(""); setFaqA(""); }}
+                    style={{ flex: 1, padding: "10px 0", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 10, color: MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                    취소
+                  </button>
+                )}
+                <button onClick={saveFaq} style={{ flex: 2, padding: "10px 0", background: faqQ && faqA ? SAGE : "#C0B8B0", border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  {faqEdit ? "수정 완료" : "추가"}
+                </button>
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                  <p style={{ fontSize: 14, fontWeight: 600, color: INK }}>{u.name}</p>
-                  <div style={{ background: u.role === "admin" ? PURPLE : WARM, borderRadius: 20, padding: "1px 6px" }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: u.role === "admin" ? "#fff" : MUTED }}>{u.role === "admin" ? "관리자" : "일반"}</span>
+            </div>
+
+            {faqs.length === 0
+              ? <EmptyBox icon="❓" text="등록된 FAQ가 없어요" />
+              : faqs.map((f) => (
+                <div key={f.id} style={{ background: "#fff", borderRadius: 14, marginBottom: 10, padding: "14px 16px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: INK, marginBottom: 4 }}>Q. {f.question}</p>
+                  <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.6, marginBottom: 10 }}>A. {f.answer}</p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => { setFaqEdit(f); setFaqQ(f.question); setFaqA(f.answer); }} style={{ ...btnStyle(SAGE) }}>수정</button>
+                    <button onClick={() => deleteFaq(f.id)} style={{ ...btnStyle(RED, true) }}>삭제</button>
                   </div>
                 </div>
-                <p style={{ fontSize: 11, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</p>
-                <p style={{ fontSize: 10, color: "#C0B8B0", marginTop: 1 }}>가입일 {u.createdAt}</p>
+              ))
+            }
+          </>
+        )}
+
+        {/* ══ 문의 탭 ══ */}
+        {tab === "contacts" && (
+          contacts.length === 0
+            ? <EmptyBox icon="📩" text="접수된 문의가 없어요" />
+            : contacts.map((c) => (
+              <div key={c.id} style={{ background: "#fff", borderRadius: 14, marginBottom: 10, padding: "14px 16px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                      <Badge text={c.status === "pending" ? "미처리" : "처리완료"} color={c.status === "pending" ? ROSE : SAGE} />
+                    </div>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: INK }}>{c.name}</p>
+                    <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{c.email}</p>
+                    <p style={{ fontSize: 13, color: INK, marginTop: 8, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{c.message}</p>
+                    <p style={{ fontSize: 11, color: "#C0B8B0", marginTop: 6 }}>{c.createdAt?.slice(0, 10)}</p>
+                  </div>
+                  {c.status === "pending" && (
+                    <button onClick={() => doneContact(c.id)} style={{ ...btnStyle(SAGE), flexShrink: 0 }}>처리완료</button>
+                  )}
+                </div>
               </div>
+            ))
+        )}
+
+        {/* ══ 설정 탭 ══ */}
+        {tab === "config" && (
+          <div style={{ background: "#fff", borderRadius: 14, padding: "14px 16px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <p style={{ fontSize: 15, fontWeight: 700, color: INK }}>앱 설정</p>
+              {!cfgEdit && (
+                <button onClick={() => setCfgEdit(true)} style={{ ...btnStyle(SAGE) }}>수정</button>
+              )}
             </div>
-          ))}
-        </div>
-      )}
+
+            {cfgEdit ? (
+              <>
+                <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 4 }}>앱 버전</label>
+                <input value={cfgDraft.appVersion} onChange={(e) => setCfgDraft((p) => ({ ...p, appVersion: e.target.value }))} style={{ ...inp, marginBottom: 10 }} />
+
+                <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 4 }}>고객센터 이메일</label>
+                <input value={cfgDraft.supportEmail} onChange={(e) => setCfgDraft((p) => ({ ...p, supportEmail: e.target.value }))} style={{ ...inp, marginBottom: 10 }} />
+
+                <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 4 }}>공지사항 (앱 내 표시)</label>
+                <textarea value={cfgDraft.notice} onChange={(e) => setCfgDraft((p) => ({ ...p, notice: e.target.value }))} rows={3} style={{ ...inp, resize: "none", marginBottom: 12 }} />
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => { setCfgEdit(false); setCfgDraft(config); }} style={{ flex: 1, padding: "10px 0", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 10, color: MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>취소</button>
+                  <button onClick={saveConfig} style={{ flex: 2, padding: "10px 0", background: SAGE, border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>저장</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <Row label="앱 버전"       value={config.appVersion  || "미설정"} />
+                <Row label="고객센터 이메일" value={config.supportEmail || "미설정"} />
+                <Row label="공지사항"       value={config.notice       || "없음"} />
+                <div style={{ marginTop: 14, padding: "12px 14px", background: WARM, borderRadius: 10, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+                  💡 앱 버전은 배포 시 여기서 수동으로 업데이트하세요.<br />
+                  고객센터 페이지에서 이 이메일로 연결됩니다.
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {toast && <Toast msg={toast} />}
     </div>
   );
+}
+
+/* ── 공통 UI 컴포넌트 ── */
+function EmptyBox({ icon, text }: { icon: string; text: string }) {
+  return (
+    <div style={{ background: "#fff", borderRadius: 16, padding: "40px 20px", textAlign: "center", boxShadow: "0 1px 6px rgba(0,0,0,0.05)" }}>
+      <div style={{ fontSize: 44, marginBottom: 12 }}>{icon}</div>
+      <p style={{ fontSize: 14, color: "#8A8078" }}>{text}</p>
+    </div>
+  );
+}
+
+function Badge({ text, color }: { text: string; color: string }) {
+  return (
+    <div style={{ background: color + "1A", borderRadius: 20, padding: "2px 8px", display: "inline-block" }}>
+      <span style={{ fontSize: 10, fontWeight: 700, color }}>{text}</span>
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #F0EBE3" }}>
+      <span style={{ fontSize: 13, color: "#8A8078" }}>{label}</span>
+      <span style={{ fontSize: 13, color: "#1A1412", fontWeight: 500, maxWidth: "60%", textAlign: "right", wordBreak: "break-all" }}>{value}</span>
+    </div>
+  );
+}
+
+function btnStyle(color: string, outline?: boolean): React.CSSProperties {
+  return {
+    padding: "6px 14px",
+    background: outline ? color + "1A" : color,
+    border: outline ? `1px solid ${color}60` : "none",
+    borderRadius: 10,
+    color: outline ? color : "#fff",
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  };
 }

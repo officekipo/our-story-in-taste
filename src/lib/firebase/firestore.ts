@@ -1,12 +1,11 @@
 // ============================================================
 //  firestore.ts  적용 경로: src/lib/firebase/firestore.ts
 //
-//  Fix 3: 새글이 하위로 등록되는 문제
-//    - subscribeVisited 정렬을 createdAt desc 기준으로 변경
-//      (date 는 유저가 과거 날짜 선택 가능 → 정렬 혼선)
-//    - 필요 Firestore 복합 인덱스:
-//      visited:  coupleId(asc) + createdAt(desc)
-//      wishlist: coupleId(asc) + addedDate(desc)
+//  Fix:
+//    1. buildCommunityPost: showAuthorName: true 하드코딩 → !data.hideAuthor
+//       (AddEditModal에서 "익명으로 공유" 선택해도 true로 덮어써지던 버그 수정)
+//    2. updateVisited: community 문서 업데이트 시 showAuthorName / updatedAt 포함
+//       (수정됨 표시 지원)
 // ============================================================
 
 import {
@@ -40,10 +39,12 @@ export async function updateVisited(
   id: string,
   data: Partial<Omit<VisitedRecord, "id" | "createdAt">>
 ): Promise<void> {
+  const now        = new Date().toISOString();
   const batch      = writeBatch(db);
   const visitedRef = doc(db, "visited", id);
 
-  batch.update(visitedRef, { ...data, updatedAt: new Date().toISOString() });
+  // ★ updatedAt 항상 갱신 → VisitedCard/DetailModal "수정됨" 뱃지 지원
+  batch.update(visitedRef, { ...data, updatedAt: now });
 
   const commQ    = query(collection(db, "community"), where("visitedId", "==", id));
   const commSnap = await getDocs(commQ);
@@ -56,16 +57,41 @@ export async function updateVisited(
     } else {
       commSnap.docs.forEach((d) =>
         batch.update(d.ref, {
-          restaurantName: data.name,     cuisine:  data.cuisine,
-          sido:           data.sido,     district: data.district,
-          rating:         data.rating,   memo:     data.memo,
-          tags:           data.tags,     imgUrls:  data.imgUrls,
+          restaurantName: data.name,
+          name:           data.name,
+          cuisine:        data.cuisine,
+          sido:           data.sido,
+          district:       data.district,
+          rating:         data.rating,
+          memo:           data.memo,
+          tags:           data.tags,
+          imgUrls:        data.imgUrls,
           emoji:          data.emoji,
+          // ★ Fix: 닉네임 공개 여부도 수정 시 동기화
+          showAuthorName: data.hideAuthor === undefined ? undefined : !data.hideAuthor,
+          // ★ 수정됨 뱃지를 위해 updatedAt 저장
+          updatedAt:      now,
         })
       );
     }
   } else if (data.shareToComm === false) {
     commSnap.docs.forEach((d) => batch.delete(d.ref));
+  } else if (!commSnap.empty) {
+    // shareToComm 변경 없이 내용만 수정된 경우에도 community 동기화
+    commSnap.docs.forEach((d) => {
+      const updateFields: Record<string, any> = { updatedAt: now };
+      if (data.name      !== undefined) { updateFields.restaurantName = data.name; updateFields.name = data.name; }
+      if (data.cuisine   !== undefined) updateFields.cuisine   = data.cuisine;
+      if (data.sido      !== undefined) updateFields.sido      = data.sido;
+      if (data.district  !== undefined) updateFields.district  = data.district;
+      if (data.rating    !== undefined) updateFields.rating    = data.rating;
+      if (data.memo      !== undefined) updateFields.memo      = data.memo;
+      if (data.tags      !== undefined) updateFields.tags      = data.tags;
+      if (data.imgUrls   !== undefined) updateFields.imgUrls   = data.imgUrls;
+      if (data.emoji     !== undefined) updateFields.emoji     = data.emoji;
+      if (data.hideAuthor !== undefined) updateFields.showAuthorName = !data.hideAuthor;
+      batch.update(d.ref, updateFields);
+    });
   }
 
   await batch.commit();
@@ -87,7 +113,7 @@ export function subscribeVisited(
   const q = query(
     collection(db, "visited"),
     where("coupleId", "==", coupleId),
-    orderBy("createdAt", "desc")   // ← date → createdAt 변경
+    orderBy("createdAt", "desc")
   );
   return onSnapshot(q, (snap) => {
     callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as VisitedRecord)));
@@ -131,12 +157,14 @@ export function subscribeWishlist(
 //  COMMUNITY
 // ══════════════════════════════════════════════════════════
 
+/** ★ Fix: showAuthorName: !data.hideAuthor (true 하드코딩 제거) */
 function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): any {
+  const now = new Date().toISOString();
   return {
     coupleId:       data.coupleId    ?? "",
     visitedId,
     restaurantName: data.name        ?? "",
-    name:           data.name        ?? "",   // CommunityCard 호환
+    name:           data.name        ?? "",
     cuisine:        data.cuisine     ?? "",
     sido:           data.sido        ?? "",
     district:       data.district    ?? "",
@@ -147,11 +175,13 @@ function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): an
     emoji:          data.emoji       ?? "🍽️",
     authorUid:      data.authorUid   ?? "",
     authorName:     data.authorName  ?? "",
-    showAuthorName: true,
+    // ★ 닉네임 비공개 여부 반영 (hideAuthor=true → showAuthorName=false)
+    showAuthorName: !(data.hideAuthor ?? false),
     likeCount:      0,
     likedBy:        [],
     reportedBy:     [],
-    createdAt:      new Date().toISOString(),
+    createdAt:      now,
+    updatedAt:      now,
   };
 }
 
