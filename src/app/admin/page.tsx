@@ -1,21 +1,20 @@
 // ============================================================
 //  admin/page.tsx  적용 경로: src/app/admin/page.tsx
 //
-//  추가:
-//    1. 앱 버전 관리 탭 — Firestore config 컬렉션에서 관리
-//    2. FAQ 관리 탭 — 추가/수정/삭제 (Firestore faq 컬렉션)
-//    3. 1:1 문의 탭 — Firestore contacts 컬렉션 읽기/답변 상태 변경
-//    4. 게시물/신고/회원 탭은 Firestore 실데이터 연동
+//  Fix: INTERNAL ASSERTION FAILED 오류 해결
+//    - 5개 onSnapshot 동시 구독 → 탭별 lazy 구독 패턴으로 변경
+//    - 탭 활성화 시 구독 시작, 탭 비활성화(또는 언마운트) 시 unsubscribe
+//    - 배지(신고 수/게시물 수) 유지를 위해 최초 1회 getDocs로 카운트만 조회
 // ============================================================
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter }     from "next/navigation";
 import { useAuthStore }  from "@/store/authStore";
 import {
   collection, query, orderBy, onSnapshot,
   doc, updateDoc, deleteDoc, addDoc, getDocs,
-  getDoc, setDoc,
+  setDoc, getCountFromServer,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 
@@ -33,7 +32,7 @@ const RED    = "#EF4444";
 type Tab = "reports" | "posts" | "faq" | "contacts" | "config";
 
 /* ── 인터페이스 ── */
-interface FAQItem    { id: string; question: string; answer: string; order: number; }
+interface FAQItem     { id: string; question: string; answer: string; order: number; }
 interface ContactItem { id: string; name: string; email: string; message: string; createdAt: string; status: "pending" | "done"; }
 interface ReportItem  { id: string; postId: string; postName: string; reason: string; reportedAt: string; status: "pending" | "resolved"; }
 interface PostItem    { id: string; name: string; emoji: string; coupleLabel: string; likes: number; authorUid: string; }
@@ -53,85 +52,143 @@ export default function AdminPage() {
   const router           = useRouter();
   const { role, myName } = useAuthStore();
 
-  const [tab,       setTab]      = useState<Tab>("reports");
-  const [toast,     setToast]    = useState<string | null>(null);
-  const [loading,   setLoading]  = useState(false);
+  const [tab,     setTab]     = useState<Tab>("reports");
+  const [toast,   setToast]   = useState<string | null>(null);
 
-  // 데이터
+  // 탭별 데이터
   const [reports,  setReports]  = useState<ReportItem[]>([]);
   const [posts,    setPosts]    = useState<PostItem[]>([]);
   const [faqs,     setFaqs]     = useState<FAQItem[]>([]);
   const [contacts, setContacts] = useState<ContactItem[]>([]);
   const [config,   setConfig]   = useState<ConfigItem>({ appVersion: "1.0.0", supportEmail: "", notice: "" });
 
+  // 배지용 카운트 (탭 미진입 시에도 표시)
+  const [badgeCounts, setBadgeCounts] = useState({ reports: 0, posts: 0, contacts: 0 });
+
   // FAQ 편집
-  const [faqEdit,  setFaqEdit]  = useState<FAQItem | null>(null);
-  const [faqQ,     setFaqQ]     = useState("");
-  const [faqA,     setFaqA]     = useState("");
+  const [faqEdit, setFaqEdit] = useState<FAQItem | null>(null);
+  const [faqQ,    setFaqQ]    = useState("");
+  const [faqA,    setFaqA]    = useState("");
 
   // Config 편집
   const [cfgEdit,  setCfgEdit]  = useState(false);
   const [cfgDraft, setCfgDraft] = useState<ConfigItem>(config);
 
-  /* role 체크 */
+  // 현재 활성 구독 해제 함수 보관
+  const unsubRef = useRef<(() => void) | null>(null);
+
+  /* ── role 체크 ── */
   useEffect(() => { if (role !== "admin") router.replace("/"); }, [role]);
   if (role !== "admin") return null;
 
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  };
 
-  /* ── 신고 구독 ── */
+  /* ── 배지용 카운트: 최초 1회만 getDocs로 조회 ── */
   useEffect(() => {
-    const q = query(collection(db, "community_reports"), orderBy("reportedAt", "desc"));
-    return onSnapshot(q, (snap) => {
-      setReports(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReportItem)));
-    });
-  }, []);
-
-  /* ── 게시물 구독 ── */
-  useEffect(() => {
-    const q = query(collection(db, "community"), orderBy("createdAt", "desc"));
-    return onSnapshot(q, (snap) => {
-      setPosts(snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id:          d.id,
-          name:        data.name ?? data.restaurantName ?? "",
-          emoji:       data.emoji ?? "🍽️",
-          coupleLabel: data.showAuthorName === false ? "익명 커플" : (data.authorName ? `${data.authorName}의 추천` : "커플 추천"),
-          likes:       data.likeCount ?? 0,
-          authorUid:   data.authorUid ?? "",
-        };
-      }));
-    });
-  }, []);
-
-  /* ── FAQ 구독 ── */
-  useEffect(() => {
-    const q = query(collection(db, "faq"), orderBy("order", "asc"));
-    return onSnapshot(q, (snap) => {
-      setFaqs(snap.docs.map((d) => ({ id: d.id, ...d.data() } as FAQItem)));
-    });
-  }, []);
-
-  /* ── 문의 구독 ── */
-  useEffect(() => {
-    const q = query(collection(db, "contacts"), orderBy("createdAt", "desc"));
-    return onSnapshot(q, (snap) => {
-      setContacts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ContactItem)));
-    });
-  }, []);
-
-  /* ── Config 구독 ── */
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db, "config", "app"), (snap) => {
-      if (snap.exists()) {
-        const d = snap.data() as ConfigItem;
-        setConfig(d);
-        setCfgDraft(d);
+    (async () => {
+      try {
+        const [rSnap, pSnap, cSnap] = await Promise.all([
+          getCountFromServer(query(collection(db, "community_reports"))),
+          getCountFromServer(query(collection(db, "community"))),
+          getCountFromServer(query(collection(db, "contacts"))),
+        ]);
+        setBadgeCounts({
+          reports:  rSnap.data().count,
+          posts:    pSnap.data().count,
+          contacts: cSnap.data().count,
+        });
+      } catch (e) {
+        // 카운트 실패 시 무시 (배지만 안 보임)
+        console.warn("badge count error:", e);
       }
-    });
-    return () => unsub();
+    })();
   }, []);
+
+  /* ── 탭별 lazy 구독 ── */
+  useEffect(() => {
+    // 이전 탭 구독 해제
+    if (unsubRef.current) {
+      unsubRef.current();
+      unsubRef.current = null;
+    }
+
+    let unsub: (() => void) | null = null;
+
+    switch (tab) {
+
+      case "reports": {
+        const q = query(collection(db, "community_reports"), orderBy("reportedAt", "desc"));
+        unsub = onSnapshot(q, (snap) => {
+          const data = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReportItem));
+          setReports(data);
+          setBadgeCounts((prev) => ({ ...prev, reports: data.filter((r) => r.status === "pending").length }));
+        });
+        break;
+      }
+
+      case "posts": {
+        const q = query(collection(db, "community"), orderBy("createdAt", "desc"));
+        unsub = onSnapshot(q, (snap) => {
+          const data = snap.docs.map((d) => {
+            const v = d.data();
+            return {
+              id:          d.id,
+              name:        v.name ?? v.restaurantName ?? "",
+              emoji:       v.emoji ?? "🍽️",
+              coupleLabel: v.showAuthorName === false ? "익명 커플" : (v.authorName ? `${v.authorName}의 추천` : "커플 추천"),
+              likes:       v.likeCount ?? 0,
+              authorUid:   v.authorUid ?? "",
+            } as PostItem;
+          });
+          setPosts(data);
+          setBadgeCounts((prev) => ({ ...prev, posts: data.length }));
+        });
+        break;
+      }
+
+      case "faq": {
+        const q = query(collection(db, "faq"), orderBy("order", "asc"));
+        unsub = onSnapshot(q, (snap) => {
+          setFaqs(snap.docs.map((d) => ({ id: d.id, ...d.data() } as FAQItem)));
+        });
+        break;
+      }
+
+      case "contacts": {
+        const q = query(collection(db, "contacts"), orderBy("createdAt", "desc"));
+        unsub = onSnapshot(q, (snap) => {
+          const data = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ContactItem));
+          setContacts(data);
+          setBadgeCounts((prev) => ({ ...prev, contacts: data.filter((c) => c.status === "pending").length }));
+        });
+        break;
+      }
+
+      case "config": {
+        unsub = onSnapshot(doc(db, "config", "app"), (snap) => {
+          if (snap.exists()) {
+            const d = snap.data() as ConfigItem;
+            setConfig(d);
+            setCfgDraft(d);
+          }
+        });
+        break;
+      }
+    }
+
+    if (unsub) unsubRef.current = unsub;
+
+    // 탭 변경 or 언마운트 시 구독 해제
+    return () => {
+      if (unsubRef.current) {
+        unsubRef.current();
+        unsubRef.current = null;
+      }
+    };
+  }, [tab]); // ← tab 변경 시에만 재실행
 
   /* ── 게시물 삭제 ── */
   const deletePost = useCallback(async (id: string, name: string) => {
@@ -177,14 +234,12 @@ export default function AdminPage() {
     showToast("설정을 저장했어요");
   }, [cfgDraft]);
 
-  const pendingReports  = reports.filter((r) => r.status === "pending").length;
-  const pendingContacts = contacts.filter((c) => c.status === "pending").length;
-
+  /* ── 탭 배지 계산 ── */
   const TABS: { id: Tab; icon: string; label: string; badge?: number }[] = [
-    { id: "reports",  icon: "🚨", label: "신고",   badge: pendingReports },
-    { id: "posts",    icon: "📋", label: "게시물", badge: posts.length },
+    { id: "reports",  icon: "🚨", label: "신고",   badge: badgeCounts.reports },
+    { id: "posts",    icon: "📋", label: "게시물", badge: badgeCounts.posts },
     { id: "faq",      icon: "❓", label: "FAQ" },
-    { id: "contacts", icon: "📩", label: "문의",   badge: pendingContacts },
+    { id: "contacts", icon: "📩", label: "문의",   badge: badgeCounts.contacts },
     { id: "config",   icon: "⚙️", label: "설정" },
   ];
 
@@ -352,9 +407,9 @@ export default function AdminPage() {
               </>
             ) : (
               <>
-                <Row label="앱 버전"       value={config.appVersion  || "미설정"} />
+                <Row label="앱 버전"        value={config.appVersion  || "미설정"} />
                 <Row label="고객센터 이메일" value={config.supportEmail || "미설정"} />
-                <Row label="공지사항"       value={config.notice       || "없음"} />
+                <Row label="공지사항"        value={config.notice       || "없음"} />
                 <div style={{ marginTop: 14, padding: "12px 14px", background: WARM, borderRadius: 10, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
                   💡 앱 버전은 배포 시 여기서 수동으로 업데이트하세요.<br />
                   고객센터 페이지에서 이 이메일로 연결됩니다.

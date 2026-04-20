@@ -1,17 +1,12 @@
 // next.config.ts
-// PWA 활성화: npm install next-pwa 실행 후 아래 주석 해제
-// 개발 중(dev)에는 PWA가 자동 비활성화됩니다.
+// next-pwa 5.6.0 활성화
 
 import type { NextConfig } from "next";
 
-// ── PWA 미설치 시 아래 블록 전체를 주석 처리하고 아래 export 사용 ──
-// next-pwa 설치: npm install next-pwa
-// 설치 후 아래 주석 해제
-
-/*
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const withPWA = require("next-pwa")({
   dest:        "public",
-  disable:     process.env.NODE_ENV === "development",
+  disable:     process.env.NODE_ENV === "development",  // 개발 환경에서는 PWA 비활성
   register:    true,
   skipWaiting: true,
   runtimeCaching: [
@@ -44,9 +39,12 @@ const withPWA = require("next-pwa")({
     },
   ],
 });
-*/
 
 const nextConfig: NextConfig = {
+  // ★ Turbopack 기본값(Next.js 16+) 사용 선언
+  //   next-pwa의 webpack 설정과 공존 — 경고 제거
+  turbopack: {},
+
   images: {
     remotePatterns: [
       {
@@ -63,8 +61,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-// ── PWA 비활성 시 ──
-export default nextConfig;
-
-// ── PWA 활성화 시 위 export 대신 아래 사용 ──
-// export default withPWA(nextConfig);
+export default withPWA(nextConfig);

@@ -1,9 +1,9 @@
 // ============================================================
 //  authStore.ts  적용 경로: src/store/authStore.ts
 //
-//  Fix: partnerProfileImgUrl 필드 추가
-//    - setupAuthListener 에서 파트너 profileImgUrl 함께 조회
-//    - Header 좌측 커플 아바타에 파트너 프로필 사진 표시 지원
+//  Fix:
+//    - partnerProfileImgUrl 필드 (이전 수정 유지)
+//    - fcmToken 필드 + setFcmToken 액션 추가 ★
 // ============================================================
 import { create }             from "zustand";
 import { onAuthStateChanged } from "firebase/auth";
@@ -14,18 +14,20 @@ interface AuthState {
   myUid:                string;
   myName:               string;
   partnerName:          string;
-  partnerProfileImgUrl: string | null;   // ★ 추가
+  partnerProfileImgUrl: string | null;
   startDate:            string;
   coupleId:             string | null;
   role:                 "admin" | "user";
   initialized:          boolean;
   profileImgUrl:        string | null;
+  fcmToken:             string | null;  // ★ 추가
 
-  setAuth:                 (data: Partial<Omit<AuthState, "setAuth" | "setProfileImgUrl" | "setPartnerProfileImgUrl" | "setCoupleId" | "setStartDate" | "reset">>) => void;
-  setProfileImgUrl:        (url: string)  => void;
-  setPartnerProfileImgUrl: (url: string | null) => void;  // ★ 추가
-  setCoupleId:             (id: string)   => void;
+  setAuth:                 (data: Partial<Omit<AuthState, "setAuth" | "setProfileImgUrl" | "setPartnerProfileImgUrl" | "setCoupleId" | "setStartDate" | "setFcmToken" | "reset">>) => void;
+  setProfileImgUrl:        (url: string) => void;
+  setPartnerProfileImgUrl: (url: string | null) => void;
+  setCoupleId:             (id: string) => void;
   setStartDate:            (date: string) => void;
+  setFcmToken:             (token: string | null) => void;  // ★ 추가
   reset:                   () => void;
 }
 
@@ -33,22 +35,24 @@ const initialState = {
   myUid:                "",
   myName:               "",
   partnerName:          "",
-  partnerProfileImgUrl: null,   // ★ 추가
+  partnerProfileImgUrl: null,
   startDate:            "",
   coupleId:             null,
   role:                 "user" as const,
   initialized:          false,
   profileImgUrl:        null,
+  fcmToken:             null,  // ★ 추가
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
   ...initialState,
   setAuth:                 (data) => set((s) => ({ ...s, ...data })),
-  setProfileImgUrl:        (url)  => set({ profileImgUrl: url }),
-  setPartnerProfileImgUrl: (url)  => set({ partnerProfileImgUrl: url }),  // ★ 추가
-  setCoupleId:             (id)   => set({ coupleId: id }),
-  setStartDate:            (date) => set({ startDate: date }),
-  reset:                   ()     => set({ ...initialState, initialized: true }),
+  setProfileImgUrl:        (url)   => set({ profileImgUrl: url }),
+  setPartnerProfileImgUrl: (url)   => set({ partnerProfileImgUrl: url }),
+  setCoupleId:             (id)    => set({ coupleId: id }),
+  setStartDate:            (date)  => set({ startDate: date }),
+  setFcmToken:             (token) => set({ fcmToken: token }),  // ★ 추가
+  reset:                   ()      => set({ ...initialState, initialized: true }),
 }));
 
 // ── Firebase Auth 상태 감지
@@ -66,7 +70,7 @@ export function setupAuthListener(): Promise<() => void> {
         const userData = userSnap.exists() ? userSnap.data() : {};
 
         let partnerName          = "";
-        let partnerProfileImgUrl: string | null = null;  // ★ 추가
+        let partnerProfileImgUrl: string | null = null;
         let startDate            = "";
 
         if (userData.coupleId) {
@@ -84,8 +88,8 @@ export function setupAuthListener(): Promise<() => void> {
               const partnerSnap = await getDoc(doc(db, "users", partnerUid));
               if (partnerSnap.exists()) {
                 const partnerData = partnerSnap.data();
-                partnerName          = partnerData.name           ?? "";
-                partnerProfileImgUrl = partnerData.profileImgUrl  ?? null;  // ★ 추가
+                partnerName          = partnerData.name          ?? "";
+                partnerProfileImgUrl = partnerData.profileImgUrl ?? null;
               }
             }
           }
@@ -95,7 +99,7 @@ export function setupAuthListener(): Promise<() => void> {
           myUid:                user.uid,
           myName:               userData.name          ?? user.displayName ?? "",
           partnerName,
-          partnerProfileImgUrl,   // ★ 추가
+          partnerProfileImgUrl,
           startDate,
           coupleId:             userData.coupleId      ?? null,
           role:                 userData.role          ?? "user",

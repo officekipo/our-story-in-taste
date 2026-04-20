@@ -1,9 +1,10 @@
 // ============================================================
 //  useWishlist.ts  적용 경로: src/hooks/useWishlist.ts
 //
-//  Fix 3: 새 글이 최상단에 오도록
-//    - addedDate(날짜 문자열) 대신 createdAt(ISO timestamp) 기준 정렬
-//    - subscribeWishlist 도 createdAt desc 로 변경
+//  Fix:
+//    - remove(): imgUrls 파라미터 추가
+//      → Firebase Storage URL만 필터링해서 이미지 삭제
+//      → useVisited.ts 와 동일한 패턴 적용
 // ============================================================
 "use client";
 
@@ -12,8 +13,9 @@ import {
   collection, query, where, orderBy, onSnapshot,
   addDoc, updateDoc, deleteDoc, doc,
 } from "firebase/firestore";
-import { db }          from "@/lib/firebase/config";
-import { useAuthStore } from "@/store/authStore";
+import { db }            from "@/lib/firebase/config";
+import { deleteImages }  from "@/lib/firebase/storage";   // ★ 추가
+import { useAuthStore }  from "@/store/authStore";
 import type { WishRecord } from "@/types";
 
 interface AddWishInput {
@@ -31,7 +33,7 @@ export function useWishlist() {
   useEffect(() => {
     if (!coupleId) { setLoading(false); return; }
 
-    // ★ createdAt desc → 새 글 항상 맨 위
+    // createdAt desc → 새 글 항상 맨 위
     // Firestore 인덱스: wishlist / coupleId(asc) + createdAt(desc)
     const q = query(
       collection(db, "wishlist"),
@@ -53,7 +55,7 @@ export function useWishlist() {
       addedByUid:  myUid,
       addedByName: myName,
       addedDate:   now.slice(0, 10),
-      createdAt:   now,               // ★ 정렬 기준
+      createdAt:   now,
       name:        input.name,
       sido:        input.sido,
       district:    input.district,
@@ -73,7 +75,17 @@ export function useWishlist() {
     await updateDoc(doc(db, "wishlist", id), clean);
   };
 
-  const remove = async (id: string) => {
+  // ★ Fix: imgUrls 파라미터 추가 → Storage 이미지 정리 후 문서 삭제
+  const remove = async (id: string, imgUrls: string[] = []) => {
+    // base64 데이터 URL 제외, Firebase Storage URL만 삭제
+    const storageUrls = imgUrls.filter(
+      (url) => url.startsWith("https://firebasestorage.googleapis.com")
+    );
+
+    if (storageUrls.length > 0) {
+      await deleteImages(storageUrls).catch(() => {}); // 실패해도 문서 삭제는 계속
+    }
+
     await deleteDoc(doc(db, "wishlist", id));
   };
 

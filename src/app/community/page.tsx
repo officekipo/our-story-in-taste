@@ -7,13 +7,14 @@
 //    3. isOwnPost 전달 (이전 수정 유지)
 //    4. 닉네임 비공개: showAuthorName=false → coupleLabel="익명 커플" (이전 수정 유지)
 //    5. 좋아요 +2 버그 수정 (이전 수정 유지)
+//    6. ★ submitReport: community_reports 컬렉션에 addDoc 추가
 // ============================================================
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
 import {
   collection, query, orderBy, onSnapshot,
-  doc, updateDoc, arrayUnion, arrayRemove, increment,
+  doc, updateDoc, arrayUnion, arrayRemove, increment, addDoc,
 } from "firebase/firestore";
 import { db }            from "@/lib/firebase/config";
 import { useAuthStore }  from "@/store/authStore";
@@ -31,16 +32,14 @@ const WARM   = "#FAF7F3";
 const ROSE   = "#C96B52";
 const HIDE_THRESHOLD = 3;
 
-// 수정됨 판별
 function wasEdited(raw: any): boolean {
   if (!raw.updatedAt || !raw.createdAt) return false;
   return new Date(raw.updatedAt).getTime() - new Date(raw.createdAt).getTime() > 60_000;
 }
 
 function toRecord(raw: any) {
-  // ★ showAuthorName=false 이면 authorName 숨김 (닉네임 비공개 버그 수정)
-  const showName   = raw.showAuthorName !== false;
-  const authorName = showName ? (raw.authorName ?? "") : "";
+  const showName    = raw.showAuthorName !== false;
+  const authorName  = showName ? (raw.authorName ?? "") : "";
   const coupleLabel = showName
     ? (raw.authorName ? `${raw.authorName}의 추천` : "커플 추천")
     : "익명 커플";
@@ -66,7 +65,7 @@ function toRecord(raw: any) {
     reportedBy:  Array.isArray(raw.reportedBy) ? raw.reportedBy : [],
     createdAt:   raw.createdAt   ?? "",
     updatedAt:   raw.updatedAt   ?? "",
-    edited:      wasEdited(raw),  // ★ 수정됨 여부
+    edited:      wasEdited(raw),
   };
 }
 
@@ -78,16 +77,14 @@ export default function CommunityPage() {
 
   const [records,      setRecords]      = useState<RecordType[]>([]);
   const [loading,      setLoading]      = useState(true);
-  const [reportTarget, setReportTarget] = useState<any | null>(null);
+  const [reportTarget, setReportTarget] = useState<RecordType | null>(null);
   const [toast,        setToast]        = useState<string | null>(null);
   const [wishedIds,    setWishedIds]    = useState<Set<string>>(new Set());
 
-  // ★ 필터 상태
   const [filterSido,    setFilterSido]    = useState("");
   const [filterCuisine, setFilterCuisine] = useState("");
   const [filterTag,     setFilterTag]     = useState("");
 
-  // 전체 태그 목록 (records에서 추출)
   const allTags = Array.from(new Set(records.flatMap((r) => r.tags))).sort();
 
   useEffect(() => {
@@ -103,13 +100,12 @@ export default function CommunityPage() {
     return () => unsub();
   }, []);
 
-  // ★ 필터 적용
   const displayed = records
     .filter((r) => !filterSido    || r.sido    === filterSido)
     .filter((r) => !filterCuisine || r.cuisine === filterCuisine)
     .filter((r) => !filterTag     || r.tags.includes(filterTag));
 
-  // ── 좋아요 ─────────────────────────────────────────────────
+  // ── 좋아요
   const handleLike = useCallback(async (record: RecordType) => {
     if (!myUid) return;
     const liked = record.likedBy.includes(myUid);
@@ -121,7 +117,7 @@ export default function CommunityPage() {
     } catch (e) { console.error("좋아요 오류:", e); }
   }, [myUid]);
 
-  // ── 위시 추가 ─────────────────────────────────────────────
+  // ── 위시 추가
   const handleWish = useCallback(async (record: RecordType) => {
     if (!coupleId || !myUid || !myName) return;
     if (wishedIds.has(record.id)) { setToast("이미 위시리스트에 추가했어요 ⭐"); return; }
@@ -143,21 +139,38 @@ export default function CommunityPage() {
     }
   }, [coupleId, myUid, myName, wishedIds, firebaseWish]);
 
-  // ── 신고 ─────────────────────────────────────────────────
-  const handleReport = useCallback(async (record: RecordType) => {
+  // ── 신고 모달 열기
+  const handleReport = useCallback((record: RecordType) => {
     if (!myUid) return;
     if (record.reportedBy.includes(myUid)) { setToast("이미 신고한 게시글이에요."); return; }
     setReportTarget(record);
   }, [myUid]);
 
-  const submitReport = useCallback(async (record: any) => {
-    if (!myUid) return;
-    await updateDoc(doc(db, "community", record.id), { reportedBy: arrayUnion(myUid) });
+  // ── ★ 신고 제출: community_reports addDoc + community reportedBy 업데이트
+  const submitReport = useCallback(async (reason: string, detail: string) => {
+    if (!myUid || !reportTarget) return;
+    const now = new Date().toISOString();
+
+    // 1) community_reports 컬렉션에 신고 문서 생성 (관리자 페이지에서 조회)
+    await addDoc(collection(db, "community_reports"), {
+      postId:     reportTarget.id,
+      postName:   reportTarget.name,
+      reporterUid: myUid,
+      reason,
+      detail:     detail || "",
+      reportedAt: now,
+      status:     "pending",
+    });
+
+    // 2) community 문서에 reportedBy 추가 (HIDE_THRESHOLD 초과 시 자동 숨김)
+    await updateDoc(doc(db, "community", reportTarget.id), {
+      reportedBy: arrayUnion(myUid),
+    });
+
     setReportTarget(null);
     setToast("신고가 접수됐어요.");
-  }, [myUid]);
+  }, [myUid, reportTarget]);
 
-  // ── 필터 칩 스타일 ────────────────────────────────────────
   const chipBase: React.CSSProperties = {
     padding: "6px 12px", borderRadius: 20, fontSize: 12,
     cursor: "pointer", border: "none", fontFamily: "inherit",
@@ -169,47 +182,31 @@ export default function CommunityPage() {
   return (
     <AppShell activeTab="community">
       <div style={{ padding: "16px 0" }}>
-        {/* 안내 */}
         <div style={{ margin: "0 16px 12px", padding: "12px 14px", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 12, fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
           💡 커플들이 공유한 맛집이에요. 글쓰기 시 <strong>커뮤니티 공유</strong>를 켜면 여기에 올라와요.
         </div>
 
-        {/* ★ 필터 바 */}
+        {/* 필터 바 */}
         <div style={{ display: "flex", gap: 6, padding: "0 16px 12px", overflowX: "auto", scrollbarWidth: "none" }}>
-          {/* 지역 필터 */}
           <div style={{ position: "relative", flexShrink: 0 }}>
-            <select
-              value={filterSido}
-              onChange={(e) => setFilterSido(e.target.value)}
-              style={{ ...(filterSido ? chipActive : chipInactive), paddingRight: 22 }}
-            >
+            <select value={filterSido} onChange={(e) => setFilterSido(e.target.value)} style={{ ...(filterSido ? chipActive : chipInactive), paddingRight: 22 }}>
               <option value="">지역 전체</option>
               {SIDO.map((s: string) => <option key={s} value={s}>{s}</option>)}
             </select>
             <span style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", fontSize: 8, color: filterSido ? "#fff" : MUTED, pointerEvents: "none" }}>▾</span>
           </div>
 
-          {/* 음식 필터 */}
           <div style={{ position: "relative", flexShrink: 0 }}>
-            <select
-              value={filterCuisine}
-              onChange={(e) => setFilterCuisine(e.target.value)}
-              style={{ ...(filterCuisine ? chipActive : chipInactive), paddingRight: 22 }}
-            >
+            <select value={filterCuisine} onChange={(e) => setFilterCuisine(e.target.value)} style={{ ...(filterCuisine ? chipActive : chipInactive), paddingRight: 22 }}>
               <option value="">음식 전체</option>
               {CUISINES.map((c: string) => <option key={c} value={c}>{c}</option>)}
             </select>
             <span style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", fontSize: 8, color: filterCuisine ? "#fff" : MUTED, pointerEvents: "none" }}>▾</span>
           </div>
 
-          {/* 태그 필터 */}
           {allTags.length > 0 && (
             <div style={{ position: "relative", flexShrink: 0 }}>
-              <select
-                value={filterTag}
-                onChange={(e) => setFilterTag(e.target.value)}
-                style={{ ...(filterTag ? chipActive : chipInactive), paddingRight: 22 }}
-              >
+              <select value={filterTag} onChange={(e) => setFilterTag(e.target.value)} style={{ ...(filterTag ? chipActive : chipInactive), paddingRight: 22 }}>
                 <option value="">태그 전체</option>
                 {allTags.map((t) => <option key={t} value={t}>#{t}</option>)}
               </select>
@@ -217,29 +214,20 @@ export default function CommunityPage() {
             </div>
           )}
 
-          {/* 초기화 버튼 */}
           {(filterSido || filterCuisine || filterTag) && (
-            <button
-              onClick={() => { setFilterSido(""); setFilterCuisine(""); setFilterTag(""); }}
-              style={{ ...chipInactive, color: ROSE, outline: `1px solid ${ROSE}` }}
-            >
+            <button onClick={() => { setFilterSido(""); setFilterCuisine(""); setFilterTag(""); }} style={{ ...chipInactive, color: ROSE, outline: `1px solid ${ROSE}` }}>
               초기화
             </button>
           )}
         </div>
 
-        {/* 결과 수 */}
         {(filterSido || filterCuisine || filterTag) && !loading && (
-          <p style={{ fontSize: 12, color: MUTED, margin: "0 16px 8px" }}>
-            검색 결과 {displayed.length}개
-          </p>
+          <p style={{ fontSize: 12, color: MUTED, margin: "0 16px 8px" }}>검색 결과 {displayed.length}개</p>
         )}
 
         {loading && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "0 16px" }}>
-            {[1,2,3].map((i) => (
-              <div key={i} style={{ height: 260, background: WARM, borderRadius: 16, opacity: 0.6 }} />
-            ))}
+            {[1,2,3].map((i) => <div key={i} style={{ height: 260, background: WARM, borderRadius: 16, opacity: 0.6 }} />)}
           </div>
         )}
 
@@ -266,20 +254,21 @@ export default function CommunityPage() {
                 isLiked={!!myUid && record.likedBy.includes(myUid)}
                 isWished={wishedIds.has(record.id)}
                 isOwnPost={!!myUid && record.authorUid === myUid}
-                isEdited={record.edited}   // ★ 수정됨 전달
+                isEdited={record.edited}
                 onLike={()   => handleLike(record)}
                 onWish={()   => handleWish(record)}
-                onReport={()  => handleReport(record)}
+                onReport={() => handleReport(record)}
               />
             ))}
           </div>
         )}
       </div>
 
+      {/* ★ onReport 시그니처 변경: (reason, detail) 전달 */}
       {reportTarget && (
         <ReportModal
           post={reportTarget}
-          onReport={() => submitReport(reportTarget)}
+          onReport={submitReport}
           onClose={() => setReportTarget(null)}
         />
       )}

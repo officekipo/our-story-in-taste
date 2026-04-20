@@ -11,12 +11,12 @@ importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js
 importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js");
 
 firebase.initializeApp({
-  apiKey:            "YOUR_API_KEY",               // ← 실제 값으로 교체
+  apiKey:            "AIzaSyCHM-xI01YRM0xrbGfXJ6wzTb1p6uggSJA",               // ← 실제 값으로 교체
   authDomain:        "our-taste-36646.firebaseapp.com",
   projectId:         "our-taste-36646",
   storageBucket:     "our-taste-36646.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",   // ← 실제 값으로 교체
-  appId:             "YOUR_APP_ID",                // ← 실제 값으로 교체
+  messagingSenderId: "458084666631",   // ← 실제 값으로 교체
+  appId:             "1:458084666631:web:c778ce47e58a70523209a2",                // ← 실제 값으로 교체
 });
 
 const messaging = firebase.messaging();

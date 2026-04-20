@@ -2,8 +2,9 @@
 //  wishlist/page.tsx  적용 경로: src/app/wishlist/page.tsx
 //
 //  Fix:
-//    - 위시 수정 기능 추가 (editingWish 상태 + WishModal editRecord prop)
-//    - handleSave: 본인 글만 wish 삭제 (이전 수정 유지)
+//    - handleDelete: confirmTarget.imgUrls 를 remove()에 전달 ★
+//      → WishCard 삭제 시 Storage 이미지 함께 정리
+//    - handleSave(다녀왔어요): remove(pendingWish.id, pendingWish.imgUrls) 전달 ★
 // ============================================================
 "use client";
 
@@ -37,10 +38,10 @@ export default function WishlistPage() {
   const records = DUMMY_MODE ? dummyRecords : firebaseWish.records;
   const loading = DUMMY_MODE ? false        : firebaseWish.loading;
 
-  const [activeTab,     setActiveTab]  = useState<WishTab>("all");
-  const [showWishModal, setWishModal]  = useState(false);
-  const [editingWish,   setEditingWish] = useState<WishRecord | null>(null);  // ★ 수정 대상
-  const [toast,         setToast]      = useState<string | null>(null);
+  const [activeTab,     setActiveTab]   = useState<WishTab>("all");
+  const [showWishModal, setWishModal]   = useState(false);
+  const [editingWish,   setEditingWish] = useState<WishRecord | null>(null);
+  const [toast,         setToast]       = useState<string | null>(null);
 
   const { myName, partnerName, coupleId, myUid } = useAuthStore();
   const { confirmTarget, closeConfirm, addModalOpen } = useUIStore();
@@ -76,7 +77,6 @@ export default function WishlistPage() {
       }, ...prev]);
     } else {
       if (editingWish) {
-        // ★ 수정 모드
         await firebaseWish.update(editingWish.id, {
           name: data.name, sido: data.sido, district: data.district,
           cuisine: data.cuisine, note: data.note, imgUrls: data.imgUrls,
@@ -85,7 +85,6 @@ export default function WishlistPage() {
         });
         setToast(`✏️ "${data.name}" 수정했어요!`);
       } else {
-        // 신규 추가
         await firebaseWish.add({
           name: data.name, sido: data.sido, district: data.district,
           cuisine: data.cuisine, note: data.note,
@@ -123,7 +122,8 @@ export default function WishlistPage() {
       await firebaseVisited.add(data, imgUrls);
       if (pendingWish) {
         if (pendingWish.addedByUid === myUid) {
-          await firebaseWish.remove(pendingWish.id);
+          // ★ 다녀왔어요 이동 시 위시 Storage 이미지도 정리
+          await firebaseWish.remove(pendingWish.id, pendingWish.imgUrls ?? []);
           setToast(`✅ "${data.name}" 다녀온 곳으로 이동했어요!`);
         } else {
           setToast(`✅ "${data.name}" 다녀온 곳에 추가했어요!`);
@@ -144,7 +144,8 @@ export default function WishlistPage() {
     if (DUMMY_MODE) {
       setDummyRecords(prev => prev.filter(r => r.id !== confirmTarget.id));
     } else {
-      await firebaseWish.remove(confirmTarget.id);
+      // ★ confirmTarget.imgUrls 전달 → Storage 이미지 함께 삭제
+      await firebaseWish.remove(confirmTarget.id, confirmTarget.imgUrls);
     }
     closeConfirm();
   };
@@ -190,7 +191,7 @@ export default function WishlistPage() {
             record={r}
             index={i}
             onVisited={() => handleVisited(r)}
-            onEdit={() => { setEditingWish(r); setWishModal(true); }}  // ★
+            onEdit={() => { setEditingWish(r); setWishModal(true); }}
           />
         ))}
         {displayed.length === 0 && (
@@ -209,7 +210,7 @@ export default function WishlistPage() {
 
       {showWishModal && (
         <WishModal
-          editRecord={editingWish ?? undefined}   // ★ 수정 모드 전달
+          editRecord={editingWish ?? undefined}
           onClose={() => { setWishModal(false); setEditingWish(null); }}
           onSave={handleSaveWish}
         />

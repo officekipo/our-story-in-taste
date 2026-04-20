@@ -1,7 +1,14 @@
 // src/app/providers.tsx
 //
-// Fix: GlobalLoader 내부 div/p 요소에 suppressHydrationWarning 추가
-//   → Dark Reader 등 브라우저 확장이 내부 요소의 속성을 수정해도 hydration 오류 미발생
+// ★ Hydration #418 근본 해결
+//
+// 원인: SSR 단계에서 서버는 initialized=false → GlobalLoader 렌더링
+//       클라이언트 hydration 단계에서 이미 다른 상태 → 불일치
+//
+// 해결: mounted 상태로 SSR/클라이언트 첫 렌더를 동일하게 맞춤
+//   1. mounted=false 구간: 서버와 동일한 "빈 로더"를 렌더링
+//   2. mounted=true 이후: 실제 auth 상태에 따라 렌더링
+//   → SSR HTML === 클라이언트 첫 렌더 → hydration 성공
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -13,67 +20,74 @@ import { checkAnniversary } from "@/lib/firebase/notifications";
 
 const PUBLIC_PATHS = ["/onboarding", "/login", "/signup", "/couple"];
 
-// ── 전체 화면 로딩 스피너 ──────────────────────────────
+// ── 로딩 스피너 (SSR과 클라이언트 첫 렌더가 완전히 동일해야 함) ──
 function GlobalLoader() {
   return (
-    // ★ suppressHydrationWarning: Dark Reader가 하위 요소 속성을 수정해도 오류 안 남
     <div
-      suppressHydrationWarning
       style={{
-        position: "fixed",
-        inset: 0,
+        position: "fixed", inset: 0,
         background: "#F5F0EB",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
         zIndex: 9999,
       }}
     >
-      <div suppressHydrationWarning style={{ fontSize: 40, marginBottom: 20 }}>🍽️</div>
+      <div style={{ fontSize: 40, marginBottom: 20 }}>🍽️</div>
       <div
-        suppressHydrationWarning
         style={{
-          width: 32,
-          height: 32,
+          width: 32, height: 32,
           border: "3px solid #F2D5CC",
           borderTopColor: "#C96B52",
           borderRadius: "50%",
           animation: "spin 0.8s linear infinite",
         }}
       />
-      <p suppressHydrationWarning style={{ marginTop: 16, fontSize: 13, color: "#8A8078" }}>
+      <p style={{ marginTop: 16, fontSize: 13, color: "#8A8078" }}>
         우리의 맛지도
       </p>
-      <style suppressHydrationWarning>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
-// ── 인증 가드 ─────────────────────────────────────────
+// ── 인증 가드 ─────────────────────────────────────────────
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
   const pathname = usePathname();
   const { initialized, myUid } = useAuthStore();
 
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  // ★ 핵심: mounted 전까지 GlobalLoader만 렌더
+  //    → 서버 HTML(GlobalLoader)과 클라이언트 첫 렌더(GlobalLoader)가 일치
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
+  // 리다이렉트는 항상 useEffect 안에서만
   useEffect(() => {
-    if (!initialized) return;
-    if (isPublic) return;
-    if (!myUid) {
+    if (!mounted || !initialized) return;
+    const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+    if (!isPublic && !myUid) {
       router.replace("/login");
     }
-  }, [initialized, myUid, isPublic, router]);
+  }, [mounted, initialized, myUid, pathname, router]);
 
+  // SSR + 첫 hydration: GlobalLoader (서버 HTML과 동일)
+  if (!mounted) return <GlobalLoader />;
+
+  // Firebase 초기화 전
   if (!initialized) return <GlobalLoader />;
+
+  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+
+  // 공개 경로
   if (isPublic) return <>{children}</>;
+
+  // 비로그인 → 리다이렉트 대기 중
   if (!myUid) return <GlobalLoader />;
 
   return <>{children}</>;
 }
 
-// ── 기념일 토스트 ──────────────────────────────────────
+// ── 기념일 토스트 ──────────────────────────────────────────
 function AnniversaryToast() {
   const { startDate } = useAuthStore();
   const [msg, setMsg] = useState<string | null>(null);
@@ -94,21 +108,13 @@ function AnniversaryToast() {
   return (
     <div
       style={{
-        position: "fixed",
-        bottom: 90,
-        left: "50%",
+        position: "fixed", bottom: 90, left: "50%",
         transform: "translateX(-50%)",
         background: "linear-gradient(135deg, #C96B52, #E8897A)",
-        color: "#fff",
-        padding: "12px 22px",
-        borderRadius: 24,
-        fontSize: 13,
-        fontWeight: 700,
-        zIndex: 999,
-        whiteSpace: "nowrap",
-        boxShadow: "0 4px 20px rgba(201,107,82,0.4)",
-        animation: "fadeUp 0.3s ease both",
-        pointerEvents: "none",
+        color: "#fff", padding: "12px 22px", borderRadius: 24,
+        fontSize: 13, fontWeight: 700, zIndex: 999,
+        whiteSpace: "nowrap", boxShadow: "0 4px 20px rgba(201,107,82,0.4)",
+        animation: "fadeUp 0.3s ease both", pointerEvents: "none",
       }}
     >
       🎉 {msg}
@@ -116,23 +122,18 @@ function AnniversaryToast() {
   );
 }
 
-// ── 메인 Providers ──────────────────────────────────────
+// ── 메인 Providers ────────────────────────────────────────
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: { queries: { staleTime: 60 * 1000, retry: 1 } },
-      }),
+    () => new QueryClient({
+      defaultOptions: { queries: { staleTime: 60 * 1000, retry: 1 } },
+    }),
   );
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
-    setupAuthListener().then((unsub) => {
-      unsubscribe = unsub;
-    });
-    return () => {
-      unsubscribe?.();
-    };
+    setupAuthListener().then((unsub) => { unsubscribe = unsub; });
+    return () => { unsubscribe?.(); };
   }, []);
 
   return (

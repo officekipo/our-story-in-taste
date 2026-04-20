@@ -1,9 +1,9 @@
 // src/components/community/ReportModal.tsx
 "use client";
 
-import { useState }          from "react";
-import { REPORT_REASONS }    from "@/types";
-import { Modal, ModalHeader } from "@/components/common/Modal";
+import { useState }           from "react";
+import { REPORT_REASONS }     from "@/types";
+import { Modal, ModalHeader }  from "@/components/common/Modal";
 
 const ROSE   = "#C96B52";
 const INK    = "#1A1412";
@@ -12,15 +12,30 @@ const BORDER = "#E2DDD8";
 const WARM   = "#FAF7F3";
 
 interface ReportModalProps {
-  post: any;
-  onClose:  () => void;
-  onReport: () => void;
+  post:      any;
+  onClose:   () => void;
+  // ★ reason, detail 을 콜백으로 전달
+  onReport:  (reason: string, detail: string) => Promise<void>;
 }
 
 export function ReportModal({ onClose, onReport }: ReportModalProps) {
-  const [reason, setReason] = useState("");
-  const [detail, setDetail] = useState("");
-  const [done,   setDone]   = useState(false);
+  const [reason,     setReason]     = useState("");
+  const [detail,     setDetail]     = useState("");
+  const [done,       setDone]       = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!reason || submitting) return;
+    setSubmitting(true);
+    try {
+      await onReport(reason, detail.trim());
+      setDone(true);
+    } catch (e) {
+      console.error("신고 오류:", e);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <Modal onClose={onClose} maxWidth={400}>
@@ -56,10 +71,12 @@ export function ReportModal({ onClose, onReport }: ReportModalProps) {
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={onClose} style={{ flex: 1, padding: 13, background: WARM, border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>취소</button>
             <button
-              onClick={() => { if (!reason) return; onReport(); setDone(true); }}
-              disabled={!reason}
-              style={{ flex: 2, padding: 13, background: reason ? "#EF4444" : "#C0B8B0", border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: reason ? "pointer" : "default", fontFamily: "inherit" }}
-            >신고 제출</button>
+              onClick={handleSubmit}
+              disabled={!reason || submitting}
+              style={{ flex: 2, padding: 13, background: reason && !submitting ? "#EF4444" : "#C0B8B0", border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: reason && !submitting ? "pointer" : "default", fontFamily: "inherit" }}
+            >
+              {submitting ? "접수 중…" : "신고 제출"}
+            </button>
           </div>
         </>
       )}

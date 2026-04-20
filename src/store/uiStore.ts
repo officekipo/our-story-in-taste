@@ -23,9 +23,15 @@ interface UIState {
   clearToast: ()            => void;
 
   // 삭제 확인 다이얼로그
-  confirmTarget: { id: string; type: "visited" | "wish" | "comm"; msg: string } | null;
-  openConfirm:   (id: string, type: "visited" | "wish" | "comm", msg: string) => void;
-  closeConfirm:  () => void;
+  // ★ imgUrls 추가 — Storage 이미지 정리에 사용
+  confirmTarget: {
+    id:      string;
+    type:    "visited" | "wish" | "comm";
+    msg:     string;
+    imgUrls: string[];   // ★ 추가
+  } | null;
+  openConfirm:  (id: string, type: "visited" | "wish" | "comm", msg: string, imgUrls?: string[]) => void;
+  closeConfirm: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -44,6 +50,8 @@ export const useUIStore = create<UIState>((set) => ({
   clearToast: ()         => set({ toastMsg: null }),
 
   confirmTarget: null,
-  openConfirm:  (id, type, msg) => set({ confirmTarget: { id, type, msg } }),
-  closeConfirm: ()              => set({ confirmTarget: null }),
+  // ★ imgUrls 기본값 [] — 기존 호출부(visited, comm) 변경 없이 호환
+  openConfirm:  (id, type, msg, imgUrls = []) =>
+    set({ confirmTarget: { id, type, msg, imgUrls } }),
+  closeConfirm: () => set({ confirmTarget: null }),
 }));

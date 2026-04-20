@@ -2,11 +2,8 @@
 //  WishCard.tsx  적용 경로: src/components/wishlist/WishCard.tsx
 //
 //  Fix:
-//    1. 이미지 없으면 ImageSlider height 90px (있으면 160px 유지)
-//    2. note whiteSpace: "pre-wrap" → 줄바꿈 적용
-//    3. ImageSlider lightbox={true} → 이미지 클릭 시 원본 크게 보기
-//    4. ✏️ 수정 버튼 추가 (isMe 일 때만 노출)
-//    5. 삭제 버튼 isMe 일 때만 노출 (이전 수정 유지)
+//    - openConfirm 호출 시 record.imgUrls 전달 ★
+//      → uiStore confirmTarget에 imgUrls 포함 → handleDelete에서 Storage 정리 가능
 // ============================================================
 "use client";
 
@@ -29,7 +26,7 @@ interface WishCardProps {
   record:     WishRecord;
   index:      number;
   onVisited?: () => void;
-  onEdit?:    () => void;   // ★ 수정 버튼 핸들러
+  onEdit?:    () => void;
 }
 
 export function WishCard({ record, index, onVisited, onEdit }: WishCardProps) {
@@ -63,7 +60,6 @@ export function WishCard({ record, index, onVisited, onEdit }: WishCardProps) {
   return (
     <div style={{ background: "#fff", borderRadius: 16, marginBottom: 14, overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.07)", animationDelay: `${index * 0.05}s` }}>
 
-      {/* ★ lightbox={true} + 이미지 없으면 height 90 */}
       <ImageSlider
         images={record.imgUrls ?? []}
         emoji={record.emoji}
@@ -91,7 +87,6 @@ export function WishCard({ record, index, onVisited, onEdit }: WishCardProps) {
           <span style={{ fontSize: 12, color: MUTED }}>📅 {record.addedDate}</span>
         </div>
 
-        {/* ★ pre-wrap → 줄바꿈 적용 */}
         {record.note && (
           <div style={{ background: WARM, borderRadius: 10, padding: "9px 12px", marginBottom: 12, fontSize: 13, color: MUTED, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
             {record.note}
@@ -107,7 +102,6 @@ export function WishCard({ record, index, onVisited, onEdit }: WishCardProps) {
             ✅ 다녀왔어요!
           </button>
 
-          {/* ★ 수정 버튼: isMe만 */}
           {isMe && onEdit && (
             <button
               onClick={onEdit}
@@ -117,10 +111,17 @@ export function WishCard({ record, index, onVisited, onEdit }: WishCardProps) {
             </button>
           )}
 
-          {/* 삭제 버튼: isMe만 */}
+          {/* ★ imgUrls 전달 추가 */}
           {isMe && (
             <button
-              onClick={() => openConfirm(record.id, "wish", `"${record.name}"을 위시리스트에서 제거할까요?`)}
+              onClick={() =>
+                openConfirm(
+                  record.id,
+                  "wish",
+                  `"${record.name}"을 위시리스트에서 제거할까요?`,
+                  record.imgUrls ?? []   // ★
+                )
+              }
               style={{ width: 44, padding: 10, background: WARM, border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}
             >
               🗑️
