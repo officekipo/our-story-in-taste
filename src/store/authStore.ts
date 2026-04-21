@@ -20,14 +20,16 @@ interface AuthState {
   role:                 "admin" | "user";
   initialized:          boolean;
   profileImgUrl:        string | null;
-  fcmToken:             string | null;  // ★ 추가
+  fcmToken:             string | null;
+  emailVerified:        boolean;          // ★ 추가
 
   setAuth:                 (data: Partial<Omit<AuthState, "setAuth" | "setProfileImgUrl" | "setPartnerProfileImgUrl" | "setCoupleId" | "setStartDate" | "setFcmToken" | "reset">>) => void;
   setProfileImgUrl:        (url: string) => void;
   setPartnerProfileImgUrl: (url: string | null) => void;
   setCoupleId:             (id: string) => void;
   setStartDate:            (date: string) => void;
-  setFcmToken:             (token: string | null) => void;  // ★ 추가
+  setFcmToken:             (token: string | null) => void;
+  setEmailVerified:        (v: boolean) => void;              // ★ 추가
   reset:                   () => void;
 }
 
@@ -41,7 +43,8 @@ const initialState = {
   role:                 "user" as const,
   initialized:          false,
   profileImgUrl:        null,
-  fcmToken:             null,  // ★ 추가
+  fcmToken:             null,
+  emailVerified:        false,  // ★ 추가
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -51,7 +54,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   setPartnerProfileImgUrl: (url)   => set({ partnerProfileImgUrl: url }),
   setCoupleId:             (id)    => set({ coupleId: id }),
   setStartDate:            (date)  => set({ startDate: date }),
-  setFcmToken:             (token) => set({ fcmToken: token }),  // ★ 추가
+  setFcmToken:             (token) => set({ fcmToken: token }),
+  setEmailVerified:        (v)     => set({ emailVerified: v }),  // ★ 추가
   reset:                   ()      => set({ ...initialState, initialized: true }),
 }));
 
@@ -105,6 +109,7 @@ export function setupAuthListener(): Promise<() => void> {
           role:                 userData.role          ?? "user",
           profileImgUrl:        userData.profileImgUrl ?? user.photoURL   ?? null,
           initialized:          true,
+          emailVerified:        user.emailVerified,  // ★ 추가
         });
       } catch (err) {
         console.error("setupAuthListener error:", err);

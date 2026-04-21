@@ -1,6 +1,4 @@
 // src/app/stats/page.tsx
-// DUMMY_MODE = true  → SAMPLE_VISITED 사용
-// DUMMY_MODE = false → useVisited() 훅 사용 (Firebase 연동 후)
 "use client";
 
 import { useMemo }               from "react";
@@ -13,17 +11,18 @@ import { RevisitBar }            from "@/components/stats/RevisitBar";
 import { RestaurantRanking }     from "@/components/stats/RestaurantRanking";
 import { SAMPLE_VISITED }        from "@/lib/sample-data";
 import { useVisited }            from "@/hooks/useVisited";
+import { useWishlist }           from "@/hooks/useWishlist";  // ★ 추가
 
-// ── 전환 스위치 ──────────────────────────────────────────
 const DUMMY_MODE = false;
-// ────────────────────────────────────────────────────────
-
 const ROSE = "#C96B52";
 
 export default function StatsPage() {
-  const firebase = useVisited();
-  const visited  = DUMMY_MODE ? SAMPLE_VISITED : firebase.records;
-  const loading  = DUMMY_MODE ? false          : firebase.loading;
+  const firebase     = useVisited();
+  const firebaseWish = useWishlist();  // ★ 추가
+
+  const visited   = DUMMY_MODE ? SAMPLE_VISITED : firebase.records;
+  const loading   = DUMMY_MODE ? false          : firebase.loading;
+  const wishCount = DUMMY_MODE ? 0 : firebaseWish.records.length;  // ★ 실제 개수
 
   const total      = visited.length;
   const rv         = visited.filter(r => r.revisit === true).length;
@@ -53,7 +52,7 @@ export default function StatsPage() {
   );
 
   return (
-    <AppShell activeTab="stats" headerProps={{ visitedCount: total, avgRating, wishCount: 3 }}>
+    <AppShell activeTab="stats" headerProps={{ visitedCount: total, avgRating, wishCount }}>
       <div style={{ padding: "16px 16px 0" }}>
         <StatCards total={total} monthAvg={monthAvg} revisitPct={revisitPct} />
         <BarChart months={months} byMonth={byMonth} monthAvg={monthAvg} />

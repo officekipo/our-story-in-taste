@@ -304,7 +304,7 @@ function ProfilePhotoRow() {
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { myName, partnerName, startDate, coupleId, role, profileImgUrl,
+  const { myName, partnerName, startDate, coupleId, role, profileImgUrl, partnerProfileImgUrl,
           setAuth, setStartDate: setAuthStartDate } = useAuthStore();
 
   const dday = calcDDay(startDate || "2023-01-01");
@@ -344,7 +344,11 @@ export default function SettingsPage() {
             <div style={{ width:64, height:64, borderRadius:"50%", background:ROSE, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:26, fontWeight:800 }}>
               {profileImgUrl ? <img src={profileImgUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : myName[0]}
             </div>
-            <div style={{ position:"absolute", bottom:-4, right:-8, width:30, height:30, borderRadius:"50%", background:SAGE, border:"2px solid #fff", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:12, fontWeight:700 }}>{partnerName[0]}</div>
+            <div style={{ position:"absolute", bottom:-4, right:-8, width:30, height:30, borderRadius:"50%", background:SAGE, border:"2px solid #fff", overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:12, fontWeight:700 }}>
+              {partnerProfileImgUrl
+                ? <img src={partnerProfileImgUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                : partnerName[0]}
+            </div>
           </div>
           <div style={{ flex:1 }}>
             <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>

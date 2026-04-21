@@ -1,67 +1,42 @@
 // src/app/providers.tsx
-//
-// ★ Hydration #418 근본 해결
-//
-// 원인: SSR 단계에서 서버는 initialized=false → GlobalLoader 렌더링
-//       클라이언트 hydration 단계에서 이미 다른 상태 → 불일치
-//
-// 해결: mounted 상태로 SSR/클라이언트 첫 렌더를 동일하게 맞춤
-//   1. mounted=false 구간: 서버와 동일한 "빈 로더"를 렌더링
-//   2. mounted=true 이후: 실제 auth 상태에 따라 렌더링
-//   → SSR HTML === 클라이언트 첫 렌더 → hydration 성공
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { setupAuthListener } from "@/store/authStore";
-import { useAuthStore } from "@/store/authStore";
-import { checkAnniversary } from "@/lib/firebase/notifications";
+import { useAuthStore }      from "@/store/authStore";
+import { checkAnniversary }  from "@/lib/firebase/notifications";
+import { useFCM }            from "@/hooks/useFCM";
 
 const PUBLIC_PATHS = ["/onboarding", "/login", "/signup", "/couple"];
 
-// ── 로딩 스피너 (SSR과 클라이언트 첫 렌더가 완전히 동일해야 함) ──
 function GlobalLoader() {
   return (
-    <div
-      style={{
-        position: "fixed", inset: 0,
-        background: "#F5F0EB",
-        display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        zIndex: 9999,
-      }}
-    >
-      <div style={{ fontSize: 40, marginBottom: 20 }}>🍽️</div>
-      <div
-        style={{
-          width: 32, height: 32,
-          border: "3px solid #F2D5CC",
-          borderTopColor: "#C96B52",
-          borderRadius: "50%",
-          animation: "spin 0.8s linear infinite",
-        }}
-      />
-      <p style={{ marginTop: 16, fontSize: 13, color: "#8A8078" }}>
-        우리의 맛지도
-      </p>
+    <div className="fixed inset-0 z-9999 flex flex-col items-center justify-center bg-bg">
+      <div className="mb-5 text-[40px]">🍽️</div>
+      <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-rose-light border-t-rose" />
+      <p className="mt-4 text-[13px] text-muted">우리의 맛지도</p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
-// ── 인증 가드 ─────────────────────────────────────────────
+// ★ mounted=true 이후에만 렌더되는 컴포넌트 안에서 호출
+//   → SSR 단계에서는 절대 실행되지 않아 Hydration #418 방지
+function FCMInitializer() {
+  useFCM();
+  return null;
+}
+
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
   const pathname = usePathname();
-  const { initialized, myUid } = useAuthStore();
+  const { initialized, myUid, emailVerified } = useAuthStore();
 
-  // ★ 핵심: mounted 전까지 GlobalLoader만 렌더
-  //    → 서버 HTML(GlobalLoader)과 클라이언트 첫 렌더(GlobalLoader)가 일치
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  // 리다이렉트는 항상 useEffect 안에서만
   useEffect(() => {
     if (!mounted || !initialized) return;
     const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
@@ -77,17 +52,57 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   if (!initialized) return <GlobalLoader />;
 
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
-
-  // 공개 경로
   if (isPublic) return <>{children}</>;
+  if (!myUid)   return <GlobalLoader />;
 
-  // 비로그인 → 리다이렉트 대기 중
-  if (!myUid) return <GlobalLoader />;
+  // ★ 이메일 미인증 차단 — 로그인은 됐지만 이메일 인증 전인 경우
+  if (!emailVerified) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "0 24px", gap: 16, background: "#FAF7F3" }}>
+        <div style={{ fontSize: 48 }}>📧</div>
+        <p style={{ fontSize: 17, fontWeight: 800, color: "#1A1412", textAlign: "center" }}>이메일 인증이 필요해요</p>
+        <p style={{ fontSize: 13, color: "#8A8078", textAlign: "center", lineHeight: 1.7 }}>
+          가입 시 보낸 인증 메일의 링크를 클릭한 후<br />아래 버튼을 눌러주세요.
+        </p>
+        <button
+          onClick={async () => {
+            await import("firebase/auth").then(({ getAuth }) => getAuth().currentUser?.reload());
+            window.location.reload();
+          }}
+          style={{ width: "100%", maxWidth: 320, padding: 14, background: "#C96B52", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+        >
+          ✅ 인증 완료했어요
+        </button>
+        <button
+          onClick={async () => {
+            const { sendEmailVerification, getAuth } = await import("firebase/auth");
+            const user = getAuth().currentUser;
+            if (user) await sendEmailVerification(user);
+            alert("인증 메일을 재발송했어요. 메일함을 확인해주세요.");
+          }}
+          style={{ background: "none", border: "none", color: "#8A8078", fontSize: 13, cursor: "pointer", fontFamily: "inherit", textDecoration: "underline" }}
+        >
+          📨 인증 메일 재발송
+        </button>
+        <button
+          onClick={() => { import("firebase/auth").then(({ getAuth, signOut }) => signOut(getAuth())); }}
+          style={{ background: "none", border: "none", color: "#C0B8B0", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+        >
+          로그아웃
+        </button>
+      </div>
+    );
+  }
 
-  return <>{children}</>;
+  // ★ mounted + initialized + 로그인 + 인증 완료 후에만 FCMInitializer 렌더
+  return (
+    <>
+      {children}
+      <FCMInitializer />
+    </>
+  );
 }
 
-// ── 기념일 토스트 ──────────────────────────────────────────
 function AnniversaryToast() {
   const { startDate } = useAuthStore();
   const [msg, setMsg] = useState<string | null>(null);
@@ -106,23 +121,12 @@ function AnniversaryToast() {
 
   if (!msg) return null;
   return (
-    <div
-      style={{
-        position: "fixed", bottom: 90, left: "50%",
-        transform: "translateX(-50%)",
-        background: "linear-gradient(135deg, #C96B52, #E8897A)",
-        color: "#fff", padding: "12px 22px", borderRadius: 24,
-        fontSize: 13, fontWeight: 700, zIndex: 999,
-        whiteSpace: "nowrap", boxShadow: "0 4px 20px rgba(201,107,82,0.4)",
-        animation: "fadeUp 0.3s ease both", pointerEvents: "none",
-      }}
-    >
+    <div className="pointer-events-none fixed bottom-[90px] left-1/2 z-999 whitespace-nowrap rounded-3xl bg-linear-to-br from-rose to-rose-pill px-[22px] py-3 text-[13px] font-bold text-white shadow-[0_4px_20px_rgba(201,107,82,0.4)] animate-[fadeUp_0.3s_ease_both] [-webkit-transform:translateX(-50%)] transform-[translateX(-50%)]">
       🎉 {msg}
     </div>
   );
 }
 
-// ── 메인 Providers ────────────────────────────────────────
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () => new QueryClient({
