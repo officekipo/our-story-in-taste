@@ -1,29 +1,22 @@
 // ============================================================
 //  src/app/api/admin/user/[uid]/route.ts
-//
-//  관리자 전용 유저 관리 API
-//
-//  GET   → Firebase Auth 정보 (email, emailVerified, 마지막 로그인, 가입일)
-//  PATCH → { password }        비밀번호 변경
-//          { emailVerified }   이메일 인증 강제 처리
 // ============================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuth, adminDb } from "@/lib/firebase/admin";
+import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 
 async function verifyAdmin(req: NextRequest): Promise<boolean> {
   const header = req.headers.get("Authorization");
   if (!header?.startsWith("Bearer ")) return false;
   try {
-    const decoded  = await adminAuth.verifyIdToken(header.slice(7));
-    const userSnap = await adminDb.doc(`users/${decoded.uid}`).get();
+    const decoded  = await getAdminAuth().verifyIdToken(header.slice(7));
+    const userSnap = await getAdminDb().doc(`users/${decoded.uid}`).get();
     return userSnap.data()?.role === "admin";
   } catch {
     return false;
   }
 }
 
-/* ── GET: Auth 정보 조회 ────────────────────────────────── */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ uid: string }> },
@@ -35,10 +28,10 @@ export async function GET(
   const { uid } = await params;
 
   try {
-    const authUser = await adminAuth.getUser(uid);
+    const authUser = await getAdminAuth().getUser(uid);
     return NextResponse.json({
       email:          authUser.email                    ?? null,
-      emailVerified:  authUser.emailVerified            ?? false,  // ★ 추가
+      emailVerified:  authUser.emailVerified            ?? false,
       lastSignInTime: authUser.metadata.lastSignInTime  ?? null,
       creationTime:   authUser.metadata.creationTime    ?? null,
     });
@@ -47,7 +40,6 @@ export async function GET(
   }
 }
 
-/* ── PATCH: 비밀번호 변경 or 이메일 인증 강제 처리 ────────── */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ uid: string }> },
@@ -59,10 +51,10 @@ export async function PATCH(
   const { uid } = await params;
   const body = await req.json().catch(() => ({}));
 
-  // ── 이메일 인증 강제 처리 ──────────────────────────────
+  // 이메일 인증 강제 처리
   if ("emailVerified" in body) {
     try {
-      await adminAuth.updateUser(uid, { emailVerified: true });
+      await getAdminAuth().updateUser(uid, { emailVerified: true });
       return NextResponse.json({ ok: true, emailVerified: true });
     } catch (err) {
       console.error("emailVerified update error:", err);
@@ -70,13 +62,13 @@ export async function PATCH(
     }
   }
 
-  // ── 비밀번호 변경 ──────────────────────────────────────
+  // 비밀번호 변경
   if ("password" in body) {
     if (!body.password || String(body.password).length < 6) {
       return NextResponse.json({ error: "비밀번호는 6자 이상이어야 해요" }, { status: 400 });
     }
     try {
-      await adminAuth.updateUser(uid, { password: String(body.password) });
+      await getAdminAuth().updateUser(uid, { password: String(body.password) });
       return NextResponse.json({ ok: true });
     } catch (err) {
       console.error("password change error:", err);
