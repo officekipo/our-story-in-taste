@@ -23,28 +23,10 @@ const PUBLIC_PATHS = ["/onboarding", "/login", "/signup", "/couple"];
 // ── 로딩 스피너 (SSR과 클라이언트 첫 렌더가 완전히 동일해야 함) ──
 function GlobalLoader() {
   return (
-    <div
-      style={{
-        position: "fixed", inset: 0,
-        background: "#F5F0EB",
-        display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        zIndex: 9999,
-      }}
-    >
-      <div style={{ fontSize: 40, marginBottom: 20 }}>🍽️</div>
-      <div
-        style={{
-          width: 32, height: 32,
-          border: "3px solid #F2D5CC",
-          borderTopColor: "#C96B52",
-          borderRadius: "50%",
-          animation: "spin 0.8s linear infinite",
-        }}
-      />
-      <p style={{ marginTop: 16, fontSize: 13, color: "#8A8078" }}>
-        우리의 맛지도
-      </p>
+    <div className="fixed inset-0 z-9999 flex flex-col items-center justify-center bg-bg">
+      <div className="mb-5 text-[40px]">🍽️</div>
+      <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-rose-light border-t-rose" />
+      <p className="mt-4 text-[13px] text-muted">우리의 맛지도</p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
@@ -106,17 +88,7 @@ function AnniversaryToast() {
 
   if (!msg) return null;
   return (
-    <div
-      style={{
-        position: "fixed", bottom: 90, left: "50%",
-        transform: "translateX(-50%)",
-        background: "linear-gradient(135deg, #C96B52, #E8897A)",
-        color: "#fff", padding: "12px 22px", borderRadius: 24,
-        fontSize: 13, fontWeight: 700, zIndex: 999,
-        whiteSpace: "nowrap", boxShadow: "0 4px 20px rgba(201,107,82,0.4)",
-        animation: "fadeUp 0.3s ease both", pointerEvents: "none",
-      }}
-    >
+    <div className="pointer-events-none fixed bottom-[90px] left-1/2 z-999 whitespace-nowrap rounded-3xl bg-linear-to-br from-rose to-rose-pill px-[22px] py-3 text-[13px] font-bold text-white shadow-[0_4px_20px_rgba(201,107,82,0.4)] animate-[fadeUp_0.3s_ease_both] [-webkit-transform:translateX(-50%)] transform-[translateX(-50%)]">
       🎉 {msg}
     </div>
   );

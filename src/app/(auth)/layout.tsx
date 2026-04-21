@@ -3,40 +3,19 @@
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        maxWidth: 480,
-        margin: "0 auto",
-        background: "linear-gradient(160deg, #FDF1ED 0%, #F5F0EB 50%)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "40px 24px",
-      }}
-    >
+    <div className="mx-auto flex min-h-screen max-w-[480px] flex-col items-center justify-center bg-[linear-gradient(160deg,#FDF1ED_0%,#F5F0EB_50%)] px-6 py-10">
       {/* 앱 로고 */}
-      <div style={{ marginBottom: 32, textAlign: "center" }}>
-        <p style={{ fontSize: 10, fontWeight: 700, color: "#D4956A", letterSpacing: 3, textTransform: "uppercase", marginBottom: 6 }}>
+      <div className="mb-8 text-center">
+        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[3px] text-accent">
           OUR STORY IN TASTE
         </p>
-        <h1 style={{ fontSize: 30, fontWeight: 800, color: "#1A1412", letterSpacing: -0.5 }}>
+        <h1 className="text-[30px] font-extrabold tracking-[-0.5px] text-ink">
           우리의 맛지도
         </h1>
       </div>
 
       {/* 흰 카드 */}
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 380,
-          background: "#fff",
-          borderRadius: 24,
-          boxShadow: "0 4px 24px rgba(201,107,82,0.1)",
-          padding: "28px 28px 32px",
-        }}
-      >
+      <div className="w-full max-w-[380px] rounded-3xl bg-white px-7 pb-8 pt-7 shadow-[0_4px_24px_rgba(201,107,82,0.1)]">
         {children}
       </div>
     </div>

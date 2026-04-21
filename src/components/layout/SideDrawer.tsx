@@ -5,16 +5,6 @@ import { useRouter }    from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { calcDDay }     from "@/lib/utils/date";
 
-const ROSE    = "#C96B52";
-const ROSE_LT = "#F2D5CC";
-const SAGE    = "#6B9E7E";
-const PURPLE  = "#7B6BAE";
-const INK     = "#1A1412";
-const MUTED   = "#8A8078";
-const BORDER  = "#E2DDD8";
-const WARM    = "#FAF7F3";
-const CREAM   = "#F0EBE3";
-
 interface SideDrawerProps {
   open:    boolean;
   onClose: () => void;
@@ -49,111 +39,101 @@ export function SideDrawer({ open, onClose }: SideDrawerProps) {
       {/* dim 오버레이 */}
       <div
         onClick={onClose}
-        style={{
-          position: "fixed", inset: 0,
-          background: "rgba(0,0,0,0.4)",
-          zIndex: 400,
-          opacity: open ? 1 : 0,
-          pointerEvents: open ? "auto" : "none",
-          transition: "opacity 0.25s",
-        }}
+        className={`fixed inset-0 z-400 bg-black/40 transition-opacity duration-200 ${
+          open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+        }`}
       />
 
       {/* 드로어 패널 */}
       <div
-        style={{
-          position:      "fixed",
-          top:           0,
-          right:         0,
-          bottom:        0,
-          width:         "72%",
-          maxWidth:      300,
-          background:    "#fff",
-          zIndex:        401,
-          transform:     open ? "translateX(0)" : "translateX(100%)",
-          transition:    "transform 0.28s cubic-bezier(0.32,1,0.4,1)",
-          overflowY:     "auto",
-          boxShadow:     "-4px 0 24px rgba(0,0,0,0.12)",
-          display:       "flex",
-          flexDirection: "column",
-        }}
+        className={`fixed bottom-0 right-0 top-0 z-401 flex w-[72%] max-w-[300px] flex-col overflow-y-auto bg-white shadow-[-4px_0_24px_rgba(0,0,0,0.12)] transition-transform duration-300 ease-[cubic-bezier(0.32,1,0.4,1)] ${
+          open ? "translate-x-0" : "translate-x-full"
+        }`}
       >
         {/* 상단 프로필 영역 */}
-        <div style={{ background: `linear-gradient(135deg, ${ROSE_LT}, ${CREAM})`, padding: "52px 20px 20px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="bg-[linear-gradient(135deg,#F2D5CC,#F0EBE3)] px-5 pb-5 pt-[52px]">
+          <div className="flex items-center gap-3">
             {/* 아바타 */}
-            <div style={{ position: "relative", flexShrink: 0 }}>
-              <div style={{ width: 48, height: 48, borderRadius: "50%", background: ROSE, border: "2.5px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 20, fontWeight: 800 }}>
+            <div className="relative shrink-0">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full border-[2.5px] border-white bg-rose text-[20px] font-extrabold text-white">
                 {(myName || "?")[0]}
               </div>
-              <div style={{ position: "absolute", bottom: -2, right: -6, width: 22, height: 22, borderRadius: "50%", background: SAGE, border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 8, fontWeight: 800 }}>
+              <div className="absolute -bottom-0.5 -right-1.5 flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-white bg-sage text-[8px] font-extrabold text-white">
                 {(partnerName || "?")[0]}
               </div>
             </div>
 
             {/* 이름 + 배지 */}
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                <p style={{ fontSize: 16, fontWeight: 800, color: INK }}>{myName || "로딩 중"}</p>
+              <div className="mb-0.5 flex items-center gap-1.5">
+                <p className="text-base font-extrabold text-ink">{myName || "로딩 중"}</p>
                 {role === "admin" && (
-                  <div style={{ background: PURPLE, borderRadius: 20, padding: "1px 7px" }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: "#fff" }}>관리자</span>
+                  <div className="rounded-[20px] bg-[#7B6BAE] px-[7px] py-px">
+                    <span className="text-[9px] font-bold text-white">관리자</span>
                   </div>
                 )}
               </div>
-              <p style={{ fontSize: 12, color: MUTED }}>{myName} ❤️ {partnerName}</p>
-              <div style={{ display: "inline-flex", alignItems: "center", background: ROSE_LT, borderRadius: 20, padding: "2px 8px", marginTop: 4 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: ROSE, lineHeight: 1 }}>💑 D+{dday}</span>
+              <p className="text-xs text-muted">{myName} ❤️ {partnerName}</p>
+              <div className="mt-1 inline-flex items-center rounded-[20px] bg-rose-light px-2 py-0.5">
+                <span className="text-[10px] font-bold leading-none text-rose">💑 D+{dday}</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* 메뉴 목록 */}
-        <div style={{ flex: 1, padding: "8px 0" }}>
+        <div className="flex-1 py-2">
 
           {/* 설정 메뉴 */}
-          <p style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: 1.2, textTransform: "uppercase", padding: "12px 20px 6px" }}>설정</p>
+          <p className="px-5 pb-1.5 pt-3 text-[10px] font-bold uppercase tracking-[1.2px] text-muted">설정</p>
           {menuItems.map(({ icon, label, path }) => (
-            <button key={label} onClick={() => go(path)}
-              style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", background: "none", border: "none", borderBottom: `1px solid ${BORDER}`, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
-              <span style={{ fontSize: 18, width: 24, textAlign: "center" }}>{icon}</span>
-              <span style={{ fontSize: 14, color: INK, fontWeight: 500 }}>{label}</span>
-              <span style={{ marginLeft: "auto", fontSize: 16, color: "#C0B8B0" }}>›</span>
+            <button
+              key={label}
+              onClick={() => go(path)}
+              className="flex w-full cursor-pointer items-center gap-3 border-0 border-b border-border bg-transparent px-5 py-3 text-left"
+            >
+              <span className="w-6 text-center text-[18px]">{icon}</span>
+              <span className="text-sm font-medium text-ink">{label}</span>
+              <span className="ml-auto text-base text-muted-mid">›</span>
             </button>
           ))}
 
           {/* 관리자 메뉴 */}
           {role === "admin" && (
             <>
-              <p style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: 1.2, textTransform: "uppercase", padding: "16px 20px 6px" }}>관리자</p>
-              <button onClick={() => go("/admin")}
-                style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", background: WARM, border: "none", borderBottom: `1px solid ${BORDER}`, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
-                <span style={{ fontSize: 18, width: 24, textAlign: "center" }}>🛡️</span>
-                <span style={{ fontSize: 14, color: PURPLE, fontWeight: 600 }}>관리자 페이지</span>
-                <div style={{ marginLeft: "auto", background: ROSE_LT, borderRadius: 20, padding: "1px 7px" }}>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: ROSE }}>ADMIN</span>
+              <p className="px-5 pb-1.5 pt-4 text-[10px] font-bold uppercase tracking-[1.2px] text-muted">관리자</p>
+              <button
+                onClick={() => go("/admin")}
+                className="flex w-full cursor-pointer items-center gap-3 border-0 border-b border-border bg-warm px-5 py-3 text-left"
+              >
+                <span className="w-6 text-center text-[18px]">🛡️</span>
+                <span className="text-sm font-semibold text-[#7B6BAE]">관리자 페이지</span>
+                <div className="ml-auto rounded-[20px] bg-rose-light px-[7px] py-px">
+                  <span className="text-[9px] font-bold text-rose">ADMIN</span>
                 </div>
               </button>
             </>
           )}
 
           {/* 앱 정보 */}
-          <p style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: 1.2, textTransform: "uppercase", padding: "16px 20px 6px" }}>앱 정보</p>
+          <p className="px-5 pb-1.5 pt-4 text-[10px] font-bold uppercase tracking-[1.2px] text-muted">앱 정보</p>
           {infoItems.map(({ icon, label, path }) => (
-            <button key={label} onClick={() => go(path)}
-              style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", background: "none", border: "none", borderBottom: `1px solid ${BORDER}`, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
-              <span style={{ fontSize: 18, width: 24, textAlign: "center" }}>{icon}</span>
-              <span style={{ fontSize: 14, color: INK, fontWeight: 500 }}>{label}</span>
-              <span style={{ marginLeft: "auto", fontSize: 16, color: "#C0B8B0" }}>›</span>
+            <button
+              key={label}
+              onClick={() => go(path)}
+              className="flex w-full cursor-pointer items-center gap-3 border-0 border-b border-border bg-transparent px-5 py-3 text-left"
+            >
+              <span className="w-6 text-center text-[18px]">{icon}</span>
+              <span className="text-sm font-medium text-ink">{label}</span>
+              <span className="ml-auto text-base text-muted-mid">›</span>
             </button>
           ))}
         </div>
 
         {/* 하단 버전 */}
-        <div style={{ padding: "16px 20px 32px", textAlign: "center", borderTop: `1px solid ${BORDER}` }}>
-          <p style={{ fontSize: 11, color: MUTED }}>우리의 맛지도 v1.0.0</p>
-          <p style={{ fontSize: 10, color: "#C0B8B0", marginTop: 2 }}>Our Taste Inc.</p>
+        <div className="border-t border-border px-5 pb-8 pt-4 text-center">
+          <p className="text-[11px] text-muted">우리의 맛지도 v1.0.0</p>
+          <p className="mt-0.5 text-[10px] text-muted-mid">Our Taste Inc.</p>
         </div>
       </div>
     </>
