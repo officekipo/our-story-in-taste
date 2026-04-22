@@ -13,7 +13,8 @@ const PUBLIC_PATHS = ["/onboarding", "/login", "/signup", "/couple"];
 
 function GlobalLoader() {
   return (
-    <div className="fixed inset-0 z-9999 flex flex-col items-center justify-center bg-bg">
+    // ★ translate="no" — Edge 자동 번역이 이 컴포넌트를 수정하지 못하게 차단
+    <div className="fixed inset-0 z-9999 flex flex-col items-center justify-center bg-bg notranslate">
       <div className="mb-5 text-[40px]">🍽️</div>
       <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-rose-light border-t-rose" />
       <p className="mt-4 text-[13px] text-muted">우리의 맛지도</p>

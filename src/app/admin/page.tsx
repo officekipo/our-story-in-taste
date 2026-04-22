@@ -11,7 +11,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter }     from "next/navigation";
 import { useAuthStore }  from "@/store/authStore";
-import { getAuth }       from "firebase/auth";
+import { auth }          from "@/lib/firebase/config";  // ★ 직접 auth 인스턴스 사용
 import {
   collection, query, orderBy, onSnapshot, where,
   doc, getDoc, updateDoc, deleteDoc, addDoc, getDocs,
@@ -44,7 +44,10 @@ interface UserPost    { id: string; name: string; emoji: string; likes: number; 
 
 /* ── Admin API 헬퍼 ── */
 async function adminFetch(path: string, options: RequestInit = {}) {
-  const token = await getAuth().currentUser?.getIdToken();
+  // ★ auth 인스턴스 직접 사용, forceRefresh=true 로 토큰 갱신 보장
+  const user = auth.currentUser;
+  if (!user) throw new Error("로그인 상태가 아닙니다.");
+  const token = await user.getIdToken(true);
   return fetch(path, {
     ...options,
     headers: {
