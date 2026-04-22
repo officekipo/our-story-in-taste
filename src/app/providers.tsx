@@ -8,6 +8,7 @@ import { setupAuthListener } from "@/store/authStore";
 import { useAuthStore }      from "@/store/authStore";
 import { checkAnniversary }  from "@/lib/firebase/notifications";
 import { useFCM }            from "@/hooks/useFCM";
+import { FCMToast }          from "@/components/common/FCMToast";
 
 const PUBLIC_PATHS = ["/onboarding", "/login", "/signup", "/couple"];
 
@@ -145,6 +146,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <AuthGuard>{children}</AuthGuard>
       <AnniversaryToast />
+      <FCMToast />
     </QueryClientProvider>
   );
 }

@@ -10,15 +10,14 @@
 "use client";
 
 import { useEffect } from "react";
-import { useAuthStore }  from "@/store/authStore";
-import { useUIStore }    from "@/store/uiStore";
-import { requestFCMToken, subscribeForegroundMessage } from "@/lib/firebase/fcm";
+import { useAuthStore }   from "@/store/authStore";
+import { requestFCMToken } from "@/lib/firebase/fcm";
 
+// 포그라운드 메시지 표시는 FCMToast 컴포넌트(src/components/common/FCMToast.tsx)가 담당
 export function useFCM() {
   const { myUid, initialized, setFcmToken } = useAuthStore();
-  const showToast = useUIStore((s) => s.showToast);
 
-  // ── 로그인 완료 시 토큰 요청 ────────────────────────────
+  // ── 로그인 완료 시 토큰 요청 → Firestore 저장 ──────────
   useEffect(() => {
     if (!initialized || !myUid) return;
 
@@ -26,24 +25,4 @@ export function useFCM() {
       if (token) setFcmToken(token);
     });
   }, [initialized, myUid, setFcmToken]);
-
-  // ── 포그라운드 메시지 수신 (앱 열려 있을 때) ────────────
-  useEffect(() => {
-    let unsub: (() => void) | undefined;
-
-    subscribeForegroundMessage((payload) => {
-      const title = payload.notification?.title ?? "우리의 맛지도";
-      const body  = payload.notification?.body  ?? "새로운 알림이 있어요";
-      // 타입별 이모지 구분
-      const type  = payload.data?.type;
-      const emoji =
-        type === "visited"     ? "🍽️" :
-        type === "wishlist"    ? "⭐" :
-        type === "anniversary" ? "🎉" : "🔔";
-
-      showToast(`${emoji} ${title} — ${body}`);
-    }).then((fn) => { unsub = fn; });
-
-    return () => unsub?.();
-  }, [showToast]);
 }

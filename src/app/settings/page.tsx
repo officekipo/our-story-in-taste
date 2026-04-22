@@ -435,6 +435,53 @@ export default function SettingsPage() {
     } catch (e) { console.error("logout error:", e); }
   };
 
+  // ★ 실제 회원 탈퇴
+  const handleWithdraw = async () => {
+    close();
+    try {
+      const { deleteUser, reauthenticateWithPopup, GoogleAuthProvider } = await import("firebase/auth");
+      const { collection, query, where, getDocs, deleteDoc, doc: fsDoc } = await import("firebase/firestore");
+      const { disconnectCouple } = await import("@/lib/firebase/auth");
+
+      const user = auth.currentUser;
+      if (!user) { router.replace("/login"); return; }
+
+      // 커플 연동 해제
+      if (coupleId) {
+        await disconnectCouple(user.uid, coupleId).catch(() => {});
+      }
+
+      // 내 visited 기록 삭제
+      const visitedSnap = await getDocs(query(collection(db, "visited"), where("authorUid", "==", user.uid)));
+      await Promise.all(visitedSnap.docs.map(d => deleteDoc(d.ref)));
+
+      // 내 wishlist 기록 삭제
+      const wishSnap = await getDocs(query(collection(db, "wishlist"), where("addedByUid", "==", user.uid)));
+      await Promise.all(wishSnap.docs.map(d => deleteDoc(d.ref)));
+
+      // Firestore users 문서 삭제
+      await deleteDoc(fsDoc(db, "users", user.uid)).catch(() => {});
+
+      // Firebase Auth 계정 삭제
+      try {
+        await deleteUser(user);
+      } catch (err: any) {
+        if (err.code === "auth/requires-recent-login") {
+          await reauthenticateWithPopup(user, new GoogleAuthProvider());
+          await deleteUser(user);
+        } else {
+          throw err;
+        }
+      }
+
+      reset();
+      router.replace("/login");
+    } catch (err) {
+      console.error("탈퇴 오류:", err);
+      alert("탈퇴 중 오류가 발생했어요. 다시 시도해주세요.");
+    }
+  };
+
   return (
     <div style={{ minHeight:"100vh", background:"#F5F0EB", maxWidth:480, margin:"0 auto", fontFamily:"inherit", paddingBottom:40 }}>
       <div style={{ background:"#fff", borderBottom:`1px solid ${BORDER}`, padding:"14px 20px", display:"flex", alignItems:"center", gap:12, position:"sticky", top:0, zIndex:20 }}>
@@ -544,7 +591,7 @@ export default function SettingsPage() {
       {modal==="date"    && <EditDatePopup  current={startDate} onSave={setStartDate} onClose={close} />}
       {modal==="invite"  && <InvitePopup onClose={close} />}
       {modal==="logout"  && <ConfirmPopup emoji="👋" title="로그아웃 하시겠어요?" desc="다시 로그인하면 기록이 그대로 있어요." confirmLabel="로그아웃" onConfirm={handleLogout} onClose={close} />}
-      {modal==="withdraw" && <ConfirmPopup emoji="⚠️" title="정말 탈퇴하시겠어요?" desc="탈퇴하면 모든 기록이 삭제됩니다." sub="커플 기록도 함께 삭제됩니다." confirmLabel="탈퇴하기" danger onConfirm={()=>{ close(); router.push("/login"); }} onClose={close} />}
+      {modal==="withdraw" && <ConfirmPopup emoji="⚠️" title="정말 탈퇴하시겠어요?" desc="탈퇴하면 모든 기록이 삭제됩니다." sub="커플 기록도 함께 삭제됩니다." confirmLabel="탈퇴하기" danger onConfirm={handleWithdraw} onClose={close} />}
       <style>{`@keyframes scaleIn{from{opacity:0;transform:scale(0.93)}to{opacity:1;transform:scale(1)}}`}</style>
     </div>
   );

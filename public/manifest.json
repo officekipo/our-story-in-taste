@@ -71,16 +71,39 @@
       "short_name": "기록하기",
       "description": "새 맛집 기록 추가",
       "url": "/",
-      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96"
+        }
+      ]
     },
     {
       "name": "가고 싶은 곳",
       "short_name": "위시리스트",
       "description": "위시리스트 보기",
       "url": "/wishlist",
-      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96"
+        }
+      ]
     }
   ],
-  "categories": ["lifestyle", "food"],
-  "prefer_related_applications": false
+  "categories": [
+    "lifestyle",
+    "food"
+  ],
+  "prefer_related_applications": false,
+  "id": "/",
+  "screenshots": [
+    {
+      "src": "/screenshots/screenshot-mobile.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "우리의 맛지도 — 다녀온 곳"
+    }
+  ]
 }
