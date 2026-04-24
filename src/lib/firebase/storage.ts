@@ -134,7 +134,19 @@ export async function uploadImages(
 // ──────────────────────────────────────────────────────────
 export async function deleteImage(url: string): Promise<void> {
   try {
-    await deleteObject(ref(storage, url));
+    // ★ 전체 URL에서 Storage 경로 추출 후 ref() 사용
+    // URL 형식: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encodedPath}?...
+    let fileRef;
+    if (url.startsWith("https://firebasestorage.googleapis.com")) {
+      const urlObj  = new URL(url);
+      const encoded = urlObj.pathname.split("/o/")[1];
+      if (!encoded) throw new Error("잘못된 Storage URL");
+      const path = decodeURIComponent(encoded);
+      fileRef = ref(storage, path);
+    } else {
+      fileRef = ref(storage, url);
+    }
+    await deleteObject(fileRef);
   } catch (err) {
     console.warn("deleteImage: 파일 없음 또는 삭제 실패", err);
   }

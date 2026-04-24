@@ -1,13 +1,4 @@
-// ============================================================
-//  firestore.ts  적용 경로: src/lib/firebase/firestore.ts
-//
-//  Fix:
-//    1. buildCommunityPost: showAuthorName: true 하드코딩 → !data.hideAuthor
-//       (AddEditModal에서 "익명으로 공유" 선택해도 true로 덮어써지던 버그 수정)
-//    2. updateVisited: community 문서 업데이트 시 showAuthorName / updatedAt 포함
-//       (수정됨 표시 지원)
-// ============================================================
-
+// src/lib/firebase/firestore.ts
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
   getDocs, getDoc, query, where, orderBy,
@@ -43,7 +34,6 @@ export async function updateVisited(
   const batch      = writeBatch(db);
   const visitedRef = doc(db, "visited", id);
 
-  // ★ updatedAt 항상 갱신 → VisitedCard/DetailModal "수정됨" 뱃지 지원
   batch.update(visitedRef, { ...data, updatedAt: now });
 
   const commQ    = query(collection(db, "community"), where("visitedId", "==", id));
@@ -67,29 +57,32 @@ export async function updateVisited(
           tags:           data.tags,
           imgUrls:        data.imgUrls,
           emoji:          data.emoji,
-          // ★ Fix: 닉네임 공개 여부도 수정 시 동기화
           showAuthorName: data.hideAuthor === undefined ? undefined : !data.hideAuthor,
-          // ★ 수정됨 뱃지를 위해 updatedAt 저장
           updatedAt:      now,
+          // ★ lat/lng 동기화
+          ...(data.lat != null && { lat: data.lat }),
+          ...(data.lng != null && { lng: data.lng }),
         })
       );
     }
   } else if (data.shareToComm === false) {
     commSnap.docs.forEach((d) => batch.delete(d.ref));
   } else if (!commSnap.empty) {
-    // shareToComm 변경 없이 내용만 수정된 경우에도 community 동기화
     commSnap.docs.forEach((d) => {
       const updateFields: Record<string, any> = { updatedAt: now };
-      if (data.name      !== undefined) { updateFields.restaurantName = data.name; updateFields.name = data.name; }
-      if (data.cuisine   !== undefined) updateFields.cuisine   = data.cuisine;
-      if (data.sido      !== undefined) updateFields.sido      = data.sido;
-      if (data.district  !== undefined) updateFields.district  = data.district;
-      if (data.rating    !== undefined) updateFields.rating    = data.rating;
-      if (data.memo      !== undefined) updateFields.memo      = data.memo;
-      if (data.tags      !== undefined) updateFields.tags      = data.tags;
-      if (data.imgUrls   !== undefined) updateFields.imgUrls   = data.imgUrls;
-      if (data.emoji     !== undefined) updateFields.emoji     = data.emoji;
+      if (data.name       !== undefined) { updateFields.restaurantName = data.name; updateFields.name = data.name; }
+      if (data.cuisine    !== undefined) updateFields.cuisine    = data.cuisine;
+      if (data.sido       !== undefined) updateFields.sido       = data.sido;
+      if (data.district   !== undefined) updateFields.district   = data.district;
+      if (data.rating     !== undefined) updateFields.rating     = data.rating;
+      if (data.memo       !== undefined) updateFields.memo       = data.memo;
+      if (data.tags       !== undefined) updateFields.tags       = data.tags;
+      if (data.imgUrls    !== undefined) updateFields.imgUrls    = data.imgUrls;
+      if (data.emoji      !== undefined) updateFields.emoji      = data.emoji;
       if (data.hideAuthor !== undefined) updateFields.showAuthorName = !data.hideAuthor;
+      // ★ lat/lng 동기화
+      if (data.lat != null) updateFields.lat = data.lat;
+      if (data.lng != null) updateFields.lng = data.lng;
       batch.update(d.ref, updateFields);
     });
   }
@@ -105,7 +98,6 @@ export async function deleteVisited(id: string): Promise<void> {
   await batch.commit();
 }
 
-// ★ createdAt desc 정렬 → 새 글이 항상 맨 위
 export function subscribeVisited(
   coupleId: string,
   callback: (records: VisitedRecord[]) => void
@@ -157,10 +149,10 @@ export function subscribeWishlist(
 //  COMMUNITY
 // ══════════════════════════════════════════════════════════
 
-/** ★ Fix: showAuthorName: !data.hideAuthor (true 하드코딩 제거) */
+/** ★ lat/lng 포함 — 추천탭 위시 추가 시 지도 핀 생성 지원 */
 function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): any {
   const now = new Date().toISOString();
-  return {
+  const post: Record<string, any> = {
     coupleId:       data.coupleId    ?? "",
     visitedId,
     restaurantName: data.name        ?? "",
@@ -175,7 +167,6 @@ function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): an
     emoji:          data.emoji       ?? "🍽️",
     authorUid:      data.authorUid   ?? "",
     authorName:     data.authorName  ?? "",
-    // ★ 닉네임 비공개 여부 반영 (hideAuthor=true → showAuthorName=false)
     showAuthorName: !(data.hideAuthor ?? false),
     likeCount:      0,
     likedBy:        [],
@@ -183,6 +174,10 @@ function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): an
     createdAt:      now,
     updatedAt:      now,
   };
+  // ★ lat/lng가 있을 때만 포함 (없으면 필드 생략)
+  if (data.lat != null) post.lat = data.lat;
+  if (data.lng != null) post.lng = data.lng;
+  return post;
 }
 
 // ══════════════════════════════════════════════════════════

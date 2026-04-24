@@ -154,9 +154,44 @@ function InvitePopup({ onClose }: { onClose:()=>void }) {
     }
     setJoinStatus("loading"); setJoinMsg("");
     try {
-      const { joinCouple } = await import("@/lib/firebase/auth");
+      const { joinCouple, fetchCouple } = await import("@/lib/firebase/auth");
+      const { getDoc, doc } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase/config");
+
       const newCoupleId = await joinCouple(trimmed, myUid);
-      setStoreCoupleId(newCoupleId);
+
+      // ★ 연동 직후 파트너 정보를 Firestore에서 가져와 store 즉시 업데이트
+      try {
+        const coupleData = await fetchCouple(newCoupleId);
+        if (coupleData) {
+          const partnerUid = coupleData.user1Uid === myUid
+            ? coupleData.user2Uid
+            : coupleData.user1Uid;
+          const startDate = coupleData.startDate ?? "";
+
+          let newPartnerName = "";
+          let newPartnerImgUrl: string | null = null;
+
+          if (partnerUid) {
+            const partnerSnap = await getDoc(doc(db, "users", partnerUid));
+            if (partnerSnap.exists()) {
+              newPartnerName   = partnerSnap.data().name           ?? "";
+              newPartnerImgUrl = partnerSnap.data().profileImgUrl  ?? null;
+            }
+          }
+
+          setAuth({
+            coupleId:             newCoupleId,
+            partnerName:          newPartnerName,
+            partnerProfileImgUrl: newPartnerImgUrl,
+            startDate,
+          });
+        }
+      } catch {
+        // 파트너 정보 조회 실패 시 coupleId만 업데이트
+        setStoreCoupleId(newCoupleId);
+      }
+
       setJoinStatus("success"); setJoinMsg("💑 커플 연동 성공!");
       setTimeout(() => onClose(), 1500);
     } catch (e: any) {

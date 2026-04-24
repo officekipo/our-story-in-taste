@@ -107,14 +107,33 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim() || !cuisine) return;
+
+    // ★ KakaoPlaceSearch 미선택(직접 입력)으로 lat/lng 없을 때 자동 좌표 조회
+    let finalLat = lat;
+    let finalLng = lng;
+    if (finalLat == null && name.trim() && process.env.NEXT_PUBLIC_KAKAO_REST_KEY) {
+      try {
+        const q   = encodeURIComponent(`${sido} ${name.trim()}`);
+        const res = await fetch(
+          `https://dapi.kakao.com/v2/local/search/keyword.json?query=${q}&size=1`,
+          { headers: { Authorization: `KakaoAK ${process.env.NEXT_PUBLIC_KAKAO_REST_KEY}` } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const d    = data.documents?.[0];
+          if (d) { finalLat = parseFloat(d.y); finalLng = parseFloat(d.x); }
+        }
+      } catch { /* 좌표 조회 실패 시 무시 */ }
+    }
+
     const data: VisitedFormData = {
       name, sido, district, cuisine, rating, date, memo,
       tags, revisit, imgUrls, emoji: "🍽️",
       shareToComm: share, hideAuthor,
-      ...(lat != null && { lat }),
-      ...(lng != null && { lng }),
+      ...(finalLat != null && { lat: finalLat }),
+      ...(finalLng != null && { lng: finalLng }),
     };
     onSave?.(data, imgUrls);
     closeModal();
