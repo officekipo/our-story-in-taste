@@ -1,11 +1,16 @@
 // ============================================================
 //  AddEditModal.tsx  적용 경로: src/components/visited/AddEditModal.tsx
 //
-//  Fix: 태그 목록 대폭 확장 (기존 TAGS import → 로컬 상세 태그 배열)
+//  Fix:
+//    ★ useEffect로 모달 열릴 때마다 폼 초기화
+//      - 새 글: editTarget = null → 모든 필드 빈 값
+//      - 수정: editTarget = 해당 글 → 해당 글 데이터로 채움
+//      원인: 컴포넌트가 실제 언마운트 되지 않아 useState 초기값이
+//            첫 렌더 이후 재실행되지 않는 구조적 문제
 // ============================================================
 "use client";
 
-import { useState }               from "react";
+import { useState, useEffect }        from "react";
 import { useUIStore }             from "@/store/uiStore";
 import { useAuthStore }           from "@/store/authStore";
 import { CalendarPicker }         from "./CalendarPicker";
@@ -24,7 +29,6 @@ const MUTED = "#8A8078";
 const BORDER= "#E2DDD8";
 const WARM  = "#FAF7F3";
 
-// ★ 태그 목록 대폭 확장
 const EXPANDED_TAGS = [
   // 분위기
   "데이트", "분위기 좋은", "조용한", "왁자지껄", "인스타감성", "루프탑",
@@ -56,23 +60,48 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
   const { addModalOpen, editTarget, closeModal } = useUIStore();
   const { coupleId, myName }                     = useAuthStore();
 
-  const [name,       setName]       = useState(editTarget?.name     ?? "");
-  const [sido,       setSido]       = useState(editTarget?.sido     ?? "서울");
-  const [district,   setDistrict]   = useState(editTarget?.district ?? "");
-  const [cuisine,    setCuisine]    = useState(editTarget?.cuisine  ?? "");
-  const [rating,     setRating]     = useState<1|2|3|4|5>(editTarget?.rating ?? 5);
-  const [date,       setDate]       = useState(editTarget?.date     ?? todayStr());
-  const [memo,       setMemo]       = useState(editTarget?.memo     ?? "");
-  const [tags,       setTags]       = useState<string[]>(editTarget?.tags   ?? []);
-  const [revisit,    setRevisit]    = useState<boolean|null>(editTarget?.revisit ?? null);
-  const [share,      setShare]      = useState(editTarget?.shareToComm ?? false);
-  const [hideAuthor, setHideAuthor] = useState(editTarget?.hideAuthor  ?? false);
-  const [imgUrls,    setImgUrls]    = useState<string[]>(editTarget?.imgUrls ?? []);
-  const [lat,        setLat]        = useState<number | undefined>(editTarget?.lat);
-  const [lng,        setLng]        = useState<number | undefined>(editTarget?.lng);
+  // ── 폼 상태 (초기값은 빈 값 — useEffect에서 동기화) ──────
+  const [name,       setName]       = useState("");
+  const [sido,       setSido]       = useState("서울");
+  const [district,   setDistrict]   = useState("");
+  const [cuisine,    setCuisine]    = useState("");
+  const [rating,     setRating]     = useState<1|2|3|4|5>(5);
+  const [date,       setDate]       = useState(todayStr());
+  const [memo,       setMemo]       = useState("");
+  const [tags,       setTags]       = useState<string[]>([]);
+  const [revisit,    setRevisit]    = useState<boolean|null>(null);
+  const [share,      setShare]      = useState(false);
+  const [hideAuthor, setHideAuthor] = useState(false);
+  const [imgUrls,    setImgUrls]    = useState<string[]>([]);
+  const [lat,        setLat]        = useState<number | undefined>(undefined);
+  const [lng,        setLng]        = useState<number | undefined>(undefined);
   const [showCal,    setShowCal]    = useState(false);
   const [uploading,  setUploading]  = useState(false);
   const [uploadPct,  setUploadPct]  = useState(0);
+
+  // ★ 핵심 Fix: 모달이 열릴 때마다 폼 상태를 editTarget 기준으로 동기화
+  //   - addModalOpen이 true가 될 때 실행
+  //   - editTarget = null  → 새 글 → 모든 필드 초기화
+  //   - editTarget = {...} → 수정 → 해당 글 데이터로 채움
+  useEffect(() => {
+    if (!addModalOpen) return; // 닫힐 때는 실행하지 않음
+
+    setName      (editTarget?.name        ?? "");
+    setSido      (editTarget?.sido        ?? "서울");
+    setDistrict  (editTarget?.district    ?? "");
+    setCuisine   (editTarget?.cuisine     ?? "");
+    setRating    ((editTarget?.rating     ?? 5) as 1|2|3|4|5);
+    setDate      (editTarget?.date        ?? todayStr());
+    setMemo      (editTarget?.memo        ?? "");
+    setTags      (editTarget?.tags        ?? []);
+    setRevisit   (editTarget?.revisit     ?? null);
+    setShare     (editTarget?.shareToComm ?? false);
+    setHideAuthor(editTarget?.hideAuthor  ?? false);
+    setImgUrls   (editTarget?.imgUrls     ?? []);
+    setLat       (editTarget?.lat);
+    setLng       (editTarget?.lng);
+    setShowCal   (false);
+  }, [addModalOpen, editTarget]); // addModalOpen 또는 editTarget 변경 시 재실행
 
   if (!addModalOpen) return null;
 
@@ -110,7 +139,6 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
   const handleSave = async () => {
     if (!name.trim() || !cuisine) return;
 
-    // ★ KakaoPlaceSearch 미선택(직접 입력)으로 lat/lng 없을 때 자동 좌표 조회
     let finalLat = lat;
     let finalLng = lng;
     if (finalLat == null && name.trim() && process.env.NEXT_PUBLIC_KAKAO_REST_KEY) {
@@ -139,12 +167,14 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
     closeModal();
   };
 
+  const isEdit = !!(editTarget?.id && editTarget.id !== "__from_wish__");
+
   return (
     <Modal onClose={() => { setShowCal(false); closeModal(); }} maxWidth={440}>
       {/* 헤더 */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <p style={{ fontSize: 16, fontWeight: 700, color: INK }}>
-          {editTarget?.id && editTarget.id !== "__from_wish__" ? "맛집 기록 수정" : "새로운 맛집 기록하기"}
+          {isEdit ? "맛집 기록 수정" : "새로운 맛집 기록하기"}
         </p>
         <button onClick={closeModal}
           style={{ width: 28, height: 28, borderRadius: "50%", background: "#F5F0EB", border: "none", cursor: "pointer", fontSize: 14, color: MUTED }}>✕</button>
@@ -227,7 +257,7 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
           </div>
         </div>
 
-        {/* 날짜 */}
+        {/* 날짜 — 단일 날짜 선택 (CalendarPicker) */}
         <div style={{ position: "relative" }}>
           <p style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6 }}>📅 방문 날짜 *</p>
           <div onClick={() => setShowCal(!showCal)} style={{ ...inp, cursor: "pointer", color: date ? INK : MUTED }}>
@@ -235,7 +265,11 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
           </div>
           {showCal && (
             <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 900 }}>
-              <CalendarPicker value={date} onChange={v => { setDate(v); setShowCal(false); }} onClose={() => setShowCal(false)} />
+              <CalendarPicker
+                value={date}
+                onChange={v => { setDate(v); setShowCal(false); }}
+                onClose={() => setShowCal(false)}
+              />
             </div>
           )}
         </div>
@@ -252,7 +286,7 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
           <textarea value={memo} onChange={e => setMemo(e.target.value)} placeholder="이 순간을 기억하고 싶어요..." rows={4} style={{ ...inp, resize: "none", lineHeight: 1.6 }} />
         </div>
 
-        {/* ★ 태그 — 확장된 목록 */}
+        {/* 태그 */}
         <div>
           <p style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 8 }}>태그</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -315,7 +349,7 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
         {/* 저장 */}
         <button onClick={handleSave}
           style={{ width: "100%", padding: 15, background: name && cuisine ? ROSE : "#C0B8B0", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: name && cuisine ? "pointer" : "default", fontFamily: "inherit" }}>
-          {editTarget?.id && editTarget.id !== "__from_wish__" ? "수정 완료" : "기록 저장하기"}
+          {isEdit ? "수정 완료" : "기록 저장하기"}
         </button>
       </div>
     </Modal>
