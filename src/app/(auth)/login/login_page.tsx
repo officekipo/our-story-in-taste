@@ -1,9 +1,4 @@
 // src/app/(auth)/login/page.tsx
-//
-//  Fix:
-//    ★ Google 로그인 catch 블록 — 실제 에러 코드 콘솔 출력 + 케이스별 메시지
-//      기존: catch { } 로 에러를 완전히 삼켜 원인 파악 불가
-//      수정: e.code 기준으로 분기, 콘솔에 실제 에러 출력
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -28,14 +23,15 @@ export default function LoginPage() {
   const router = useRouter();
   const pwRef  = useRef<HTMLInputElement>(null);
 
-  const [email,    setEmail]    = useState("");
-  const [pw,       setPw]       = useState("");
-  const [showPw,   setShowPw]   = useState(false);
-  const [remember, setRemember] = useState(false);
-  const [errors,   setErrors]   = useState({ email:"", pw:"" });
-  const [apiErr,   setApiErr]   = useState("");
-  const [loading,  setLoading]  = useState(false);
+  const [email,     setEmail]     = useState("");
+  const [pw,        setPw]        = useState("");
+  const [showPw,    setShowPw]    = useState(false);
+  const [remember,  setRemember]  = useState(false);  // ★ 아이디 저장
+  const [errors,    setErrors]    = useState({ email:"", pw:"" });
+  const [apiErr,    setApiErr]    = useState("");
+  const [loading,   setLoading]   = useState(false);
 
+  // ★ 저장된 이메일 불러오기
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) { setEmail(saved); setRemember(true); }
@@ -58,8 +54,10 @@ export default function LoginPage() {
     if (!validate()) return;
     setApiErr(""); setLoading(true);
     try {
+      // ★ 아이디 저장 처리
       if (remember) { localStorage.setItem(STORAGE_KEY, email); }
       else          { localStorage.removeItem(STORAGE_KEY); }
+
       await signIn(email, pw);
       router.push("/");
     } catch (e: any) {
@@ -74,62 +72,14 @@ export default function LoginPage() {
     } finally { setLoading(false); }
   };
 
-  // ★ Google 로그인 에러 핸들링 전면 수정
   const handleGoogle = async () => {
     setApiErr(""); setLoading(true);
-    try {
-      await signInWithGoogle();
-      router.push("/");
-    } catch (e: any) {
-      // ★ 실제 에러 코드를 콘솔에 출력 — 원인 파악용
-      console.error("[Google Auth] 에러 코드:", e.code);
-      console.error("[Google Auth] 에러 메시지:", e.message);
-
-      const code = e.code ?? "";
-
-      if (
-        code === "auth/popup-closed-by-user" ||
-        code === "auth/cancelled-popup-request"
-      ) {
-        // 팝업을 직접 닫은 경우 — 에러 메시지 표시 안 함
-        return;
-      }
-
-      if (code === "auth/unauthorized-domain") {
-        // ★ 가장 흔한 원인: Firebase Console에 현재 도메인이 미등록
-        setApiErr(
-          "이 도메인에서 Google 로그인이 허용되지 않았습니다. " +
-          "Firebase Console → Authentication → Authorized domains 를 확인해주세요."
-        );
-        return;
-      }
-
-      if (code === "auth/popup-blocked") {
-        setApiErr("팝업이 차단되었습니다. 브라우저의 팝업 차단 설정을 해제해주세요.");
-        return;
-      }
-
-      if (code === "auth/operation-not-allowed") {
-        setApiErr("Google 로그인이 활성화되지 않았습니다. Firebase Console을 확인해주세요.");
-        return;
-      }
-
-      if (code === "auth/account-exists-with-different-credential") {
-        // 이메일 로그인 400 오류 (B 항목) — 이미 이메일로 가입된 계정
-        setApiErr(
-          "이미 이메일로 가입된 계정입니다. " +
-          "이메일 로그인을 사용해주세요."
-        );
-        return;
-      }
-
-      // 그 외 알 수 없는 오류 — 코드 표시로 디버깅 용이
-      setApiErr(`Google 로그인에 실패했습니다. (${code || e.message})`);
-    } finally {
-      setLoading(false);
-    }
+    try { await signInWithGoogle(); router.push("/"); }
+    catch { setApiErr("Google 로그인에 실패했습니다."); }
+    finally { setLoading(false); }
   };
 
+  // ★ 엔터키 처리
   const handleEmailKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") { e.preventDefault(); pwRef.current?.focus(); }
   };
@@ -146,7 +96,7 @@ export default function LoginPage() {
         <input
           type="email" value={email}
           onChange={e=>{ setEmail(e.target.value); setErrors(p=>({...p,email:""})); }}
-          onKeyDown={handleEmailKeyDown}
+          onKeyDown={handleEmailKeyDown}   // ★ 엔터 → 비밀번호 필드 이동
           placeholder="example@email.com"
           style={inp(!!errors.email)}
         />
@@ -161,7 +111,7 @@ export default function LoginPage() {
             ref={pwRef}
             type={showPw?"text":"password"} value={pw}
             onChange={e=>{ setPw(e.target.value); setErrors(p=>({...p,pw:""})); }}
-            onKeyDown={handlePwKeyDown}
+            onKeyDown={handlePwKeyDown}   // ★ 엔터 → 로그인
             placeholder="비밀번호 입력"
             style={{ ...inp(!!errors.pw), paddingRight:44 }}
           />
@@ -173,7 +123,7 @@ export default function LoginPage() {
         <FieldError msg={errors.pw} />
       </div>
 
-      {/* 아이디 저장 */}
+      {/* ★ 아이디 저장 체크박스 */}
       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
         <div
           onClick={()=>setRemember(r=>!r)}
