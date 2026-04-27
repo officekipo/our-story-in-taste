@@ -1,4 +1,10 @@
 // src/app/providers.tsx
+//
+//  Fix:
+//    ★ FCMToast를 AuthGuard 인증 완료 블록 안으로 이동
+//      → FCMInitializer(useFCM)가 messaging 초기화 후 FCMToast가 구독하도록 순서 보장
+//      → 기존: Providers 최상위(인증 전 즉시 마운트) → 구독 타이밍 레이스 발생
+//      → 수정: AuthGuard 인증 완료 블록 안(FCMInitializer 다음) → 순서 보장
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -14,7 +20,6 @@ const PUBLIC_PATHS = ["/onboarding", "/login", "/signup", "/couple"];
 
 function GlobalLoader() {
   return (
-    // ★ translate="no" — Edge 자동 번역이 이 컴포넌트를 수정하지 못하게 차단
     <div className="fixed inset-0 z-9999 flex flex-col items-center justify-center bg-bg notranslate" suppressHydrationWarning>
       <div className="mb-5 text-[40px]">🍽️</div>
       <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-rose-light border-t-rose" />
@@ -47,17 +52,14 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [mounted, initialized, myUid, pathname, router]);
 
-  // SSR + 첫 hydration: GlobalLoader (서버 HTML과 동일)
-  if (!mounted) return <GlobalLoader />;
-
-  // Firebase 초기화 전
-  if (!initialized) return <GlobalLoader />;
+  if (!mounted)      return <GlobalLoader />;
+  if (!initialized)  return <GlobalLoader />;
 
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
   if (isPublic) return <>{children}</>;
   if (!myUid)   return <GlobalLoader />;
 
-  // ★ 이메일 미인증 차단 — 로그인은 됐지만 이메일 인증 전인 경우
+  // 이메일 미인증 차단
   if (!emailVerified) {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "0 24px", gap: 16, background: "#FAF7F3" }}>
@@ -96,11 +98,15 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // ★ mounted + initialized + 로그인 + 인증 완료 후에만 FCMInitializer 렌더
+  // ★ 인증 완료 블록
+  //   순서: FCMInitializer → FCMToast
+  //   FCMInitializer(useFCM)가 먼저 렌더되어 messaging 초기화를 시작하고,
+  //   FCMToast는 그 다음에 렌더되어 구독 타이밍 레이스를 방지합니다.
   return (
     <>
       {children}
       <FCMInitializer />
+      <FCMToast />   {/* ★ 인증 완료 후, FCMInitializer 다음에 마운트 */}
     </>
   );
 }
@@ -146,7 +152,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <AuthGuard>{children}</AuthGuard>
       <AnniversaryToast />
-      <FCMToast />
+      {/* ★ FCMToast 제거 — AuthGuard 인증 완료 블록 안으로 이동 */}
     </QueryClientProvider>
   );
 }

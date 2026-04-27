@@ -1,15 +1,16 @@
 // ============================================================
 //  functions/index.ts
 //
-//  Firebase Cloud Functions — FCM 알림 3종
+//  Fix:
+//    ★ sendPush() — notification 필드 제거, data-only 방식으로 변경
 //
-//  A. visited 문서 생성 시 → 파트너에게 푸시 알림
-//  B. wishlist 문서 생성 시 → 파트너에게 푸시 알림
-//  C. 매일 자정(KST) 기념일 계산 → 해당 커플 양쪽에 푸시 알림
+//  변경 이유:
+//    FCM 웹 스펙상 notification 필드가 있으면 브라우저가 OS 레벨에서
+//    직접 처리해 앱 포그라운드 상태에서도 onMessage()가 호출되지 않음
 //
-//  배포:
-//    cd functions && npm install && cd ..
-//    firebase deploy --only functions
+//  data-only 방식 동작:
+//    포그라운드 → Firebase 클라이언트 SDK onMessage() → FCMToast 표시
+//    백그라운드 → SW onBackgroundMessage() → data에서 title/body 읽어 네이티브 알림 표시
 // ============================================================
 
 import * as admin from "firebase-admin";
@@ -24,39 +25,42 @@ const messaging = admin.messaging();
 /* ─── 기념일 마일스톤 (일수) ─────────────────────────────── */
 const MILESTONES = [
   50, 100, 200, 300,
-  365,                    // 1주년
+  365,
   400, 500, 600, 700,
-  730,                    // 2주년
+  730,
   800, 900, 1000,
-  1095,                   // 3주년
-  1460,                   // 4주년
-  1825,                   // 5주년
+  1095,
+  1460,
+  1825,
 ];
 
-/* ─── 헬퍼: FCM 단일 발송 ────────────────────────────────── */
+/* ─── 헬퍼: FCM 발송 (data-only) ────────────────────────────
+ *  ★ notification / webpush.notification 필드 제거
+ *    → 포그라운드: onMessage() 정상 호출 보장
+ *    → 백그라운드: SW onBackgroundMessage()가 data에서 읽어 알림 표시
+ * ─────────────────────────────────────────────────────────── */
 async function sendPush(
   token: string,
   title: string,
-  body: string,
+  body:  string,
   data?: Record<string, string>,
 ) {
   try {
     await messaging.send({
       token,
-      notification: { title, body },
-      data,
+      // ★ notification 필드 완전 제거 — data-only 방식
+      data: {
+        title,   // SW / FCMToast 양쪽에서 읽음
+        body,    // SW / FCMToast 양쪽에서 읽음
+        icon: "/icon-192.png",
+        ...data,
+      },
       webpush: {
-        notification: {
-          title,
-          body,
-          icon:  "/icon-192.png",
-          badge: "/icon-72.png",
-        },
+        // ★ webpush.notification 제거
         fcmOptions: { link: "/" },
       },
     });
   } catch (err) {
-    // 토큰 만료/무효 등 발송 실패는 무시
     console.warn("[FCM] 발송 실패:", err);
   }
 }
@@ -133,7 +137,6 @@ export const checkAnniversaries = onSchedule(
       const { user1Uid, user2Uid, startDate } = coupleDoc.data();
       if (!startDate || !user1Uid || !user2Uid) continue;
 
-      // 경과 일수 계산
       const start = new Date(startDate);
       start.setHours(0, 0, 0, 0);
       const diffDays = Math.round(
@@ -142,7 +145,6 @@ export const checkAnniversaries = onSchedule(
 
       if (!MILESTONES.includes(diffDays)) continue;
 
-      // 라벨 생성
       let label: string;
       if (diffDays % 365 === 0) {
         label = `${diffDays / 365}주년`;
@@ -153,14 +155,13 @@ export const checkAnniversaries = onSchedule(
       const title = `🎉 ${label} 기념일이에요!`;
       const body  = `함께한 지 ${label}! 오늘도 행복한 하루 보내요 💕`;
 
-      // 커플 양쪽 모두 발송
       for (const uid of [user1Uid, user2Uid]) {
         const userSnap = await db.doc(`users/${uid}`).get();
         const token    = userSnap.data()?.fcmToken;
         if (token) {
           await sendPush(token, title, body, {
             type: "anniversary",
-            days: String(diffDays),
+            days:  String(diffDays),
             label,
           });
         }

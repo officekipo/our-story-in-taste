@@ -1,13 +1,16 @@
 // ============================================================
 //  FCMToast.tsx  적용 경로: src/components/common/FCMToast.tsx
 //
-//  포그라운드 FCM 알림 전용 토스트 UI
-//  uiStore의 일반 토스트와 별도로 FCM 메시지를 리치하게 표시
+//  Fix:
+//    ★ data-only 방식 대응 — title/body를 payload.data에서 우선 읽기
+//      이유: Cloud Functions가 notification 필드 없이 data만 보내도록 변경됨
+//            payload.notification은 undefined → payload.data.title/body 사용
+//    ★ 구독 재시도 로직 유지 (이전 수정)
 // ============================================================
 "use client";
 
-import { useEffect, useState } from "react";
-import { subscribeForegroundMessage } from "@/lib/firebase/fcm";
+import { useEffect, useRef, useState } from "react";
+import { subscribeForegroundMessage }  from "@/lib/firebase/fcm";
 
 interface FCMMessage {
   id:    number;
@@ -23,28 +26,86 @@ const TYPE_META: Record<string, { emoji: string; color: string; bg: string }> = 
   default:     { emoji: "🔔", color: "#6B9E7E", bg: "#F0FDF4" },
 };
 
+const MAX_RETRY   = 5;
+const RETRY_DELAY = 1200;
+
 export function FCMToast() {
   const [messages, setMessages] = useState<FCMMessage[]>([]);
+  const unsubRef   = useRef<(() => void) | undefined>(undefined);
+  const retryCount = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    let unsub: (() => void) | undefined;
+    mountedRef.current = true;
 
-    subscribeForegroundMessage((payload) => {
-      const type  = payload.data?.type ?? "default";
-      const title = payload.notification?.title ?? "우리의 맛지도";
-      const body  = payload.notification?.body  ?? "새로운 알림이 있어요";
+    const handleMessage = (payload: {
+      notification?: { title?: string; body?: string };
+      data?: Record<string, string>;
+    }) => {
+      if (!mountedRef.current) return;
+
+      if (process.env.NODE_ENV === "development") {
+        console.log("[FCMToast] 메시지 수신:", payload);
+      }
+
+      const type = payload.data?.type ?? "default";
+
+      // ★ data 필드 우선, notification 폴백
+      //   data-only 방식: payload.notification은 undefined
+      //   notification 방식(레거시): payload.notification 사용
+      const title =
+        payload.data?.title          // ★ data 필드 우선
+        ?? payload.notification?.title
+        ?? "우리의 맛지도";
+
+      const body =
+        payload.data?.body           // ★ data 필드 우선
+        ?? payload.notification?.body
+        ?? "새로운 알림이 있어요";
 
       const msg: FCMMessage = { id: Date.now(), type, title, body };
-
       setMessages((prev) => [...prev, msg]);
 
-      // 4초 후 자동 제거
       setTimeout(() => {
+        if (!mountedRef.current) return;
         setMessages((prev) => prev.filter((m) => m.id !== msg.id));
       }, 4000);
-    }).then((fn) => { unsub = fn; });
+    };
 
-    return () => unsub?.();
+    const trySubscribe = async () => {
+      if (!mountedRef.current) return;
+
+      try {
+        const unsub = await subscribeForegroundMessage(handleMessage);
+        const isNoop = unsub.toString().replace(/\s/g, "") === "()=>{}";
+
+        if (isNoop && retryCount.current < MAX_RETRY) {
+          retryCount.current += 1;
+          if (process.env.NODE_ENV === "development") {
+            console.log(`[FCMToast] messaging 미준비, 재시도 ${retryCount.current}/${MAX_RETRY}`);
+          }
+          retryTimer.current = setTimeout(trySubscribe, RETRY_DELAY);
+        } else {
+          unsubRef.current = unsub;
+          if (process.env.NODE_ENV === "development") {
+            console.log("[FCMToast] 포그라운드 메시지 구독 완료 ✅");
+          }
+        }
+      } catch (err) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("[FCMToast] 구독 오류:", err);
+        }
+      }
+    };
+
+    trySubscribe();
+
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(retryTimer.current);
+      unsubRef.current?.();
+    };
   }, []);
 
   if (messages.length === 0) return null;
@@ -68,7 +129,6 @@ export function FCMToast() {
             animation: "fcmSlideIn 0.3s ease both",
             pointerEvents: "auto",
           }}>
-            {/* 이모지 아이콘 */}
             <div style={{
               width: 40, height: 40, borderRadius: "50%",
               background: meta.color + "15",
@@ -77,7 +137,6 @@ export function FCMToast() {
             }}>
               {meta.emoji}
             </div>
-            {/* 텍스트 */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ fontSize: 14, fontWeight: 700, color: "#1A1412", marginBottom: 2 }}>
                 {msg.title}
@@ -86,7 +145,6 @@ export function FCMToast() {
                 {msg.body}
               </p>
             </div>
-            {/* 닫기 */}
             <button
               onClick={() => setMessages((prev) => prev.filter((m) => m.id !== msg.id))}
               style={{
