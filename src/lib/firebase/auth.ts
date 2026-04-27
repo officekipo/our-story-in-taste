@@ -1,6 +1,11 @@
 // src/lib/firebase/auth.ts
-// 이메일·Google 로그인, 커플 연동 함수
-
+//
+//  Fix:
+//    ★ signInWithGoogle — signInWithPopup → signInWithRedirect 방식으로 변경
+//      원인: Vercel의 COOP(Cross-Origin-Opener-Policy) 헤더가 same-origin으로
+//            설정되어 팝업↔메인창 통신이 차단 → popup-closed-by-user 오류
+//      해결: 팝업 없이 Google 인증 페이지로 이동 후 돌아오는 리다이렉트 방식 사용
+//            login 페이지에서 getRedirectResult()로 결과 수신
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -8,7 +13,8 @@ import {
   updateProfile,
   onAuthStateChanged,
   GoogleAuthProvider,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -48,19 +54,35 @@ export async function signIn(
   return user;
 }
 
-/* ── Google 로그인 ── */
+/* ── Google 로그인 — 리다이렉트 방식 ── */
 const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope("email");
 googleProvider.addScope("profile");
 googleProvider.setCustomParameters({ prompt: "select_account" });
 
-export async function signInWithGoogle(): Promise<FirebaseUser> {
-  const result = await signInWithPopup(auth, googleProvider);
-  await ensureUserDoc(result.user, "google");
-  return result.user;
+// ★ Step 1: Google 인증 페이지로 리다이렉트
+//   호출 즉시 페이지가 Google로 이동하므로 반환값 없음
+export async function signInWithGoogle(): Promise<void> {
+  await signInWithRedirect(auth, googleProvider);
 }
 
-/* 소셜 로그인 첫 가입 시 Firestore 문서 생성 */
+// ★ Step 2: 리다이렉트 후 돌아왔을 때 결과 수신
+//   login 페이지의 useEffect에서 호출
+//   결과가 없으면(일반 페이지 로드) null 반환
+export async function handleGoogleRedirectResult(): Promise<FirebaseUser | null> {
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result) return null;
+    await ensureUserDoc(result.user, "google");
+    return result.user;
+  } catch (e: any) {
+    console.error("[Google Redirect] 에러 코드:", e.code);
+    console.error("[Google Redirect] 에러 메시지:", e.message);
+    throw e;
+  }
+}
+
+/* ── 소셜 로그인 첫 가입 시 Firestore 문서 생성 ── */
 async function ensureUserDoc(
   user: FirebaseUser,
   provider: "google" | "kakao",
@@ -96,23 +118,18 @@ export async function createCouple(
   myUid: string,
   startDate: string,
 ): Promise<{ coupleId: string; inviteCode: string }> {
-
-  // ★ 이미 커플 연동된 유저 방지
   const mySnap = await getDoc(doc(db, "users", myUid));
   if (mySnap.exists()) {
     const existing = mySnap.data().coupleId;
     if (existing) {
-      // 기존 couple 문서가 실제로 존재하는지 확인 (고아 데이터 방지)
       const existingCouple = await getDoc(doc(db, "couples", existing));
       if (existingCouple.exists()) {
         throw new Error("이미 커플 연동이 되어 있어요. 먼저 연동을 해제해주세요.");
       }
-      // 고아 coupleId 정리
       await updateDoc(doc(db, "users", myUid), { coupleId: null });
     }
   }
 
-  // TASTE- + 6자리 대문자 영숫자
   const chars      = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let   randomPart = "";
   for (let i = 0; i < 6; i++) {
@@ -138,8 +155,6 @@ export async function joinCouple(
   inviteCode: string,
   myUid: string,
 ): Promise<string> {
-
-  // ★ 조인하는 유저가 이미 커플인지 확인
   const mySnap = await getDoc(doc(db, "users", myUid));
   if (mySnap.exists()) {
     const existing = mySnap.data().coupleId;
@@ -148,7 +163,6 @@ export async function joinCouple(
       if (existingCouple.exists()) {
         throw new Error("이미 커플 연동이 되어 있어요. 먼저 연동을 해제해주세요.");
       }
-      // 고아 coupleId 정리
       await updateDoc(doc(db, "users", myUid), { coupleId: null });
     }
   }
@@ -165,11 +179,9 @@ export async function joinCouple(
   const coupleDoc  = snap.docs[0];
   const coupleData = coupleDoc.data() as CoupleDoc;
 
-  // ★ 이미 2명이 연동된 코드 (중복 사용 방지)
   if (coupleData.user2Uid)
     throw new Error("이미 사용된 초대 코드예요. 파트너에게 새 코드를 요청해주세요.");
 
-  // ★ 본인 코드 사용 방지
   if (coupleData.user1Uid === myUid)
     throw new Error("본인이 만든 코드는 사용할 수 없습니다.");
 
@@ -178,14 +190,13 @@ export async function joinCouple(
   return coupleDoc.id;
 }
 
-/* ── ★ 커플 연동 해제 ── */
+/* ── 커플 연동 해제 ── */
 export async function disconnectCouple(
   myUid: string,
   coupleId: string,
 ): Promise<void> {
   const coupleSnap = await getDoc(doc(db, "couples", coupleId));
   if (!coupleSnap.exists()) {
-    // couple 문서가 없어도 유저 coupleId는 초기화
     await updateDoc(doc(db, "users", myUid), { coupleId: null });
     return;
   }
@@ -195,13 +206,10 @@ export async function disconnectCouple(
     ? coupleData.user2Uid
     : coupleData.user1Uid;
 
-  // 양쪽 유저 coupleId 초기화
   await updateDoc(doc(db, "users", myUid), { coupleId: null });
   if (partnerUid) {
     await updateDoc(doc(db, "users", partnerUid), { coupleId: null });
   }
-
-  // couple 문서 삭제
   await deleteDoc(doc(db, "couples", coupleId));
 }
 

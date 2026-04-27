@@ -1,14 +1,16 @@
 // src/app/(auth)/login/page.tsx
 //
 //  Fix:
-//    ★ Google 로그인 catch 블록 — 실제 에러 코드 콘솔 출력 + 케이스별 메시지
-//      기존: catch { } 로 에러를 완전히 삼켜 원인 파악 불가
-//      수정: e.code 기준으로 분기, 콘솔에 실제 에러 출력
+//    ★ Google 로그인 — 리다이렉트 방식 대응
+//      - handleGoogle: signInWithGoogle() 호출 (페이지가 Google로 이동)
+//      - useEffect: 페이지 로드 시 handleGoogleRedirectResult() 로 결과 수신
+//        결과가 있으면 → 로그인 성공 → "/" 로 이동
+//        에러가 있으면 → 에러 코드별 메시지 표시
 "use client";
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter }                   from "next/navigation";
-import { signIn, signInWithGoogle }    from "@/lib/firebase/auth";
+import { signIn, signInWithGoogle, handleGoogleRedirectResult } from "@/lib/firebase/auth";
 import { validateEmail, validatePassword } from "@/lib/utils/validation";
 
 const ROSE  = "#C96B52";
@@ -36,10 +38,41 @@ export default function LoginPage() {
   const [apiErr,   setApiErr]   = useState("");
   const [loading,  setLoading]  = useState(false);
 
+  // 저장된 이메일 불러오기
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) { setEmail(saved); setRemember(true); }
   }, []);
+
+  // ★ Google 리다이렉트 결과 수신
+  //   Google 인증 후 이 페이지로 돌아왔을 때 결과 처리
+  useEffect(() => {
+    setLoading(true);
+    handleGoogleRedirectResult()
+      .then((user) => {
+        if (user) {
+          // 리다이렉트 로그인 성공 → 홈으로 이동
+          router.push("/");
+        }
+      })
+      .catch((e: any) => {
+        const code = e.code ?? "";
+
+        if (code === "auth/account-exists-with-different-credential") {
+          setApiErr("이미 이메일로 가입된 계정입니다. 이메일 로그인을 사용해주세요.");
+          return;
+        }
+        if (code === "auth/unauthorized-domain") {
+          setApiErr("이 도메인에서 Google 로그인이 허용되지 않았습니다. 관리자에게 문의해주세요.");
+          return;
+        }
+        // 그 외 오류
+        if (code) {
+          setApiErr(`Google 로그인에 실패했습니다. (${code})`);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const inp = (hasErr: boolean): React.CSSProperties => ({
     width:"100%", padding:"13px 14px", background:WARM,
@@ -74,60 +107,20 @@ export default function LoginPage() {
     } finally { setLoading(false); }
   };
 
-  // ★ Google 로그인 에러 핸들링 전면 수정
+  // ★ Google 로그인 — 리다이렉트 방식
+  //   이 함수 호출 시 즉시 Google 인증 페이지로 이동
+  //   결과는 위 useEffect의 handleGoogleRedirectResult()에서 수신
   const handleGoogle = async () => {
     setApiErr(""); setLoading(true);
     try {
-      await signInWithGoogle();
-      router.push("/");
+      await signInWithGoogle(); // 페이지가 Google로 이동 → 이후 코드 실행 안 됨
     } catch (e: any) {
-      // ★ 실제 에러 코드를 콘솔에 출력 — 원인 파악용
-      console.error("[Google Auth] 에러 코드:", e.code);
-      console.error("[Google Auth] 에러 메시지:", e.message);
-
-      const code = e.code ?? "";
-
-      if (
-        code === "auth/popup-closed-by-user" ||
-        code === "auth/cancelled-popup-request"
-      ) {
-        // 팝업을 직접 닫은 경우 — 에러 메시지 표시 안 함
-        return;
-      }
-
-      if (code === "auth/unauthorized-domain") {
-        // ★ 가장 흔한 원인: Firebase Console에 현재 도메인이 미등록
-        setApiErr(
-          "이 도메인에서 Google 로그인이 허용되지 않았습니다. " +
-          "Firebase Console → Authentication → Authorized domains 를 확인해주세요."
-        );
-        return;
-      }
-
-      if (code === "auth/popup-blocked") {
-        setApiErr("팝업이 차단되었습니다. 브라우저의 팝업 차단 설정을 해제해주세요.");
-        return;
-      }
-
-      if (code === "auth/operation-not-allowed") {
-        setApiErr("Google 로그인이 활성화되지 않았습니다. Firebase Console을 확인해주세요.");
-        return;
-      }
-
-      if (code === "auth/account-exists-with-different-credential") {
-        // 이메일 로그인 400 오류 (B 항목) — 이미 이메일로 가입된 계정
-        setApiErr(
-          "이미 이메일로 가입된 계정입니다. " +
-          "이메일 로그인을 사용해주세요."
-        );
-        return;
-      }
-
-      // 그 외 알 수 없는 오류 — 코드 표시로 디버깅 용이
-      setApiErr(`Google 로그인에 실패했습니다. (${code || e.message})`);
-    } finally {
+      console.error("[Google Auth] 리다이렉트 실패:", e.code, e.message);
+      setApiErr(`Google 로그인을 시작할 수 없습니다. (${e.code ?? e.message})`);
       setLoading(false);
     }
+    // ★ signInWithRedirect는 페이지를 이동시키므로 finally는 의미 없음
+    //   setLoading(false) 생략 — 페이지 이동 중에는 로딩 상태 유지가 자연스러움
   };
 
   const handleEmailKeyDown = (e: React.KeyboardEvent) => {
@@ -212,14 +205,14 @@ export default function LoginPage() {
 
       {/* Google 로그인 */}
       <button onClick={handleGoogle} disabled={loading}
-        style={{ width:"100%", padding:13, background:"#fff", border:`1.5px solid ${BORDER}`, borderRadius:12, color:INK, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+        style={{ width:"100%", padding:13, background:"#fff", border:`1.5px solid ${BORDER}`, borderRadius:12, color:INK, fontSize:14, fontWeight:600, cursor:loading?"default":"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8, opacity: loading ? 0.7 : 1 }}>
         <svg width="18" height="18" viewBox="0 0 48 48">
           <path fill="#EA4335" d="M24 9.5c3.5 0 6.4 1.2 8.7 3.2l6.5-6.5C35.2 2.7 30 .5 24 .5 14.8.5 7 6.2 3.5 14.1l7.6 5.9C13 14.2 18.1 9.5 24 9.5z"/>
           <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/>
           <path fill="#FBBC05" d="M11.1 28.6A14.6 14.6 0 0 1 9.5 24c0-1.6.3-3.2.8-4.6l-7.6-5.9A23.5 23.5 0 0 0 .5 24c0 3.8.9 7.4 2.5 10.6l8.1-6z"/>
           <path fill="#34A853" d="M24 47.5c6 0 11.1-2 14.8-5.4l-7.5-5.8c-2 1.4-4.6 2.2-7.3 2.2-5.9 0-10.9-4-12.7-9.3l-8 6.2C7.1 42 15 47.5 24 47.5z"/>
         </svg>
-        Google 로 로그인
+        {loading ? "로그인 중…" : "Google 로 로그인"}
       </button>
 
       <p style={{ textAlign:"center", fontSize:13, color:MUTED }}>
