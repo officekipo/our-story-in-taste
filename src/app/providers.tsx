@@ -1,10 +1,10 @@
 // src/app/providers.tsx
 //
-//  Fix:
-//    ★ FCMToast를 AuthGuard 인증 완료 블록 안으로 이동
-//      → FCMInitializer(useFCM)가 messaging 초기화 후 FCMToast가 구독하도록 순서 보장
-//      → 기존: Providers 최상위(인증 전 즉시 마운트) → 구독 타이밍 레이스 발생
-//      → 수정: AuthGuard 인증 완료 블록 안(FCMInitializer 다음) → 순서 보장
+//  수정사항:
+//    ★ PWAInstallBanner 추가
+//      - iOS Safari: 홈 화면에 추가 단계별 안내 배너
+//      - Android Chrome: 네이티브 설치 프롬프트 버튼
+//      - 인증 완료 후에만 표시 (AuthGuard 안)
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -15,6 +15,7 @@ import { useAuthStore }      from "@/store/authStore";
 import { checkAnniversary }  from "@/lib/firebase/notifications";
 import { useFCM }            from "@/hooks/useFCM";
 import { FCMToast }          from "@/components/common/FCMToast";
+import { PWAInstallBanner }  from "@/components/common/PWAInstallBanner";
 
 const PUBLIC_PATHS = ["/onboarding", "/login", "/signup", "/couple"];
 
@@ -29,8 +30,6 @@ function GlobalLoader() {
   );
 }
 
-// ★ mounted=true 이후에만 렌더되는 컴포넌트 안에서 호출
-//   → SSR 단계에서는 절대 실행되지 않아 Hydration #418 방지
 function FCMInitializer() {
   useFCM();
   return null;
@@ -98,15 +97,13 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // ★ 인증 완료 블록
-  //   순서: FCMInitializer → FCMToast
-  //   FCMInitializer(useFCM)가 먼저 렌더되어 messaging 초기화를 시작하고,
-  //   FCMToast는 그 다음에 렌더되어 구독 타이밍 레이스를 방지합니다.
+  // 인증 완료 블록
   return (
     <>
       {children}
       <FCMInitializer />
-      <FCMToast />   {/* ★ 인증 완료 후, FCMInitializer 다음에 마운트 */}
+      <FCMToast />
+      <PWAInstallBanner />  {/* ★ 인증 완료 후 PWA 설치 안내 */}
     </>
   );
 }
@@ -152,7 +149,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <AuthGuard>{children}</AuthGuard>
       <AnniversaryToast />
-      {/* ★ FCMToast 제거 — AuthGuard 인증 완료 블록 안으로 이동 */}
     </QueryClientProvider>
   );
 }

@@ -4,8 +4,8 @@
 //  수정사항:
 //    🔴 좌측 로고: 포크+하트+지도핀 SVG 심볼
 //    🟠 설정 버튼: gear 아이콘
-//    🔵 검색창 날짜 필터: CalendarPicker → DateRangePicker 로 변경
-//         (CalendarPicker는 AddEditModal 단일 날짜용으로 복원)
+//    🔵 검색창 날짜 필터: DateRangePicker (기간 선택)
+//    ★  로고 클릭 시 홈(/) 이동 추가
 // ============================================================
 "use client";
 
@@ -15,7 +15,7 @@ import { useAuthStore }   from "@/store/authStore";
 import { useStatsStore }  from "@/store/statsStore";
 import { calcDDay }       from "@/lib/utils/date";
 import { SIDO, CUISINES, SORT } from "@/types";
-import { DateRangePicker } from "@/components/visited/DateRangePicker"; // 🔵 기간 선택
+import { DateRangePicker } from "@/components/visited/DateRangePicker";
 import type { TabId }     from "./BottomNav";
 
 const ROSE  = "#C96B52";
@@ -92,8 +92,11 @@ export function Header({
       {/* ── 1행 ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12, paddingBottom: 10 }}>
 
-        {/* 🔴 서비스 심볼 SVG + 앱명 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* 좌측: 🔴 서비스 심볼 SVG + 앱명 — ★ 클릭 시 홈 이동 */}
+        <div
+          onClick={() => router.push("/")}
+          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+        >
           <div style={{ width: 40, height: 40, flexShrink: 0, filter: "drop-shadow(0 2px 6px rgba(201,107,82,0.35))" }}>
             <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect width="40" height="40" rx="11" fill="#C96B52"/>
@@ -113,7 +116,7 @@ export function Header({
           </div>
         </div>
 
-        {/* 통계 칩들 + 🟠 gear 설정 버튼 */}
+        {/* 우측: 통계 칩들 + 🟠 gear 설정 버튼 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "center", background: "#FAF7F3", borderRadius: 20, border: `1px solid ${BORDER}`, padding: "5px 10px", gap: 10 }}>
             {[
@@ -229,7 +232,6 @@ export function Header({
                     fontFamily: "inherit", outline: "none", boxSizing: "border-box",
                   }}
                 />
-                {/* 🔵 날짜 기간 선택 버튼 */}
                 <button
                   onClick={() => setShowCalendar(v => !v)}
                   aria-label="날짜 기간 검색"
@@ -269,7 +271,7 @@ export function Header({
                 </div>
               )}
 
-              {/* 🔵 DateRangePicker 드롭다운 */}
+              {/* DateRangePicker 드롭다운 */}
               {showCalendar && (
                 <>
                   <div onClick={() => setShowCalendar(false)} style={{ position: "fixed", inset: 0, zIndex: 98 }} />
