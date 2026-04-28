@@ -1,7 +1,10 @@
 // ============================================================
 //  AppShell.tsx  적용 경로: src/components/layout/AppShell.tsx
 //
-//  Fix: height:100dvh + overflow:hidden → 지도 높이 100% 해결
+//  수정사항:
+//    ★ paddingBottom 80 → 140
+//      이유: 애드핏 배너(50px) + 여백(10px) 추가로
+//            콘텐츠가 광고에 가려지지 않도록 하단 여백 확보
 // ============================================================
 "use client";
 
@@ -21,23 +24,23 @@ export function AppShell({ children, activeTab, headerProps, noPad }: AppShellPr
 
   return (
     <div style={{
-      display:        "flex",
-      flexDirection:  "column",
-      height:         "100dvh",      // ★ min-height → height 변경
-      maxWidth:       480,
-      margin:         "0 auto",
-      background:     "var(--bg)",
-      overflow:       "hidden",      // ★ 스크롤 AppShell 레벨에서 차단
+      display:       "flex",
+      flexDirection: "column",
+      height:        "100dvh",
+      maxWidth:      480,
+      margin:        "0 auto",
+      background:    "var(--bg)",
+      overflow:      "hidden",
     }}>
       <Header activeTab={activeTab} {...(headerProps ?? {})} />
 
       <main style={{
-        flex:           1,
-        minHeight:      0,           // ★ flex 자식이 부모를 넘치지 않도록
-        overflowY:      noPad ? "hidden" : "auto",
-        paddingBottom:  noPad ? 0 : 80,
-        display:        noPad ? "flex" : "block",
-        flexDirection:  noPad ? "column" : undefined,
+        flex:          1,
+        minHeight:     0,
+        overflowY:     noPad ? "hidden" : "auto",
+        paddingBottom: noPad ? 0 : 140, // ★ 80 → 140 (광고 배너 60px 추가 확보)
+        display:       noPad ? "flex" : "block",
+        flexDirection: noPad ? "column" : undefined,
       }}>
         {children}
       </main>

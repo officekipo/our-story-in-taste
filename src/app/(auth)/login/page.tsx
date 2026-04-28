@@ -1,16 +1,15 @@
 // src/app/(auth)/login/page.tsx
 //
 //  Fix:
-//    ★ Google 로그인 — 리다이렉트 방식 대응
-//      - handleGoogle: signInWithGoogle() 호출 (페이지가 Google로 이동)
-//      - useEffect: 페이지 로드 시 handleGoogleRedirectResult() 로 결과 수신
-//        결과가 있으면 → 로그인 성공 → "/" 로 이동
-//        에러가 있으면 → 에러 코드별 메시지 표시
+//    ★ Google 로그인 후 신규 유저(coupleId 없음) → /couple 리다이렉트
+//      기존: 항상 "/" 이동 → 신규 Google 유저가 커플 연동 단계 건너뜀
+//      수정: Firestore users 문서 확인 → coupleId 없으면 /couple, 있으면 /
 "use client";
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter }                   from "next/navigation";
 import { signIn, signInWithGoogle, handleGoogleRedirectResult } from "@/lib/firebase/auth";
+import { fetchUser }                   from "@/lib/firebase/auth";
 import { validateEmail, validatePassword } from "@/lib/utils/validation";
 
 const ROSE  = "#C96B52";
@@ -38,26 +37,33 @@ export default function LoginPage() {
   const [apiErr,   setApiErr]   = useState("");
   const [loading,  setLoading]  = useState(false);
 
-  // 저장된 이메일 불러오기
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) { setEmail(saved); setRemember(true); }
   }, []);
 
   // ★ Google 리다이렉트 결과 수신
-  //   Google 인증 후 이 페이지로 돌아왔을 때 결과 처리
   useEffect(() => {
     setLoading(true);
     handleGoogleRedirectResult()
-      .then((user) => {
-        if (user) {
-          // 리다이렉트 로그인 성공 → 홈으로 이동
+      .then(async (user) => {
+        if (!user) return;
+
+        // ★ 신규 유저 여부 확인 — coupleId 없으면 /couple로
+        try {
+          const userDoc = await fetchUser(user.uid);
+          if (!userDoc?.coupleId) {
+            router.push("/couple");
+          } else {
+            router.push("/");
+          }
+        } catch {
+          // fetchUser 실패 시 기본 경로
           router.push("/");
         }
       })
       .catch((e: any) => {
         const code = e.code ?? "";
-
         if (code === "auth/account-exists-with-different-credential") {
           setApiErr("이미 이메일로 가입된 계정입니다. 이메일 로그인을 사용해주세요.");
           return;
@@ -66,7 +72,6 @@ export default function LoginPage() {
           setApiErr("이 도메인에서 Google 로그인이 허용되지 않았습니다. 관리자에게 문의해주세요.");
           return;
         }
-        // 그 외 오류
         if (code) {
           setApiErr(`Google 로그인에 실패했습니다. (${code})`);
         }
@@ -107,20 +112,15 @@ export default function LoginPage() {
     } finally { setLoading(false); }
   };
 
-  // ★ Google 로그인 — 리다이렉트 방식
-  //   이 함수 호출 시 즉시 Google 인증 페이지로 이동
-  //   결과는 위 useEffect의 handleGoogleRedirectResult()에서 수신
   const handleGoogle = async () => {
     setApiErr(""); setLoading(true);
     try {
-      await signInWithGoogle(); // 페이지가 Google로 이동 → 이후 코드 실행 안 됨
+      await signInWithGoogle();
     } catch (e: any) {
       console.error("[Google Auth] 리다이렉트 실패:", e.code, e.message);
       setApiErr(`Google 로그인을 시작할 수 없습니다. (${e.code ?? e.message})`);
       setLoading(false);
     }
-    // ★ signInWithRedirect는 페이지를 이동시키므로 finally는 의미 없음
-    //   setLoading(false) 생략 — 페이지 이동 중에는 로딩 상태 유지가 자연스러움
   };
 
   const handleEmailKeyDown = (e: React.KeyboardEvent) => {
@@ -132,32 +132,23 @@ export default function LoginPage() {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-
-      {/* 이메일 */}
       <div>
         <p style={{ fontSize:12, fontWeight:600, color:MUTED, marginBottom:6 }}>이메일</p>
-        <input
-          type="email" value={email}
+        <input type="email" value={email}
           onChange={e=>{ setEmail(e.target.value); setErrors(p=>({...p,email:""})); }}
           onKeyDown={handleEmailKeyDown}
-          placeholder="example@email.com"
-          style={inp(!!errors.email)}
-        />
+          placeholder="example@email.com" style={inp(!!errors.email)} />
         <FieldError msg={errors.email} />
       </div>
 
-      {/* 비밀번호 */}
       <div>
         <p style={{ fontSize:12, fontWeight:600, color:MUTED, marginBottom:6 }}>비밀번호</p>
         <div style={{ position:"relative" }}>
-          <input
-            ref={pwRef}
-            type={showPw?"text":"password"} value={pw}
+          <input ref={pwRef} type={showPw?"text":"password"} value={pw}
             onChange={e=>{ setPw(e.target.value); setErrors(p=>({...p,pw:""})); }}
             onKeyDown={handlePwKeyDown}
             placeholder="비밀번호 입력"
-            style={{ ...inp(!!errors.pw), paddingRight:44 }}
-          />
+            style={{ ...inp(!!errors.pw), paddingRight:44 }} />
           <button onClick={()=>setShowPw(s=>!s)}
             style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:16, color:MUTED }}>
             {showPw?"🙈":"👁️"}
@@ -166,10 +157,8 @@ export default function LoginPage() {
         <FieldError msg={errors.pw} />
       </div>
 
-      {/* 아이디 저장 */}
       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-        <div
-          onClick={()=>setRemember(r=>!r)}
+        <div onClick={()=>setRemember(r=>!r)}
           style={{ width:18, height:18, borderRadius:5, border:`1.5px solid ${remember?ROSE:BORDER}`, background:remember?ROSE:"#fff", cursor:"pointer", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }}>
           {remember && (
             <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
@@ -177,21 +166,18 @@ export default function LoginPage() {
             </svg>
           )}
         </div>
-        <span
-          onClick={()=>setRemember(r=>!r)}
+        <span onClick={()=>setRemember(r=>!r)}
           style={{ fontSize:13, color:MUTED, cursor:"pointer", userSelect:"none" }}>
           아이디 저장
         </span>
       </div>
 
-      {/* API 오류 */}
       {apiErr && (
         <div style={{ padding:"11px 14px", background:"#FFF0F0", border:"1px solid rgba(239,68,68,0.2)", borderRadius:10 }}>
           <p style={{ fontSize:13, color:"#EF4444" }}>❌ {apiErr}</p>
         </div>
       )}
 
-      {/* 로그인 버튼 */}
       <button onClick={handleLogin} disabled={loading}
         style={{ width:"100%", padding:14, background:loading?"#C0B8B0":ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:15, fontWeight:700, cursor:loading?"default":"pointer", fontFamily:"inherit" }}>
         {loading?"로그인 중…":"로그인"}
@@ -203,9 +189,8 @@ export default function LoginPage() {
         <div style={{ flex:1, height:1, background:BORDER }} />
       </div>
 
-      {/* Google 로그인 */}
       <button onClick={handleGoogle} disabled={loading}
-        style={{ width:"100%", padding:13, background:"#fff", border:`1.5px solid ${BORDER}`, borderRadius:12, color:INK, fontSize:14, fontWeight:600, cursor:loading?"default":"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8, opacity: loading ? 0.7 : 1 }}>
+        style={{ width:"100%", padding:13, background:"#fff", border:`1.5px solid ${BORDER}`, borderRadius:12, color:INK, fontSize:14, fontWeight:600, cursor:loading?"default":"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8, opacity:loading?0.7:1 }}>
         <svg width="18" height="18" viewBox="0 0 48 48">
           <path fill="#EA4335" d="M24 9.5c3.5 0 6.4 1.2 8.7 3.2l6.5-6.5C35.2 2.7 30 .5 24 .5 14.8.5 7 6.2 3.5 14.1l7.6 5.9C13 14.2 18.1 9.5 24 9.5z"/>
           <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/>

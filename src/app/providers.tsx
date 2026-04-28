@@ -1,10 +1,7 @@
 // src/app/providers.tsx
 //
 //  수정사항:
-//    ★ PWAInstallBanner 추가
-//      - iOS Safari: 홈 화면에 추가 단계별 안내 배너
-//      - Android Chrome: 네이티브 설치 프롬프트 버튼
-//      - 인증 완료 후에만 표시 (AuthGuard 안)
+//    ★ KakaoAdFit 광고 배너 추가 (인증 완료 후 표시)
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -16,6 +13,7 @@ import { checkAnniversary }  from "@/lib/firebase/notifications";
 import { useFCM }            from "@/hooks/useFCM";
 import { FCMToast }          from "@/components/common/FCMToast";
 import { PWAInstallBanner }  from "@/components/common/PWAInstallBanner";
+import { KakaoAdFit }        from "@/components/common/KakaoAdFit";
 
 const PUBLIC_PATHS = ["/onboarding", "/login", "/signup", "/couple"];
 
@@ -58,7 +56,6 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   if (isPublic) return <>{children}</>;
   if (!myUid)   return <GlobalLoader />;
 
-  // 이메일 미인증 차단
   if (!emailVerified) {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "0 24px", gap: 16, background: "#FAF7F3" }}>
@@ -73,9 +70,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
             window.location.reload();
           }}
           style={{ width: "100%", maxWidth: 320, padding: 14, background: "#C96B52", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
-        >
-          ✅ 인증 완료했어요
-        </button>
+        >✅ 인증 완료했어요</button>
         <button
           onClick={async () => {
             const { sendEmailVerification, getAuth } = await import("firebase/auth");
@@ -84,26 +79,22 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
             alert("인증 메일을 재발송했어요. 메일함을 확인해주세요.");
           }}
           style={{ background: "none", border: "none", color: "#8A8078", fontSize: 13, cursor: "pointer", fontFamily: "inherit", textDecoration: "underline" }}
-        >
-          📨 인증 메일 재발송
-        </button>
+        >📨 인증 메일 재발송</button>
         <button
           onClick={() => { import("firebase/auth").then(({ getAuth, signOut }) => signOut(getAuth())); }}
           style={{ background: "none", border: "none", color: "#C0B8B0", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
-        >
-          로그아웃
-        </button>
+        >로그아웃</button>
       </div>
     );
   }
 
-  // 인증 완료 블록
   return (
     <>
       {children}
       <FCMInitializer />
       <FCMToast />
-      <PWAInstallBanner />  {/* ★ 인증 완료 후 PWA 설치 안내 */}
+      <PWAInstallBanner />
+      <KakaoAdFit />  {/* ★ BottomNav(60px) 바로 위 고정 광고 배너 */}
     </>
   );
 }
