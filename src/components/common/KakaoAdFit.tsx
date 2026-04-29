@@ -1,25 +1,24 @@
 // src/components/common/KakaoAdFit.tsx
 //
-//  카카오 애드핏 320x50 배너
-//  위치: BottomNav(약 60px) 바로 위 고정
-//  광고 단위 ID: DAN-NL7KhtYPzCG2YUOU
+//  Fix:
+//    ★ 광고 스크립트 로드 실패(차단) 시 오류 대신 조용히 숨김 처리
+//      → ERR_BLOCKED_BY_CLIENT 등 네트워크 오류 콘솔 오류 억제
+//      → 광고 차단 시 배너 영역 자체를 숨겨 빈 공간 제거
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const AD_UNIT_ID = "DAN-NL7KhtYPzCG2YUOU";
 
 export function KakaoAdFit() {
   const containerRef = useRef<HTMLDivElement>(null);
   const isLoaded     = useRef(false);
+  const [blocked,    setBlocked] = useState(false); // ★ 차단 여부
 
   useEffect(() => {
     if (isLoaded.current) return;
     isLoaded.current = true;
-
     if (!containerRef.current) return;
-    // 이미 ins가 있으면 중복 추가 방지
-    if (containerRef.current.querySelector("ins")) return;
 
     // ins 엘리먼트 생성
     const ins = document.createElement("ins");
@@ -30,23 +29,30 @@ export function KakaoAdFit() {
     ins.setAttribute("data-ad-height", "50");
     containerRef.current.appendChild(ins);
 
-    // 애드핏 스크립트 로드
+    // ★ 스크립트 로드 실패 시 배너 숨김
     const script = document.createElement("script");
     script.async = true;
     script.type  = "text/javascript";
     script.src   = "//t1.daumcdn.net/kas/static/ba.min.js";
+    script.onerror = () => {
+      // 광고 차단기에 의해 차단된 경우 → 배너 영역 숨김
+      setBlocked(true);
+    };
     containerRef.current.appendChild(script);
   }, []);
+
+  // ★ 광고 차단 시 배너 자체를 렌더하지 않음
+  if (blocked) return null;
 
   return (
     <div style={{
       position:       "fixed",
-      bottom:         60,           // BottomNav 높이
+      bottom:         60,
       left:           "50%",
       transform:      "translateX(-50%)",
       width:          "100%",
       maxWidth:       480,
-      zIndex:         49,           // BottomNav(zIndex 50) 바로 아래
+      zIndex:         49,
       display:        "flex",
       justifyContent: "center",
       alignItems:     "center",
