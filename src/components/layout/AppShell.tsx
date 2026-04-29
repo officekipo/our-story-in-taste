@@ -1,11 +1,8 @@
-// ============================================================
-//  AppShell.tsx  적용 경로: src/components/layout/AppShell.tsx
+// src/components/layout/AppShell.tsx
 //
 //  수정사항:
-//    ★ paddingBottom 80 → 140
-//      이유: 애드핏 배너(50px) + 여백(10px) 추가로
-//            콘텐츠가 광고에 가려지지 않도록 하단 여백 확보
-// ============================================================
+//    ★ KakaoAdFit 제거 — 인피드 방식으로 전환으로 불필요
+//    ★ paddingBottom 원복 80
 "use client";
 
 import { useStats }  from "@/hooks/useStats";
@@ -38,7 +35,7 @@ export function AppShell({ children, activeTab, headerProps, noPad }: AppShellPr
         flex:          1,
         minHeight:     0,
         overflowY:     noPad ? "hidden" : "auto",
-        paddingBottom: noPad ? 0 : 140, // ★ 80 → 140 (광고 배너 60px 추가 확보)
+        paddingBottom: noPad ? 0 : 80,
         display:       noPad ? "flex" : "block",
         flexDirection: noPad ? "column" : undefined,
       }}>

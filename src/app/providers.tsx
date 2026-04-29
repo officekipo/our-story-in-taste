@@ -1,7 +1,7 @@
 // src/app/providers.tsx
 //
-//  수정사항:
-//    ★ KakaoAdFit 광고 배너 추가 (인증 완료 후 표시)
+//  Fix:
+//    ★ KakaoAdFit 제거 — AppShell 안으로 이동했으므로 여기서는 불필요
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -13,7 +13,6 @@ import { checkAnniversary }  from "@/lib/firebase/notifications";
 import { useFCM }            from "@/hooks/useFCM";
 import { FCMToast }          from "@/components/common/FCMToast";
 import { PWAInstallBanner }  from "@/components/common/PWAInstallBanner";
-import { KakaoAdFit }        from "@/components/common/KakaoAdFit";
 
 const PUBLIC_PATHS = ["/onboarding", "/login", "/signup", "/couple"];
 
@@ -94,7 +93,6 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       <FCMInitializer />
       <FCMToast />
       <PWAInstallBanner />
-      <KakaoAdFit />  {/* ★ BottomNav(60px) 바로 위 고정 광고 배너 */}
     </>
   );
 }
