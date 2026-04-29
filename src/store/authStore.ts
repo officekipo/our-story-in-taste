@@ -26,7 +26,7 @@ interface AuthState {
   setAuth:                 (data: Partial<Omit<AuthState, "setAuth" | "setProfileImgUrl" | "setPartnerProfileImgUrl" | "setCoupleId" | "setStartDate" | "setFcmToken" | "reset">>) => void;
   setProfileImgUrl:        (url: string) => void;
   setPartnerProfileImgUrl: (url: string | null) => void;
-  setCoupleId:             (id: string) => void;
+  setCoupleId:             (id: string | null) => void;
   setStartDate:            (date: string) => void;
   setFcmToken:             (token: string | null) => void;
   setEmailVerified:        (v: boolean) => void;              // ★ 추가
