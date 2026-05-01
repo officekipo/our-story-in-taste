@@ -6,6 +6,8 @@
 //            설정되어 팝업↔메인창 통신이 차단 → popup-closed-by-user 오류
 //      해결: 팝업 없이 Google 인증 페이지로 이동 후 돌아오는 리다이렉트 방식 사용
 //            login 페이지에서 getRedirectResult()로 결과 수신
+//  Debug:
+//    ★ signIn / onAuthStateChanged 콘솔 로그 추가 (문제 확인 후 제거)
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -51,6 +53,7 @@ export async function signIn(
   password: string,
 ): Promise<FirebaseUser> {
   const { user } = await signInWithEmailAndPassword(auth, email, password);
+  // console.log("[signIn] 성공 uid:", user.uid, "| emailVerified:", user.emailVerified);
   return user;
 }
 

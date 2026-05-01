@@ -1,15 +1,20 @@
 // src/app/(auth)/login/page.tsx
 //
 //  Fix:
-//    ★ Google 로그인 후 신규 유저(coupleId 없음) → /couple 리다이렉트
-//      기존: 항상 "/" 이동 → 신규 Google 유저가 커플 연동 단계 건너뜀
-//      수정: Firestore users 문서 확인 → coupleId 없으면 /couple, 있으면 /
+//    ★ 이메일 로그인 후 router.push("/") 제거
+//      → signIn() 완료 후 onAuthStateChanged → authStore.myUid 설정
+//      → AuthGuard의 useEffect가 myUid 변화 감지 → 자동으로 "/" 이동
+//      기존: signIn() → 즉시 router.push("/") → authStore 미반영 상태에서 이동
+//            → AuthGuard가 myUid 없음으로 판단 → /login 으로 다시 튕김 (2회 필요)
+//    ★ Google 리다이렉트 결과도 동일하게 AuthGuard에 위임
+//    ★ signIn 성공 후 AuthGuard가 이동 못할 경우 대비 5초 안전장치 추가
 "use client";
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter }                   from "next/navigation";
 import { signIn, signInWithGoogle, handleGoogleRedirectResult } from "@/lib/firebase/auth";
 import { fetchUser }                   from "@/lib/firebase/auth";
+import { useAuthStore }                from "@/store/authStore";
 import { validateEmail, validatePassword } from "@/lib/utils/validation";
 
 const ROSE  = "#C96B52";
@@ -26,8 +31,9 @@ function FieldError({ msg }: { msg: string }) {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
-  const pwRef  = useRef<HTMLInputElement>(null);
+  const router  = useRouter();
+  const pwRef   = useRef<HTMLInputElement>(null);
+  const { myUid } = useAuthStore();
 
   const [email,    setEmail]    = useState("");
   const [pw,       setPw]       = useState("");
@@ -37,42 +43,38 @@ export default function LoginPage() {
   const [apiErr,   setApiErr]   = useState("");
   const [loading,  setLoading]  = useState(false);
 
+  // 저장된 이메일 불러오기
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) { setEmail(saved); setRemember(true); }
   }, []);
 
-  // ★ Google 리다이렉트 결과 수신
+  // ★ authStore의 myUid가 설정되면 AuthGuard가 처리하므로
+  //   여기서는 추가 라우팅 불필요.
+  //   단, Google 리다이렉트 후 신규 유저는 /couple로 보내야 함
   useEffect(() => {
     setLoading(true);
     handleGoogleRedirectResult()
       .then(async (user) => {
         if (!user) return;
-
-        // ★ 신규 유저 여부 확인 — coupleId 없으면 /couple로
+        // 신규 유저(coupleId 없음) → /couple
         try {
           const userDoc = await fetchUser(user.uid);
           if (!userDoc?.coupleId) {
             router.push("/couple");
-          } else {
-            router.push("/");
           }
+          // coupleId 있으면 AuthGuard가 "/" 로 자동 이동
         } catch {
-          // fetchUser 실패 시 기본 경로
-          router.push("/");
+          // fetchUser 실패 시 AuthGuard에 위임
         }
       })
       .catch((e: any) => {
         const code = e.code ?? "";
         if (code === "auth/account-exists-with-different-credential") {
           setApiErr("이미 이메일로 가입된 계정입니다. 이메일 로그인을 사용해주세요.");
-          return;
-        }
-        if (code === "auth/unauthorized-domain") {
-          setApiErr("이 도메인에서 Google 로그인이 허용되지 않았습니다. 관리자에게 문의해주세요.");
-          return;
-        }
-        if (code) {
+        } else if (code === "auth/unauthorized-domain") {
+          setApiErr("이 도메인에서 Google 로그인이 허용되지 않습니다.");
+        } else if (code) {
           setApiErr(`Google 로그인에 실패했습니다. (${code})`);
         }
       })
@@ -98,26 +100,32 @@ export default function LoginPage() {
     try {
       if (remember) { localStorage.setItem(STORAGE_KEY, email); }
       else          { localStorage.removeItem(STORAGE_KEY); }
+
       await signIn(email, pw);
-      router.push("/");
+      // ★ router.push 제거
+      //   signIn() → onAuthStateChanged → authStore.myUid 설정
+      //   → AuthGuard useEffect가 myUid 감지 → 자동으로 "/" 이동
+      // ★ AuthGuard가 myUid 감지 후 이동하지 못할 경우를 대비한 안전장치
+      setTimeout(() => setLoading(false), 5000);
     } catch (e: any) {
       const msg = e.code ?? e.message ?? "";
-      if (msg.includes("user-not-found")||msg.includes("wrong-password")||msg.includes("invalid-credential")) {
+      if (msg.includes("user-not-found") || msg.includes("wrong-password") || msg.includes("invalid-credential")) {
         setApiErr("이메일 또는 비밀번호가 올바르지 않습니다.");
       } else if (msg.includes("too-many-requests")) {
         setApiErr("로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.");
       } else {
         setApiErr("로그인에 실패했습니다. 다시 시도해주세요.");
       }
-    } finally { setLoading(false); }
+      setLoading(false);
+    }
   };
 
   const handleGoogle = async () => {
     setApiErr(""); setLoading(true);
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(); // 페이지가 Google로 이동
     } catch (e: any) {
-      console.error("[Google Auth] 리다이렉트 실패:", e.code, e.message);
+      console.error("[Google Auth] 오류:", e.code, e.message);
       setApiErr(`Google 로그인을 시작할 수 없습니다. (${e.code ?? e.message})`);
       setLoading(false);
     }
@@ -137,7 +145,8 @@ export default function LoginPage() {
         <input type="email" value={email}
           onChange={e=>{ setEmail(e.target.value); setErrors(p=>({...p,email:""})); }}
           onKeyDown={handleEmailKeyDown}
-          placeholder="example@email.com" style={inp(!!errors.email)} />
+          placeholder="example@email.com"
+          style={inp(!!errors.email)} />
         <FieldError msg={errors.email} />
       </div>
 

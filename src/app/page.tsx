@@ -1,10 +1,10 @@
 // src/app/page.tsx
 //
 //  수정사항:
-//    ★ 인피드 광고 삽입
-//      - 일반 리스트: 3개 게시글마다 광고 1개
-//      - 타임라인:    월 섹션 사이마다 광고 1개
-//      - 갤러리:      광고 없음 (그리드 레이아웃 유지)
+//    ★ 광고 슬롯 2개 제한에 맞게 배치 조정
+//      - 리스트: 최상단 광고 1개 + 중간 광고 1개 (총 2개)
+//      - 타임라인: 최상단 광고 1개 + 첫 번째 월 섹션 뒤 광고 1개 (총 2개)
+//      - 갤러리: 광고 없음
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -27,8 +27,9 @@ const ROSE       = "#C96B52";
 const MUTED      = "#8A8078";
 const BORDER     = "#E2DDD8";
 
-// 광고 삽입 간격 — 게시글 N개마다 광고 1개
-const AD_INTERVAL = 3;
+// 슬롯이 2개이므로 광고는 최대 2개
+// 리스트 모드: 최상단(1번째) + filtered 중간 지점(2번째)
+const MID_AD_INDEX = (len: number) => Math.floor(len / 2); // 중간 아이템 뒤에 광고
 
 export default function HomePage() {
   const [dummyRecords, setDummyRecords] = useState<VisitedRecord[]>(SAMPLE_VISITED);
@@ -96,7 +97,6 @@ export default function HomePage() {
     setFilterDateTo(to);
   };
 
-  // ── 저장 ──────────────────────────────────────────────────
   const handleSave = async (data: VisitedFormData, imgUrls: string[]) => {
     const { editTarget } = useUIStore.getState();
     if (DUMMY_MODE) {
@@ -124,7 +124,6 @@ export default function HomePage() {
     }
   };
 
-  // ── 삭제 ──────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!confirmTarget) return;
     if (DUMMY_MODE) {
@@ -136,7 +135,6 @@ export default function HomePage() {
     closeConfirm();
   };
 
-  // ── 로딩 ──────────────────────────────────────────────────
   if (loading) return (
     <AppShell activeTab="visited">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 300 }}>
@@ -146,10 +144,12 @@ export default function HomePage() {
     </AppShell>
   );
 
-  // ── 빈 상태 메시지 ────────────────────────────────────────
   const emptyMsg = filterDateFrom || filterDateTo
     ? `${filterDateFrom || "시작"} ~ ${filterDateTo || "현재"} 기간에 기록이 없어요`
     : "기록이 없어요";
+
+  // 리스트 모드 중간 광고 위치
+  const midAdIdx = MID_AD_INDEX(filtered.length);
 
   return (
     <AppShell
@@ -168,7 +168,7 @@ export default function HomePage() {
     >
       <div style={viewMode === "gallery" && !timeline ? {} : { padding: "12px 16px 0" }}>
 
-        {/* ── 갤러리 모드 (타임라인 OFF) — 광고 없음 ── */}
+        {/* ── 갤러리 모드 (타임라인 OFF) ── */}
         {viewMode === "gallery" && !timeline && (
           <GalleryGrid items={filtered} />
         )}
@@ -176,74 +176,87 @@ export default function HomePage() {
         {/* ── 리스트 or 타임라인 ── */}
         {(viewMode === "list" || timeline) && (
           <div>
+            {filtered.length > 0 && (
+              <>
+                {timeline ? (
+                  // ── 타임라인: 최상단 + 첫 번째 월 섹션 뒤 (총 2개) ──
+                  <>
+                    {/* 광고 1: 타임라인 최상단 */}
+                    <KakaoAdFitInFeed key="ad-timeline-top" />
 
-            {timeline ? (
-              // ── 타임라인: 월 섹션 사이마다 광고 1개 ────────
-              sortedMonths.map((m, monthIdx) => {
-                const isOpen = expandedMonths.has(m);
-                return (
-                  <div key={m}>
-                    {/* 월 헤더 */}
-                    <div
-                      onClick={() => toggleMonth(m)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        paddingTop: 4, paddingBottom: isOpen ? 12 : 4,
-                        cursor: "pointer", userSelect: "none",
-                        WebkitUserSelect: "none",
-                        marginBottom: isOpen ? 0 : 4,
-                      }}
-                    >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: "#8C4A38", flexShrink: 0 }}>
-                        {m.replace("-", "년 ")}월
-                      </span>
-                      <div style={{ flex: 1, height: 1, background: BORDER }} />
-                      <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>
-                        {byMonth[m].length}곳
-                      </span>
-                      <div style={{
-                        width: 18, height: 18, borderRadius: "50%",
-                        background: isOpen ? ROSE : "#F0EBE3",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        flexShrink: 0, transition: "background 0.2s",
-                      }}>
-                        <svg width="8" height="8" viewBox="0 0 10 6" fill="none"
-                          style={{ transform: isOpen ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.2s" }}>
-                          <path d="M1 5L5 1L9 5" stroke={isOpen ? "#fff" : MUTED} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </div>
-                    </div>
-
-                    {/* 펼쳐진 내용 */}
-                    {isOpen && (
-                      viewMode === "gallery"
-                        ? <div style={{ marginBottom: 8 }}><GalleryGrid items={byMonth[m]} /></div>
-                        : <div style={{ marginBottom: 20 }}>
-                            {byMonth[m].map(r => (
-                              <VisitedCard key={r.id} record={r} onDelete={() => {}} />
-                            ))}
+                    {sortedMonths.map((m, monthIdx) => {
+                      const isOpen = expandedMonths.has(m);
+                      return (
+                        <div key={m}>
+                          {/* 월 헤더 */}
+                          <div
+                            onClick={() => toggleMonth(m)}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 10,
+                              paddingTop: 4, paddingBottom: isOpen ? 12 : 4,
+                              cursor: "pointer", userSelect: "none",
+                              WebkitUserSelect: "none",
+                              marginBottom: isOpen ? 0 : 4,
+                            }}
+                          >
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#8C4A38", flexShrink: 0 }}>
+                              {m.replace("-", "년 ")}월
+                            </span>
+                            <div style={{ flex: 1, height: 1, background: BORDER }} />
+                            <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>
+                              {byMonth[m].length}곳
+                            </span>
+                            <div style={{
+                              width: 18, height: 18, borderRadius: "50%",
+                              background: isOpen ? ROSE : "#F0EBE3",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              flexShrink: 0, transition: "background 0.2s",
+                            }}>
+                              <svg width="8" height="8" viewBox="0 0 10 6" fill="none"
+                                style={{ transform: isOpen ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.2s" }}>
+                                <path d="M1 5L5 1L9 5" stroke={isOpen ? "#fff" : MUTED} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </div>
                           </div>
-                    )}
 
-                    {/* ★ 타임라인: 월 섹션 사이 광고 (마지막 월 제외) */}
-                    {monthIdx < sortedMonths.length - 1 && (
-                      <KakaoAdFitInFeed key={`ad-month-${m}`} />
-                    )}
-                  </div>
-                );
-              })
+                          {/* 펼쳐진 내용 */}
+                          {isOpen && (
+                            viewMode === "gallery"
+                              ? <div style={{ marginBottom: 8 }}><GalleryGrid items={byMonth[m]} /></div>
+                              : <div style={{ marginBottom: 20 }}>
+                                  {byMonth[m].map(r => (
+                                    <VisitedCard key={r.id} record={r} onDelete={() => {}} />
+                                  ))}
+                                </div>
+                          )}
 
-            ) : (
-              // ── 일반 리스트: 3개마다 광고 1개 ──────────────
-              filtered.map((r, idx) => (
-                <div key={r.id}>
-                  <VisitedCard record={r} onDelete={() => {}} />
-                  {/* ★ AD_INTERVAL번째 게시글 뒤마다 광고 삽입 (마지막 제외) */}
-                  {(idx + 1) % AD_INTERVAL === 0 && idx < filtered.length - 1 && (
-                    <KakaoAdFitInFeed key={`ad-${idx}`} />
-                  )}
-                </div>
-              ))
+                          {/* 광고 2: 첫 번째 월 섹션 뒤에만 (슬롯 2개 제한) */}
+                          {monthIdx === 0 && sortedMonths.length > 1 && (
+                            <KakaoAdFitInFeed key="ad-timeline-mid" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </>
+                ) : (
+                  // ── 일반 리스트: 최상단 + 중간 (총 2개) ──
+                  <>
+                    {/* 광고 1: 리스트 최상단 */}
+                    <KakaoAdFitInFeed key="ad-list-top" />
+
+                    {filtered.map((r, idx) => (
+                      <div key={r.id}>
+                        <VisitedCard record={r} onDelete={() => {}} />
+
+                        {/* 광고 2: 리스트 중간 지점 (마지막 아이템 제외) */}
+                        {idx === midAdIdx && idx < filtered.length - 1 && (
+                          <KakaoAdFitInFeed key="ad-list-mid" />
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
+              </>
             )}
 
             {/* 빈 상태 */}
@@ -257,7 +270,6 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* 추가 버튼 */}
       <button
         onClick={openAddModal}
         style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: ROSE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(201,107,82,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, fontSize: 28 }}

@@ -26,7 +26,7 @@ const messaging = firebase.messaging();
 // ★ data-only 방식으로 변경: payload.data에서 title/body 읽기
 //   (payload.notification은 data-only 메시지에서 undefined)
 messaging.onBackgroundMessage((payload) => {
-  console.log("[firebase-messaging-sw.js] 백그라운드 메시지 수신:", payload);
+  // console.log("[firebase-messaging-sw.js] 백그라운드 메시지 수신:", payload);
 
   // ★ data 필드에서 title/body 읽기 (notification 필드 폴백 유지)
   const title = payload.data?.title

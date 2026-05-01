@@ -46,7 +46,7 @@ export function FCMToast() {
       if (!mountedRef.current) return;
 
       if (process.env.NODE_ENV === "development") {
-        console.log("[FCMToast] 메시지 수신:", payload);
+        // console.log("[FCMToast] 메시지 수신:", payload);
       }
 
       const type = payload.data?.type ?? "default";
@@ -83,18 +83,18 @@ export function FCMToast() {
         if (isNoop && retryCount.current < MAX_RETRY) {
           retryCount.current += 1;
           if (process.env.NODE_ENV === "development") {
-            console.log(`[FCMToast] messaging 미준비, 재시도 ${retryCount.current}/${MAX_RETRY}`);
+            // console.log(`[FCMToast] messaging 미준비, 재시도 ${retryCount.current}/${MAX_RETRY}`);
           }
           retryTimer.current = setTimeout(trySubscribe, RETRY_DELAY);
         } else {
           unsubRef.current = unsub;
           if (process.env.NODE_ENV === "development") {
-            console.log("[FCMToast] 포그라운드 메시지 구독 완료 ✅");
+            // console.log("[FCMToast] 포그라운드 메시지 구독 완료 ✅");
           }
         }
       } catch (err) {
         if (process.env.NODE_ENV === "development") {
-          console.error("[FCMToast] 구독 오류:", err);
+          // console.error("[FCMToast] 구독 오류:", err);
         }
       }
     };

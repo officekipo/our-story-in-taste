@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const AD_UNIT_ID = "DAN-NL7KhtYPzCG2YUOU";
+const AD_UNIT_ID = "DAN-qujyAjN1IQufDI4a";
 
 export function KakaoAdFit() {
   const containerRef = useRef<HTMLDivElement>(null);

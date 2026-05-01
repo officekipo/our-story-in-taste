@@ -1,7 +1,10 @@
 // src/app/providers.tsx
 //
-//  Fix:
-//    ★ KakaoAdFit 제거 — AppShell 안으로 이동했으므로 여기서는 불필요
+//  수정사항:
+//    ★ setupAuthListener 반환값 변경 대응
+//      기존: .then((unsub) => ...) — Promise 방식
+//      수정: 즉시 unsubscribe 반환 — 동기 방식
+//    ★ 이미 로그인된 상태에서 /login 등 PUBLIC_PATHS 접근 시 "/" 로 리다이렉트
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -43,15 +46,27 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!mounted || !initialized) return;
     const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+
     if (!isPublic && !myUid) {
+      // 비로그인 상태에서 보호된 페이지 접근 → 로그인으로
       router.replace("/login");
+      return;
     }
-  }, [mounted, initialized, myUid, pathname, router]);
+
+    if (isPublic && myUid && emailVerified) {
+      // ★ 이미 로그인+인증된 상태에서 /login, /signup 등 접근 → 홈으로
+      router.replace("/");
+    }
+  }, [mounted, initialized, myUid, emailVerified, pathname, router]);
 
   if (!mounted)      return <GlobalLoader />;
   if (!initialized)  return <GlobalLoader />;
 
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+
+  // ★ 로그인된 상태에서 PUBLIC 페이지 접근 시 로더 표시 (리다이렉트 대기)
+  if (isPublic && myUid && emailVerified) return <GlobalLoader />;
+
   if (isPublic) return <>{children}</>;
   if (!myUid)   return <GlobalLoader />;
 
@@ -129,9 +144,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    setupAuthListener().then((unsub) => { unsubscribe = unsub; });
-    return () => { unsubscribe?.(); };
+    const unsubscribe = setupAuthListener();
+    return () => unsubscribe();
   }, []);
 
   return (

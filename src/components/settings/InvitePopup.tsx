@@ -1,15 +1,9 @@
 // src/components/settings/InvitePopup.tsx
 //
-//  커플 연동 / 초대 코드 팝업 컴포넌트
-//
 //  Fix:
-//    ★ 마운트 시 Firestore에서 최신 coupleId 직접 조회
-//      → authStore 캐시 값이 stale해도 정확한 모드 결정
-//    ★ 3가지 탭 모드:
-//       create    → coupleId 없음: 교제 시작일 입력 → 코드 생성
-//       show      → coupleId O, 파트너 X: 내 코드 표시
-//       enter     → 파트너 코드 입력
-//       connected → 파트너 O: 연동 상태 + 해제
+//    ★ 커플 연동 완료 후 authStore coupleId 설정 → 실시간 리스너 자동 시작
+//    ★ 연동 해제 후 UI 즉시 반영 (authStore reset → 리스너가 감지)
+//    ★ 마운트 시 Firestore에서 최신 coupleId 직접 조회 (stale 캐시 방지)
 "use client";
 
 import { useState, useEffect } from "react";
@@ -35,7 +29,7 @@ const inp: React.CSSProperties = {
 
 type TabMode = "loading" | "create" | "show" | "enter" | "connected";
 
-// ── 서브 컴포넌트: 코드 생성 탭 ─────────────────────────────
+// ── 코드 생성 탭 ──────────────────────────────────────────
 function CreateTab({
   onCreated,
   onSwitchToEnter,
@@ -54,7 +48,7 @@ function CreateTab({
     try {
       const { createCouple } = await import("@/lib/firebase/auth");
       const { coupleId: id, inviteCode: code } = await createCouple(myUid, sDate);
-      setCoupleId(id);
+      setCoupleId(id); // authStore 업데이트 → 실시간 리스너 자동 시작
       onCreated(id, code);
     } catch (e: any) {
       setCreateErr(e.message ?? "코드 생성에 실패했습니다.");
@@ -77,16 +71,12 @@ function CreateTab({
         max={new Date().toISOString().slice(0, 10)}
         style={{ ...inp, marginBottom: 8 }}
       />
-      {createErr && (
-        <p style={{ fontSize: 12, color: RED, marginBottom: 8 }}>❌ {createErr}</p>
-      )}
-      <button
-        onClick={handleCreate} disabled={creating}
+      {createErr && <p style={{ fontSize: 12, color: RED, marginBottom: 8 }}>❌ {createErr}</p>}
+      <button onClick={handleCreate} disabled={creating}
         style={{ width: "100%", padding: 13, background: creating ? "#C0B8B0" : ROSE, border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: creating ? "default" : "pointer", fontFamily: "inherit", marginBottom: 10 }}>
         {creating ? "생성 중…" : "✨ 초대 코드 만들기"}
       </button>
-      <button
-        onClick={onSwitchToEnter}
+      <button onClick={onSwitchToEnter}
         style={{ width: "100%", padding: 12, background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
         파트너 코드 입력하기
       </button>
@@ -94,7 +84,7 @@ function CreateTab({
   );
 }
 
-// ── 서브 컴포넌트: 코드 표시 (파트너 미연동) ─────────────────
+// ── 코드 표시 탭 (파트너 미연동) ─────────────────────────
 function ShowCodeTab({
   myCode,
   onSwitchToEnter,
@@ -103,12 +93,6 @@ function ShowCodeTab({
   onSwitchToEnter: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(myCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   return (
     <div>
@@ -120,13 +104,12 @@ function ShowCodeTab({
           {myCode || "불러오는 중..."}
         </div>
         <button
-          onClick={handleCopy}
+          onClick={() => { navigator.clipboard.writeText(myCode); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
           style={{ padding: "10px 14px", background: copied ? SAGE : "#fff", border: `1px solid ${BORDER}`, borderRadius: 10, color: copied ? "#fff" : MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
           {copied ? "✅" : "📋"}
         </button>
       </div>
-      <button
-        onClick={onSwitchToEnter}
+      <button onClick={onSwitchToEnter}
         style={{ width: "100%", padding: 12, background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
         파트너 코드 입력하기
       </button>
@@ -134,7 +117,7 @@ function ShowCodeTab({
   );
 }
 
-// ── 서브 컴포넌트: 파트너 코드 입력 탭 ──────────────────────
+// ── 파트너 코드 입력 탭 ──────────────────────────────────
 function EnterCodeTab({
   onBack,
   onSuccess,
@@ -164,7 +147,7 @@ function EnterCodeTab({
     try {
       const { joinCouple } = await import("@/lib/firebase/auth");
       const newCoupleId = await joinCouple(code.trim(), myUid);
-      setCoupleId(newCoupleId);
+      setCoupleId(newCoupleId); // authStore 업데이트 → 실시간 리스너 자동 시작
       setJoinStatus("success");
       setJoinMsg("커플 연동 완료! 🎉");
       setTimeout(onSuccess, 1500);
@@ -198,13 +181,11 @@ function EnterCodeTab({
           {joinMsg}
         </p>
       )}
-      <button
-        onClick={handleJoin} disabled={joinStatus === "loading"}
+      <button onClick={handleJoin} disabled={joinStatus === "loading"}
         style={{ width: "100%", padding: 13, background: joinStatus === "loading" ? "#C0B8B0" : ROSE, border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: joinStatus === "loading" ? "default" : "pointer", fontFamily: "inherit", marginBottom: 10 }}>
         {joinStatus === "loading" ? "연동 중…" : "💑 커플 연동하기"}
       </button>
-      <button
-        onClick={onBack}
+      <button onClick={onBack}
         style={{ width: "100%", padding: 12, background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
         ← 뒤로
       </button>
@@ -212,7 +193,7 @@ function EnterCodeTab({
   );
 }
 
-// ── 서브 컴포넌트: 파트너 연동됨 ─────────────────────────────
+// ── 연동 완료 탭 ─────────────────────────────────────────
 function ConnectedTab({ onDisconnect }: { onDisconnect: () => void }) {
   const { partnerName, partnerProfileImgUrl, startDate } = useAuthStore();
   return (
@@ -228,8 +209,7 @@ function ConnectedTab({ onDisconnect }: { onDisconnect: () => void }) {
           {startDate && <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>교제 시작일: {startDate}</p>}
         </div>
       </div>
-      <button
-        onClick={onDisconnect}
+      <button onClick={onDisconnect}
         style={{ width: "100%", padding: 12, background: "transparent", border: `1.5px solid ${RED}`, borderRadius: 12, color: RED, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
         💔 커플 연동 해제
       </button>
@@ -237,7 +217,7 @@ function ConnectedTab({ onDisconnect }: { onDisconnect: () => void }) {
   );
 }
 
-// ── 서브 컴포넌트: 연동 해제 확인 다이얼로그 ────────────────
+// ── 연동 해제 확인 다이얼로그 ────────────────────────────
 function DisconnectConfirm({
   onConfirm, onClose, loading,
 }: {
@@ -266,7 +246,7 @@ function DisconnectConfirm({
   );
 }
 
-// ── 메인 컴포넌트 ────────────────────────────────────────────
+// ── 메인 컴포넌트 ────────────────────────────────────────
 export function InvitePopup({ onClose }: { onClose: () => void }) {
   const { myUid, partnerName, setCoupleId } = useAuthStore();
 
@@ -277,47 +257,38 @@ export function InvitePopup({ onClose }: { onClose: () => void }) {
   const [showConfirm,   setShowConfirm]   = useState(false);
 
   // ★ 마운트 시 Firestore에서 최신 coupleId 직접 조회
-  //   authStore 캐시가 stale해도 정확한 상태 파악
   useEffect(() => {
     if (!myUid) { setMode("create"); return; }
 
     getDoc(doc(db, "users", myUid)).then(async snap => {
       const freshCoupleId = snap.data()?.coupleId ?? null;
       setRealCoupleId(freshCoupleId);
-      // authStore도 최신 값으로 동기화
       setCoupleId(freshCoupleId);
 
       if (!freshCoupleId) {
-        // coupleId 없음 → 코드 생성
         setMode("create");
         return;
       }
 
-      // coupleId 있음 → couples 문서에서 inviteCode + user2Uid 확인
       try {
         const { fetchCouple } = await import("@/lib/firebase/auth");
         const couple = await fetchCouple(freshCoupleId);
         if (!couple) {
-          // couples 문서 없음 (고아 데이터) → 초기화
           setCoupleId(null);
           setRealCoupleId(null);
           setMode("create");
           return;
         }
         setMyCode(couple.inviteCode ?? "");
-        // user2Uid 있고 파트너 이름 있으면 연동 완료
         if (couple.user2Uid && partnerName) {
           setMode("connected");
         } else {
-          // 코드만 있고 파트너 미연동
           setMode("show");
         }
       } catch {
         setMode("create");
       }
-    }).catch(() => {
-      setMode("create");
-    });
+    }).catch(() => setMode("create"));
   }, [myUid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDisconnect = async () => {
@@ -326,12 +297,14 @@ export function InvitePopup({ onClose }: { onClose: () => void }) {
     try {
       const { disconnectCouple } = await import("@/lib/firebase/auth");
       await disconnectCouple(myUid, realCoupleId);
+      // authStore 초기화 → 실시간 리스너가 감지하여 UI 갱신
       setCoupleId(null);
       setRealCoupleId(null);
       setShowConfirm(false);
       onClose();
-    } catch {
-      alert("연동 해제에 실패했습니다. 다시 시도해주세요.");
+    } catch (e: any) {
+      console.error("disconnectCouple error:", e.code, e.message);
+      alert(`연동 해제에 실패했습니다.\n오류: ${e.message ?? e.code ?? "알 수 없는 오류"}`);
     } finally {
       setDisconnecting(false);
     }
@@ -339,14 +312,11 @@ export function InvitePopup({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <div
-        onClick={onClose}
-        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-      >
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{ width: "100%", maxWidth: 340, background: "#fff", borderRadius: 20, padding: 24, animation: "scaleIn 0.18s ease both", maxHeight: "90vh", overflowY: "auto" }}
-        >
+      <div onClick={onClose}
+        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div onClick={e => e.stopPropagation()}
+          style={{ width: "100%", maxWidth: 340, background: "#fff", borderRadius: 20, padding: 24, animation: "scaleIn 0.18s ease both", maxHeight: "90vh", overflowY: "auto" }}>
+
           {/* 헤더 */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
             <p style={{ fontSize: 16, fontWeight: 700, color: INK }}>커플 연동 / 초대 코드</p>
@@ -363,38 +333,10 @@ export function InvitePopup({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {/* 코드 생성 */}
-          {mode === "create" && (
-            <CreateTab
-              onCreated={(id, code) => {
-                setRealCoupleId(id);
-                setMyCode(code);
-                setMode("show");
-              }}
-              onSwitchToEnter={() => setMode("enter")}
-            />
-          )}
-
-          {/* 코드 표시 */}
-          {mode === "show" && (
-            <ShowCodeTab
-              myCode={myCode}
-              onSwitchToEnter={() => setMode("enter")}
-            />
-          )}
-
-          {/* 파트너 코드 입력 */}
-          {mode === "enter" && (
-            <EnterCodeTab
-              onBack={() => setMode(realCoupleId ? "show" : "create")}
-              onSuccess={onClose}
-            />
-          )}
-
-          {/* 연동 완료 */}
-          {mode === "connected" && (
-            <ConnectedTab onDisconnect={() => setShowConfirm(true)} />
-          )}
+          {mode === "create"    && <CreateTab onCreated={(id, code) => { setRealCoupleId(id); setMyCode(code); setMode("show"); }} onSwitchToEnter={() => setMode("enter")} />}
+          {mode === "show"      && <ShowCodeTab myCode={myCode} onSwitchToEnter={() => setMode("enter")} />}
+          {mode === "enter"     && <EnterCodeTab onBack={() => setMode(realCoupleId ? "show" : "create")} onSuccess={onClose} />}
+          {mode === "connected" && <ConnectedTab onDisconnect={() => setShowConfirm(true)} />}
         </div>
       </div>
 
