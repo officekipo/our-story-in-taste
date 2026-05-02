@@ -1,14 +1,14 @@
 // next.config.ts
-// next-pwa 5.6.0 활성화
-
 import type { NextConfig } from "next";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const withPWA = require("next-pwa")({
   dest:        "public",
-  disable:     process.env.NODE_ENV === "development",  // 개발 환경에서는 PWA 비활성
+  disable:     process.env.NODE_ENV === "development",
   register:    true,
   skipWaiting: true,
+  // ★ 광고 스크립트 캐시 제외 (카카오 AdFit은 캐시하면 안 됨)
+  buildExcludes: [/middleware-manifest\.json$/],
   runtimeCaching: [
     {
       // Firebase Storage 이미지 캐시 (30일)
@@ -37,27 +37,70 @@ const withPWA = require("next-pwa")({
         expiration: { maxEntries: 30, maxAgeSeconds: 365 * 24 * 60 * 60 },
       },
     },
+    {
+      // Next.js 정적 assets (/_next/static)
+      urlPattern: /^\/_next\/static\/.*/,
+      handler:    "CacheFirst",
+      options: {
+        cacheName:  "next-static",
+        expiration: { maxEntries: 200, maxAgeSeconds: 365 * 24 * 60 * 60 },
+      },
+    },
+    {
+      // API 라우트 — NetworkFirst (항상 최신 데이터)
+      urlPattern: /^https?.*(\/api\/)/,
+      handler:    "NetworkFirst",
+      options: {
+        cacheName:        "api-cache",
+        networkTimeoutSeconds: 10,
+        expiration: { maxEntries: 50, maxAgeSeconds: 5 * 60 },
+      },
+    },
   ],
 });
 
 const nextConfig: NextConfig = {
-  // ★ Turbopack 기본값(Next.js 16+) 사용 선언
-  //   next-pwa의 webpack 설정과 공존 — 경고 제거
   turbopack: {},
 
+  // ★ 압축 활성화 → JS/CSS 번들 크기 감소
+  compress: true,
+
+  // ★ 프로덕션 소스맵 비활성화 → 번들 크기 감소, LCP 개선
+  productionBrowserSourceMaps: false,
+
   images: {
+    // ★ 최신 이미지 포맷 우선 사용 → LCP 개선
+    formats: ["image/avif", "image/webp"],
+    // ★ 이미지 캐시 TTL 최대화
+    minimumCacheTTL: 60 * 60 * 24 * 30, // 30일
     remotePatterns: [
       {
-        // Firebase Storage
         protocol: "https",
         hostname: "firebasestorage.googleapis.com",
       },
       {
-        // Google 프로필 사진 (소셜 로그인)
         protocol: "https",
         hostname: "lh3.googleusercontent.com",
       },
     ],
+  },
+
+  // ★ 헤더 캐시 설정 → 정적 자산 재사용
+  async headers() {
+    return [
+      {
+        source: "/icons/(.*)",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
+        source: "/manifest.json",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=86400" },
+        ],
+      },
+    ];
   },
 };
 
