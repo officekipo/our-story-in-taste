@@ -4,26 +4,68 @@
 //  Fix:
 //    1. 마커 사이즈 축소 (32→24px, font-size 15→11px)
 //    2. 하단 팝업에 카카오맵 / 네이버지도 "자세히 보기" 링크 추가
+//    3. ★ [클러스터링] 순수 Leaflet으로 직접 구현 — 외부 플러그인 없음
+//       Turbopack 모듈 격리 문제 완전 우회
+//       줌/이동 시 자동 재클러스터링
+//       클러스터 클릭 → 해당 영역 줌인
 // ============================================================
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useVisited }  from "@/hooks/useVisited";
 import { useWishlist } from "@/hooks/useWishlist";
 import type { VisitedRecord, WishRecord } from "@/types";
 import type { MapFilter } from "@/app/map/page";
 
-const ROSE  = "#C96B52";
-const SAGE  = "#6B9E7E";
-const INK   = "#1A1412";
-const MUTED = "#8A8078";
-const BORDER= "#E2DDD8";
-const WARM  = "#FAF7F3";
-const BG    = "#F5F0EB";
+const ROSE   = "#C96B52";
+const SAGE   = "#6B9E7E";
+const INK    = "#1A1412";
+const MUTED  = "#8A8078";
+const BORDER = "#E2DDD8";
+const WARM   = "#FAF7F3";
+const BG     = "#F5F0EB";
+
+const CLUSTER_RADIUS = 60; // px 단위 클러스터링 반경
 
 type PinTarget =
   | { type: "visited"; data: VisitedRecord }
   | { type: "wish";    data: WishRecord };
+
+// ── 순수 JS 클러스터 알고리즘 ──────────────────────────────────
+// 픽셀 좌표 기준 CLUSTER_RADIUS 이내 핀을 그룹으로 묶음
+function buildClusters(
+  pins: PinTarget[],
+  map: any,
+  radius: number,
+): Array<{ pins: PinTarget[]; lat: number; lng: number }> {
+  const assigned = new Set<number>();
+  const result:   Array<{ pins: PinTarget[]; lat: number; lng: number }> = [];
+
+  for (let i = 0; i < pins.length; i++) {
+    if (assigned.has(i)) continue;
+
+    const ptA   = map.latLngToContainerPoint([pins[i].data.lat!, pins[i].data.lng!]);
+    const group: PinTarget[] = [pins[i]];
+    assigned.add(i);
+
+    for (let j = i + 1; j < pins.length; j++) {
+      if (assigned.has(j)) continue;
+      const ptB = map.latLngToContainerPoint([pins[j].data.lat!, pins[j].data.lng!]);
+      const dx  = ptA.x - ptB.x;
+      const dy  = ptA.y - ptB.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= radius) {
+        group.push(pins[j]);
+        assigned.add(j);
+      }
+    }
+
+    const lat = group.reduce((s, p) => s + p.data.lat!, 0) / group.length;
+    const lng = group.reduce((s, p) => s + p.data.lng!, 0) / group.length;
+    result.push({ pins: group, lat, lng });
+  }
+
+  return result;
+}
 
 interface Props {
   filter?: MapFilter;
@@ -32,6 +74,7 @@ interface Props {
 export default function MapView({ filter = "all" }: Props) {
   const mapRef     = useRef<HTMLDivElement>(null);
   const mapInst    = useRef<any>(null);
+  const leafletRef = useRef<any>(null);          // ★ L 인스턴스 저장
   const markersRef = useRef<any[]>([]);
 
   const { records: visited,  loading: vLoad } = useVisited();
@@ -41,20 +84,22 @@ export default function MapView({ filter = "all" }: Props) {
   const [selected, setSelected] = useState<PinTarget | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
-  // ── Leaflet 초기화 ──────────────────────────────────────
+  // ── Leaflet 초기화 ──────────────────────────────────────────
   useEffect(() => {
     let destroyed = false;
 
     if (!document.getElementById("leaflet-css")) {
-      const link = document.createElement("link");
-      link.id   = "leaflet-css";
-      link.rel  = "stylesheet";
-      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      const link  = document.createElement("link");
+      link.id     = "leaflet-css";
+      link.rel    = "stylesheet";
+      link.href   = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
       document.head.appendChild(link);
     }
 
     import("leaflet").then((L) => {
       if (destroyed || !mapRef.current) return;
+
+      leafletRef.current = L;                    // ★ 저장
 
       if (mapInst.current) {
         mapInst.current.remove();
@@ -90,32 +135,58 @@ export default function MapView({ filter = "all" }: Props) {
     };
   }, []);
 
-  // ── 마커 갱신 ──────────────────────────────────────────
-  useEffect(() => {
-    if (!mapReady || !mapInst.current) return;
+  // ── 마커 렌더링 (클러스터링 포함) ──────────────────────────
+  const renderMarkers = useCallback((pins: PinTarget[]) => {
+    const L   = leafletRef.current;
+    const map = mapInst.current;
+    if (!L || !map) return;
 
-    import("leaflet").then((L) => {
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
+    // 기존 마커 제거
+    markersRef.current.forEach((m) => { try { m.remove(); } catch {} });
+    markersRef.current = [];
 
-      const visitedPins: PinTarget[] = visited
-        .filter(r => r.lat != null && r.lng != null)
-        .map(r => ({ type: "visited" as const, data: r }));
+    if (pins.length === 0) return;
 
-      const wishPins: PinTarget[] = wishlist
-        .filter(r => r.lat != null && r.lng != null)
-        .map(r => ({ type: "wish" as const, data: r }));
+    const clusters = buildClusters(pins, map, CLUSTER_RADIUS);
 
-      const pins: PinTarget[] =
-        filter === "visited" ? visitedPins :
-        filter === "wish"    ? wishPins    :
-        [...visitedPins, ...wishPins];
+    clusters.forEach((cluster) => {
+      if (cluster.pins.length > 1) {
+        // ── 클러스터 마커 ──────────────────────────────
+        const count   = cluster.pins.length;
+        const size    = count < 10 ? 36 : count < 30 ? 44 : 52;
+        const allWish = cluster.pins.every(p => p.type === "wish");
+        const bg      = allWish ? SAGE : ROSE;
 
-      pins.forEach((pin) => {
+        const icon = L.divIcon({
+          className: "",
+          html: `<div style="
+            width:${size}px;height:${size}px;
+            background:${bg};border-radius:50%;
+            border:3px solid rgba(255,255,255,0.9);
+            box-shadow:0 2px 8px rgba(0,0,0,0.25);
+            display:flex;align-items:center;justify-content:center;
+            color:#fff;font-size:${size < 44 ? 13 : 15}px;font-weight:700;
+          ">${count}</div>`,
+          iconSize:   [size, size],
+          iconAnchor: [size / 2, size / 2],
+        });
+
+        const m = L.marker([cluster.lat, cluster.lng], { icon })
+          .addTo(map)
+          .on("click", () => {
+            const bounds = L.latLngBounds(
+              cluster.pins.map(p => [p.data.lat!, p.data.lng!] as [number, number])
+            );
+            map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+          });
+        markersRef.current.push(m);
+
+      } else {
+        // ── 개별 핀 마커 ──────────────────────────────
+        const pin   = cluster.pins[0];
         const color = pin.type === "visited" ? ROSE : SAGE;
         const emoji = pin.data.emoji || (pin.type === "visited" ? "🍽️" : "⭐");
 
-        // ★ 마커 사이즈 축소: 32→24px, font 15→11px
         const icon = L.divIcon({
           className: "",
           html: `<div style="background:${color};color:#fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,0.22)"><span style="transform:rotate(45deg)">${emoji}</span></div>`,
@@ -123,17 +194,52 @@ export default function MapView({ filter = "all" }: Props) {
         });
 
         const m = L.marker([pin.data.lat!, pin.data.lng!], { icon })
-          .addTo(mapInst.current)
+          .addTo(map)
           .on("click", () => setSelected(pin));
         markersRef.current.push(m);
-      });
-
-      if (pins.length > 0) {
-        const bounds = L.latLngBounds(pins.map(p => [p.data.lat!, p.data.lng!] as [number, number]));
-        mapInst.current.fitBounds(bounds, { padding: [48, 48] });
       }
     });
-  }, [mapReady, visited, wishlist, filter]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 데이터/필터 변경 시 마커 갱신 + 줌/이동 이벤트 등록 ──────
+  useEffect(() => {
+    if (!mapReady || !mapInst.current || !leafletRef.current) return;
+
+    const L   = leafletRef.current;
+    const map = mapInst.current;
+
+    const visitedPins: PinTarget[] = visited
+      .filter(r => r.lat != null && r.lng != null)
+      .map(r => ({ type: "visited" as const, data: r }));
+
+    const wishPins: PinTarget[] = wishlist
+      .filter(r => r.lat != null && r.lng != null)
+      .map(r => ({ type: "wish" as const, data: r }));
+
+    const pins: PinTarget[] =
+      filter === "visited" ? visitedPins :
+      filter === "wish"    ? wishPins    :
+      [...visitedPins, ...wishPins];
+
+    // 초기 렌더
+    renderMarkers(pins);
+
+    // ★ 줌/이동 시 재클러스터링
+    const onViewChange = () => renderMarkers(pins);
+    map.on("zoomend", onViewChange);
+    map.on("moveend", onViewChange);
+
+    // 초기 fitBounds
+    if (pins.length > 0) {
+      const bounds = L.latLngBounds(pins.map(p => [p.data.lat!, p.data.lng!] as [number, number]));
+      map.fitBounds(bounds, { padding: [48, 48] });
+    }
+
+    return () => {
+      map.off("zoomend", onViewChange);
+      map.off("moveend", onViewChange);
+    };
+  }, [mapReady, visited, wishlist, filter, renderMarkers]);
 
   // ★ 카카오맵 / 네이버지도 링크 생성
   const getMapLinks = (pin: PinTarget) => {

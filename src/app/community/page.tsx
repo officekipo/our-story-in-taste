@@ -8,6 +8,7 @@
 //    4. 닉네임 비공개: showAuthorName=false → coupleLabel="익명 커플" (이전 수정 유지)
 //    5. 좋아요 +2 버그 수정 (이전 수정 유지)
 //    6. ★ submitReport: community_reports 컬렉션에 addDoc 추가
+//    7. ★ [좋아요 정렬] 최신순 / 인기순(❤️) 정렬 칩 추가
 // ============================================================
 "use client";
 
@@ -84,6 +85,7 @@ export default function CommunityPage() {
   const [filterSido,    setFilterSido]    = useState("");
   const [filterCuisine, setFilterCuisine] = useState("");
   const [filterTag,     setFilterTag]     = useState("");
+  const [sortBy,        setSortBy]        = useState<"recent" | "likes">("recent"); // ★ 정렬
 
   const allTags = Array.from(new Set(records.flatMap((r) => r.tags))).sort();
 
@@ -103,7 +105,12 @@ export default function CommunityPage() {
   const displayed = records
     .filter((r) => !filterSido    || r.sido    === filterSido)
     .filter((r) => !filterCuisine || r.cuisine === filterCuisine)
-    .filter((r) => !filterTag     || r.tags.includes(filterTag));
+    .filter((r) => !filterTag     || r.tags.includes(filterTag))
+    .sort((a, b) =>                                                      // ★ 정렬
+      sortBy === "likes"
+        ? b.likes - a.likes
+        : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
   // ── 좋아요
   const handleLike = useCallback(async (record: RecordType) => {
@@ -188,6 +195,12 @@ export default function CommunityPage() {
 
         {/* 필터 바 */}
         <div style={{ display: "flex", gap: 6, padding: "0 16px 12px", overflowX: "auto", scrollbarWidth: "none" }}>
+
+          {/* ★ 정렬 칩 */}
+          <button onClick={() => setSortBy("recent")} style={sortBy === "recent" ? chipActive : chipInactive}>최신순</button>
+          <button onClick={() => setSortBy("likes")}  style={sortBy === "likes"  ? chipActive : chipInactive}>❤️ 인기순</button>
+
+          <div style={{ width: 1, background: BORDER, flexShrink: 0, margin: "4px 2px" }} />
           <div style={{ position: "relative", flexShrink: 0 }}>
             <select value={filterSido} onChange={(e) => setFilterSido(e.target.value)} style={{ ...(filterSido ? chipActive : chipInactive), paddingRight: 22 }}>
               <option value="">지역 전체</option>
@@ -216,7 +229,7 @@ export default function CommunityPage() {
 
           {(filterSido || filterCuisine || filterTag) && (
             <button onClick={() => { setFilterSido(""); setFilterCuisine(""); setFilterTag(""); }} style={{ ...chipInactive, color: ROSE, outline: `1px solid ${ROSE}` }}>
-              초기화
+              필터 초기화
             </button>
           )}
         </div>

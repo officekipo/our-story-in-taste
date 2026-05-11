@@ -4,6 +4,7 @@
 //  Fix:
 //    - openConfirm 호출 시 record.imgUrls 전달 ★
 //      → uiStore confirmTarget에 imgUrls 포함 → handleDelete에서 Storage 정리 가능
+//    - [Fix #2] 설명글(note) 박스 여백: padding "9px 12px" → "12px 16px"
 // ============================================================
 "use client";
 
@@ -88,7 +89,7 @@ export function WishCard({ record, index, onVisited, onEdit }: WishCardProps) {
         </div>
 
         {record.note && (
-          <div style={{ background: WARM, borderRadius: 10, padding: "9px 12px", marginBottom: 12, fontSize: 13, color: MUTED, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+          <div style={{ background: WARM, borderRadius: 10, padding: "12px 16px", marginBottom: 12, fontSize: 13, color: MUTED, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
             {record.note}
           </div>
         )}

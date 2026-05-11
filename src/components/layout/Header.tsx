@@ -6,6 +6,7 @@
 //    🟠 설정 버튼: gear 아이콘
 //    🔵 검색창 날짜 필터: DateRangePicker (기간 선택)
 //    ★  로고 클릭 시 홈(/) 이동 추가
+//    ★  [필터 UI 정리] 정렬 칩 3개 → select 드롭다운 1개로 통합 (7개→5개, 가로스크롤 해소)
 // ============================================================
 "use client";
 
@@ -186,7 +187,10 @@ export function Header({
       {/* ── 필터 바 ── */}
       {isVisited && (
         <div>
+          {/* ★ 필터 UI 정리: 정렬 3개 칩 → select 드롭다운 1개로 통합 (7개 → 5개) */}
           <div style={{ display: "flex", gap: 7, padding: "10px 3px", overflowX: "auto", alignItems: "center", scrollbarWidth: "none" }}>
+
+            {/* 지역 필터 */}
             <div style={{ position: "relative", flexShrink: 0 }}>
               <select value={filterSido} onChange={e => onFilterSido?.(e.target.value)} style={{ ...filterSido ? chipActive : chipInactive, paddingRight: 24 }}>
                 <option value="">지역 전체</option>
@@ -194,6 +198,8 @@ export function Header({
               </select>
               <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 8, color: filterSido ? "#fff" : MUTED, pointerEvents: "none" }}>▾</span>
             </div>
+
+            {/* 음식 필터 */}
             <div style={{ position: "relative", flexShrink: 0 }}>
               <select value={filterCui} onChange={e => onFilterCui?.(e.target.value)} style={{ ...filterCui ? chipActive : chipInactive, paddingRight: 24 }}>
                 <option value="">음식 전체</option>
@@ -201,10 +207,25 @@ export function Header({
               </select>
               <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 8, color: filterCui ? "#fff" : MUTED, pointerEvents: "none" }}>▾</span>
             </div>
-            {(SORT as readonly any[]).map((o: any) => (
-              <button key={o.v} onClick={() => onSort?.(o.v)} style={sortBy === o.v ? chipActive : chipInactive}>{o.l}</button>
-            ))}
+
+            {/* ★ 정렬: 칩 3개 → select 1개 */}
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <select
+                value={sortBy}
+                onChange={e => onSort?.(e.target.value)}
+                style={{ ...(sortBy !== "date" ? chipActive : chipInactive), paddingRight: 24 }}
+              >
+                {(SORT as readonly any[]).map((o: any) => (
+                  <option key={o.v} value={o.v}>{o.l}</option>
+                ))}
+              </select>
+              <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 8, color: sortBy !== "date" ? "#fff" : MUTED, pointerEvents: "none" }}>▾</span>
+            </div>
+
+            {/* 타임라인 */}
             <button onClick={onTimeline} style={timeline ? chipActive : chipInactive}>📅 타임라인</button>
+
+            {/* 검색 */}
             <button
               onClick={onToggleSearch}
               style={{ ...(showSearch ? { ...chipActive, background: "#F2D5CC", color: ROSE, outline: `1px solid ${ROSE}` } : chipInactive), marginLeft: "auto" }}
