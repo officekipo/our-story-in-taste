@@ -201,6 +201,7 @@ export default function WishlistPage() {
         date:        todayStr(),
         memo:        visitTarget.note ?? "",
         tags:        [],
+        imgUrls:     visitTarget.imgUrls ?? [],
         revisit,
         emoji:       visitTarget.emoji ?? "🍽️",
         shareToComm: false,
