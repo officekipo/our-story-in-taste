@@ -1,13 +1,13 @@
 // ============================================================
 //  MapView.tsx  적용 경로: src/components/map/MapView.tsx
 //
-//  Fix:
-//    1. 마커 사이즈 축소 (32→24px, font-size 15→11px)
-//    2. 하단 팝업에 카카오맵 / 네이버지도 "자세히 보기" 링크 추가
-//    3. ★ [클러스터링] 순수 Leaflet으로 직접 구현 — 외부 플러그인 없음
-//       Turbopack 모듈 격리 문제 완전 우회
-//       줌/이동 시 자동 재클러스터링
-//       클러스터 클릭 → 해당 영역 줌인
+//  Fix / Add:
+//    ★ 개별 핀에 재방문 횟수 뱃지 표시 (2번 이상 방문 시)
+//    ★ 하단 상세 패널에 총 방문 횟수 뱃지 추가
+//    기존 수정:
+//      1. 마커 사이즈 축소 (32→24px, font-size 15→11px)
+//      2. 하단 팝업에 카카오맵 / 네이버지도 "자세히 보기" 링크 추가
+//      3. [클러스터링] 순수 Leaflet으로 직접 구현 — 외부 플러그인 없음
 // ============================================================
 "use client";
 
@@ -32,7 +32,6 @@ type PinTarget =
   | { type: "wish";    data: WishRecord };
 
 // ── 순수 JS 클러스터 알고리즘 ──────────────────────────────────
-// 픽셀 좌표 기준 CLUSTER_RADIUS 이내 핀을 그룹으로 묶음
 function buildClusters(
   pins: PinTarget[],
   map: any,
@@ -67,6 +66,11 @@ function buildClusters(
   return result;
 }
 
+// ★ 총 방문 횟수 계산 헬퍼
+function getTotalVisits(record: VisitedRecord): number {
+  return 1 + (record.visits?.length ?? 0);
+}
+
 interface Props {
   filter?: MapFilter;
 }
@@ -74,7 +78,7 @@ interface Props {
 export default function MapView({ filter = "all" }: Props) {
   const mapRef     = useRef<HTMLDivElement>(null);
   const mapInst    = useRef<any>(null);
-  const leafletRef = useRef<any>(null);          // ★ L 인스턴스 저장
+  const leafletRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
   const { records: visited,  loading: vLoad } = useVisited();
@@ -99,7 +103,7 @@ export default function MapView({ filter = "all" }: Props) {
     import("leaflet").then((L) => {
       if (destroyed || !mapRef.current) return;
 
-      leafletRef.current = L;                    // ★ 저장
+      leafletRef.current = L;
 
       if (mapInst.current) {
         mapInst.current.remove();
@@ -159,14 +163,7 @@ export default function MapView({ filter = "all" }: Props) {
 
         const icon = L.divIcon({
           className: "",
-          html: `<div style="
-            width:${size}px;height:${size}px;
-            background:${bg};border-radius:50%;
-            border:3px solid rgba(255,255,255,0.9);
-            box-shadow:0 2px 8px rgba(0,0,0,0.25);
-            display:flex;align-items:center;justify-content:center;
-            color:#fff;font-size:${size < 44 ? 13 : 15}px;font-weight:700;
-          ">${count}</div>`,
+          html: `<div style="width:${size}px;height:${size}px;background:${bg};border-radius:50%;border:3px solid rgba(255,255,255,0.9);box-shadow:0 2px 8px rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;color:#fff;font-size:${size < 44 ? 13 : 15}px;font-weight:700;">${count}</div>`,
           iconSize:   [size, size],
           iconAnchor: [size / 2, size / 2],
         });
@@ -187,10 +184,29 @@ export default function MapView({ filter = "all" }: Props) {
         const color = pin.type === "visited" ? ROSE : SAGE;
         const emoji = pin.data.emoji || (pin.type === "visited" ? "🍽️" : "⭐");
 
+        // ★ 재방문 횟수 계산 (visited 타입만)
+        const totalVisits = pin.type === "visited"
+          ? getTotalVisits(pin.data as VisitedRecord)
+          : 0;
+        const showBadge = totalVisits >= 2;
+
+        // ★ 뱃지가 있으면 핀 크기를 살짝 키워 뱃지가 잘리지 않게
+        const wrapSize = showBadge ? 34 : 24;
+
+        const badgeHtml = showBadge
+          ? `<div style="position:absolute;top:-7px;right:-7px;background:#fff;color:${ROSE};border-radius:20px;min-width:16px;height:16px;padding:0 3px;font-size:8px;font-weight:800;display:flex;align-items:center;justify-content:center;border:1.5px solid ${ROSE};line-height:1;box-shadow:0 1px 4px rgba(0,0,0,0.18);">${totalVisits}</div>`
+          : "";
+
         const icon = L.divIcon({
           className: "",
-          html: `<div style="background:${color};color:#fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,0.22)"><span style="transform:rotate(45deg)">${emoji}</span></div>`,
-          iconSize: [24, 24], iconAnchor: [12, 24],
+          html: `<div style="position:relative;display:inline-block;width:${wrapSize}px;height:${wrapSize}px;">
+            <div style="position:absolute;bottom:0;left:${showBadge ? 5 : 0}px;background:${color};color:#fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,0.22);">
+              <span style="transform:rotate(45deg)">${emoji}</span>
+            </div>
+            ${badgeHtml}
+          </div>`,
+          iconSize:   [wrapSize, wrapSize],
+          iconAnchor: [showBadge ? 17 : 12, wrapSize],
         });
 
         const m = L.marker([pin.data.lat!, pin.data.lng!], { icon })
@@ -221,15 +237,12 @@ export default function MapView({ filter = "all" }: Props) {
       filter === "wish"    ? wishPins    :
       [...visitedPins, ...wishPins];
 
-    // 초기 렌더
     renderMarkers(pins);
 
-    // ★ 줌/이동 시 재클러스터링
     const onViewChange = () => renderMarkers(pins);
     map.on("zoomend", onViewChange);
     map.on("moveend", onViewChange);
 
-    // 초기 fitBounds
     if (pins.length > 0) {
       const bounds = L.latLngBounds(pins.map(p => [p.data.lat!, p.data.lng!] as [number, number]));
       map.fitBounds(bounds, { padding: [48, 48] });
@@ -264,6 +277,11 @@ export default function MapView({ filter = "all" }: Props) {
 
   const legendRows = filter === "all" ? 2 : 1;
 
+  // ★ 선택된 visited 레코드의 총 방문 횟수
+  const selectedTotalVisits = selected?.type === "visited"
+    ? getTotalVisits(selected.data as VisitedRecord)
+    : 0;
+
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
 
@@ -288,6 +306,15 @@ export default function MapView({ filter = "all" }: Props) {
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <div style={{ width: 10, height: 10, borderRadius: "50%", background: SAGE }} />
               <span style={{ color: INK }}>위시리스트 ({wishlist.filter(r => r.lat != null).length})</span>
+            </div>
+          )}
+          {/* ★ 재방문 안내 */}
+          {(filter === "all" || filter === "visited") && visited.some(r => getTotalVisits(r) >= 2) && (
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <div style={{ width: 14, height: 14, borderRadius: 4, background: "#fff", border: `1.5px solid ${ROSE}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: 7, fontWeight: 800, color: ROSE }}>N</span>
+              </div>
+              <span style={{ color: MUTED }}>숫자 = 방문 횟수</span>
             </div>
           )}
         </div>
@@ -321,8 +348,17 @@ export default function MapView({ filter = "all" }: Props) {
             style={{ position: "absolute", top: 14, right: 16, background: "none", border: "none", fontSize: 20, cursor: "pointer", color: MUTED }}
           >✕</button>
 
-          <div style={{ display: "inline-block", padding: "2px 10px", borderRadius: 20, background: selected.type === "visited" ? "#F2D5CC" : "#C8DED1", color: selected.type === "visited" ? ROSE : SAGE, fontSize: 11, fontWeight: 700, marginBottom: 10 }}>
-            {selected.type === "visited" ? "✅ 다녀온 곳" : "⭐ 가고싶은 곳"}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            {/* 방문/위시 뱃지 */}
+            <div style={{ display: "inline-block", padding: "2px 10px", borderRadius: 20, background: selected.type === "visited" ? "#F2D5CC" : "#C8DED1", color: selected.type === "visited" ? ROSE : SAGE, fontSize: 11, fontWeight: 700 }}>
+              {selected.type === "visited" ? "✅ 다녀온 곳" : "⭐ 가고싶은 곳"}
+            </div>
+            {/* ★ 재방문 횟수 뱃지 */}
+            {selectedTotalVisits >= 2 && (
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 9px", borderRadius: 20, background: "#F2D5CC", color: ROSE, fontSize: 11, fontWeight: 700 }}>
+                🔁 {selectedTotalVisits}번 방문
+              </div>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
@@ -353,7 +389,7 @@ export default function MapView({ filter = "all" }: Props) {
             </div>
           </div>
 
-          {/* ★ 카카오맵 / 네이버지도 링크 */}
+          {/* 카카오맵 / 네이버지도 링크 */}
           {selected.data.lat != null && (
             <div style={{ display: "flex", gap: 8 }}>
               <a

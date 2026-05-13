@@ -1,10 +1,9 @@
 // src/app/page.tsx
 //
 //  수정사항:
-//    ★ 광고 슬롯 2개 제한에 맞게 배치 조정
-//      - 리스트: 최상단 광고 1개 + 중간 광고 1개 (총 2개)
-//      - 타임라인: 최상단 광고 1개 + 첫 번째 월 섹션 뒤 광고 1개 (총 2개)
-//      - 갤러리: 광고 없음
+//    ★ AddEditModal에 onAddVisit, existingRecords prop 추가 (재방문 C안)
+//    기존 수정:
+//      광고 슬롯 2개 제한에 맞게 배치 조정
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -27,9 +26,7 @@ const ROSE       = "#C96B52";
 const MUTED      = "#8A8078";
 const BORDER     = "#E2DDD8";
 
-// 슬롯이 2개이므로 광고는 최대 2개
-// 리스트 모드: 최상단(1번째) + filtered 중간 지점(2번째)
-const MID_AD_INDEX = (len: number) => Math.floor(len / 2); // 중간 아이템 뒤에 광고
+const MID_AD_INDEX = (len: number) => Math.floor(len / 2);
 
 export default function HomePage() {
   const [dummyRecords, setDummyRecords] = useState<VisitedRecord[]>(SAMPLE_VISITED);
@@ -111,6 +108,7 @@ export default function HomePage() {
           coupleId:   coupleId ?? "sample-couple-001",
           authorUid:  "uid-me",
           authorName: myName,
+          visits:     [],
           createdAt:  new Date().toISOString(),
           updatedAt:  new Date().toISOString(),
         }, ...prev]);
@@ -124,13 +122,34 @@ export default function HomePage() {
     }
   };
 
+  // ★ 재방문 기록 추가 핸들러
+  const handleAddVisit = async (
+    existingId: string,
+    entry: { date: string; rating: 1|2|3|4|5; memo: string; imgUrls: string[]; revisit: boolean | null }
+  ) => {
+    if (DUMMY_MODE) {
+      setDummyRecords(prev => prev.map(r => {
+        if (r.id !== existingId) return r;
+        const newEntry = {
+          ...entry,
+          authorUid:  "uid-me",
+          authorName: myName,
+          createdAt:  new Date().toISOString(),
+        };
+        return { ...r, visits: [...(r.visits ?? []), newEntry], updatedAt: new Date().toISOString() };
+      }));
+    } else {
+      await firebase.addVisit(existingId, entry);
+    }
+  };
+
   const handleDelete = async () => {
     if (!confirmTarget) return;
     if (DUMMY_MODE) {
       setDummyRecords(prev => prev.filter(r => r.id !== confirmTarget.id));
     } else {
       const target = records.find(r => r.id === confirmTarget.id);
-      await firebase.remove(confirmTarget.id, target?.imgUrls ?? []);
+      await firebase.remove(confirmTarget.id, target?.imgUrls ?? [], target?.visits ?? []);
     }
     closeConfirm();
   };
@@ -148,7 +167,6 @@ export default function HomePage() {
     ? `${filterDateFrom || "시작"} ~ ${filterDateTo || "현재"} 기간에 기록이 없어요`
     : "기록이 없어요";
 
-  // 리스트 모드 중간 광고 위치
   const midAdIdx = MID_AD_INDEX(filtered.length);
 
   return (
@@ -179,47 +197,27 @@ export default function HomePage() {
             {filtered.length > 0 && (
               <>
                 {timeline ? (
-                  // ── 타임라인: 최상단 + 첫 번째 월 섹션 뒤 (총 2개) ──
                   <>
-                    {/* 광고 1: 타임라인 최상단 */}
                     <KakaoAdFitInFeed key="ad-timeline-top" />
 
                     {sortedMonths.map((m, monthIdx) => {
                       const isOpen = expandedMonths.has(m);
                       return (
                         <div key={m}>
-                          {/* 월 헤더 */}
                           <div
                             onClick={() => toggleMonth(m)}
-                            style={{
-                              display: "flex", alignItems: "center", gap: 10,
-                              paddingTop: 4, paddingBottom: isOpen ? 12 : 4,
-                              cursor: "pointer", userSelect: "none",
-                              WebkitUserSelect: "none",
-                              marginBottom: isOpen ? 0 : 4,
-                            }}
+                            style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 4, paddingBottom: isOpen ? 12 : 4, cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", marginBottom: isOpen ? 0 : 4 }}
                           >
-                            <span style={{ fontSize: 13, fontWeight: 700, color: "#8C4A38", flexShrink: 0 }}>
-                              {m.replace("-", "년 ")}월
-                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#8C4A38", flexShrink: 0 }}>{m.replace("-", "년 ")}월</span>
                             <div style={{ flex: 1, height: 1, background: BORDER }} />
-                            <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>
-                              {byMonth[m].length}곳
-                            </span>
-                            <div style={{
-                              width: 18, height: 18, borderRadius: "50%",
-                              background: isOpen ? ROSE : "#F0EBE3",
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              flexShrink: 0, transition: "background 0.2s",
-                            }}>
-                              <svg width="8" height="8" viewBox="0 0 10 6" fill="none"
-                                style={{ transform: isOpen ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.2s" }}>
+                            <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>{byMonth[m].length}곳</span>
+                            <div style={{ width: 18, height: 18, borderRadius: "50%", background: isOpen ? ROSE : "#F0EBE3", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "background 0.2s" }}>
+                              <svg width="8" height="8" viewBox="0 0 10 6" fill="none" style={{ transform: isOpen ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.2s" }}>
                                 <path d="M1 5L5 1L9 5" stroke={isOpen ? "#fff" : MUTED} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                               </svg>
                             </div>
                           </div>
 
-                          {/* 펼쳐진 내용 */}
                           {isOpen && (
                             viewMode === "gallery"
                               ? <div style={{ marginBottom: 8 }}><GalleryGrid items={byMonth[m]} /></div>
@@ -230,7 +228,6 @@ export default function HomePage() {
                                 </div>
                           )}
 
-                          {/* 광고 2: 첫 번째 월 섹션 뒤에만 (슬롯 2개 제한) */}
                           {monthIdx === 0 && sortedMonths.length > 1 && (
                             <KakaoAdFitInFeed key="ad-timeline-mid" />
                           )}
@@ -239,16 +236,11 @@ export default function HomePage() {
                     })}
                   </>
                 ) : (
-                  // ── 일반 리스트: 최상단 + 중간 (총 2개) ──
                   <>
-                    {/* 광고 1: 리스트 최상단 */}
                     <KakaoAdFitInFeed key="ad-list-top" />
-
                     {filtered.map((r, idx) => (
                       <div key={r.id}>
                         <VisitedCard record={r} onDelete={() => {}} />
-
-                        {/* 광고 2: 리스트 중간 지점 (마지막 아이템 제외) */}
                         {idx === midAdIdx && idx < filtered.length - 1 && (
                           <KakaoAdFitInFeed key="ad-list-mid" />
                         )}
@@ -259,7 +251,6 @@ export default function HomePage() {
               </>
             )}
 
-            {/* 빈 상태 */}
             {filtered.length === 0 && (
               <div style={{ textAlign: "center", padding: "48px 0", color: "#C0B8B0" }}>
                 <div style={{ fontSize: 44 }}>🍽️</div>
@@ -275,7 +266,12 @@ export default function HomePage() {
         style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: ROSE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(201,107,82,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, fontSize: 28 }}
       >+</button>
 
-      <AddEditModal onSave={handleSave} />
+      {/* ★ existingRecords, onAddVisit prop 추가 */}
+      <AddEditModal
+        onSave={handleSave}
+        onAddVisit={handleAddVisit}
+        existingRecords={records}
+      />
       <DetailModal />
       {toastMsg      && <Toast message={toastMsg} onClose={clearToast} />}
       {confirmTarget && <ConfirmDialog message={confirmTarget.msg} onConfirm={handleDelete} onCancel={closeConfirm} />}

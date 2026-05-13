@@ -2,10 +2,10 @@
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
   getDocs, getDoc, query, where, orderBy,
-  onSnapshot, writeBatch, type Unsubscribe,
+  onSnapshot, writeBatch, arrayUnion, type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "./config";
-import type { VisitedRecord, WishRecord } from "@/types";
+import type { VisitedRecord, WishRecord, VisitEntry } from "@/types";
 
 // ══════════════════════════════════════════════════════════
 //  VISITED
@@ -17,6 +17,7 @@ export async function addVisited(
   const now = new Date().toISOString();
   const ref = await addDoc(collection(db, "visited"), {
     ...data,
+    visits:    data.visits ?? [],   // ★ visits 배열 초기화 보장
     createdAt: now,
     updatedAt: now,
   });
@@ -24,6 +25,18 @@ export async function addVisited(
     await addDoc(collection(db, "community"), buildCommunityPost(ref.id, data));
   }
   return ref.id;
+}
+
+// ★ 재방문 기록을 visits 배열에 추가 + updatedAt 갱신
+export async function addVisitEntry(
+  visitedId: string,
+  entry: VisitEntry
+): Promise<void> {
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, "visited", visitedId), {
+    visits:    arrayUnion(entry),
+    updatedAt: now,
+  });
 }
 
 export async function updateVisited(
@@ -59,7 +72,6 @@ export async function updateVisited(
           emoji:          data.emoji,
           showAuthorName: data.hideAuthor === undefined ? undefined : !data.hideAuthor,
           updatedAt:      now,
-          // ★ lat/lng 동기화
           ...(data.lat != null && { lat: data.lat }),
           ...(data.lng != null && { lng: data.lng }),
         })
@@ -69,7 +81,7 @@ export async function updateVisited(
     commSnap.docs.forEach((d) => batch.delete(d.ref));
   } else if (!commSnap.empty) {
     commSnap.docs.forEach((d) => {
-      const updateFields: Record<string, any> = { updatedAt: now };
+      const updateFields: Record<string, unknown> = { updatedAt: now };
       if (data.name       !== undefined) { updateFields.restaurantName = data.name; updateFields.name = data.name; }
       if (data.cuisine    !== undefined) updateFields.cuisine    = data.cuisine;
       if (data.sido       !== undefined) updateFields.sido       = data.sido;
@@ -80,7 +92,6 @@ export async function updateVisited(
       if (data.imgUrls    !== undefined) updateFields.imgUrls    = data.imgUrls;
       if (data.emoji      !== undefined) updateFields.emoji      = data.emoji;
       if (data.hideAuthor !== undefined) updateFields.showAuthorName = !data.hideAuthor;
-      // ★ lat/lng 동기화
       if (data.lat != null) updateFields.lat = data.lat;
       if (data.lng != null) updateFields.lng = data.lng;
       batch.update(d.ref, updateFields);
@@ -149,10 +160,9 @@ export function subscribeWishlist(
 //  COMMUNITY
 // ══════════════════════════════════════════════════════════
 
-/** ★ lat/lng 포함 — 추천탭 위시 추가 시 지도 핀 생성 지원 */
-function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): any {
+function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): Record<string, unknown> {
   const now = new Date().toISOString();
-  const post: Record<string, any> = {
+  const post: Record<string, unknown> = {
     coupleId:       data.coupleId    ?? "",
     visitedId,
     restaurantName: data.name        ?? "",
@@ -174,7 +184,6 @@ function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): an
     createdAt:      now,
     updatedAt:      now,
   };
-  // ★ lat/lng가 있을 때만 포함 (없으면 필드 생략)
   if (data.lat != null) post.lat = data.lat;
   if (data.lng != null) post.lng = data.lng;
   return post;

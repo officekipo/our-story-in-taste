@@ -1,4 +1,8 @@
 // src/components/stats/BarChart.tsx
+//
+//  Fix / Add:
+//    ★ hasRevisit prop 추가 — 재방문 포함 집계임을 서브텍스트에 표시
+//    ★ byMonth는 stats_page에서 재방문 날짜 포함 집계 후 전달됨
 "use client";
 import { useState, useEffect } from "react";
 
@@ -12,12 +16,13 @@ const barColor = (cnt: number, max: number) => {
 };
 
 interface BarChartProps {
-  months:   string[];
-  byMonth:  Record<string, number>;
-  monthAvg: string;
+  months:     string[];
+  byMonth:    Record<string, number>;
+  monthAvg:   string;
+  hasRevisit?: boolean; // ★ 재방문 데이터 포함 여부
 }
 
-export function BarChart({ months, byMonth, monthAvg }: BarChartProps) {
+export function BarChart({ months, byMonth, monthAvg, hasRevisit = false }: BarChartProps) {
   const [ready, setReady] = useState(false);
   useEffect(() => { const t = setTimeout(() => setReady(true), 100); return () => clearTimeout(t); }, []);
 
@@ -28,6 +33,10 @@ export function BarChart({ months, byMonth, monthAvg }: BarChartProps) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
         <span style={{ fontSize: 18 }}>📈</span>
         <span style={{ fontSize: 15, fontWeight: 700, color: "#1A1412" }}>월별 데이트 기록</span>
+        {/* ★ 재방문 포함 뱃지 */}
+        {hasRevisit && (
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#C96B52", background: "#F2D5CC", borderRadius: 20, padding: "2px 7px" }}>🔁 재방문 포함</span>
+        )}
       </div>
       <p style={{ fontSize: 13, color: "#8A8078", marginBottom: 16 }}>
         매달 평균 <span style={{ fontWeight: 700, color: "#C96B52" }}>{monthAvg}회</span> 데이트를 했어요!

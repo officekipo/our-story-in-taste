@@ -1,12 +1,12 @@
 // ============================================================
 //  AddEditModal.tsx  적용 경로: src/components/visited/AddEditModal.tsx
 //
-//  Fix:
-//    ★ useEffect로 모달 열릴 때마다 폼 초기화
-//      - 새 글: editTarget = null → 모든 필드 빈 값
-//      - 수정: editTarget = 해당 글 → 해당 글 데이터로 채움
-//      원인: 컴포넌트가 실제 언마운트 되지 않아 useState 초기값이
-//            첫 렌더 이후 재실행되지 않는 구조적 문제
+//  Fix / Add:
+//    ★ 새 글 저장 시 같은 이름 + 유사 좌표(또는 이름만) 가게 감지
+//      → "재방문으로 덧붙이기 / 새 기록으로 추가" 선택 팝업
+//    ★ 재방문 선택 시 onAddVisit(existingId, entryData) 호출
+//    기존 수정:
+//      useEffect로 모달 열릴 때마다 폼 초기화
 // ============================================================
 "use client";
 
@@ -19,29 +19,26 @@ import { Modal }                  from "@/components/common/Modal";
 import { KakaoPlaceSearch }       from "@/components/common/KakaoPlaceSearch";
 import { SIDO, CUISINES }         from "@/types";
 import { todayStr }               from "@/lib/utils/date";
-import type { VisitedFormData }   from "@/types";
+import type { VisitedFormData, VisitedRecord } from "@/types";
 
 const DUMMY_MODE = false;
 
-const ROSE  = "#C96B52";
-const INK   = "#1A1412";
-const MUTED = "#8A8078";
-const BORDER= "#E2DDD8";
-const WARM  = "#FAF7F3";
+const ROSE   = "#C96B52";
+const ROSE_LT= "#F2D5CC";
+const INK    = "#1A1412";
+const MUTED  = "#8A8078";
+const BORDER = "#E2DDD8";
+const WARM   = "#FAF7F3";
+const CREAM  = "#F0EBE3";
 
 const EXPANDED_TAGS = [
-  // 분위기
   "데이트", "분위기 좋은", "조용한", "왁자지껄", "인스타감성", "루프탑",
   "야경 맛집", "감성 카페", "숨은 맛집", "현지인 맛집",
-  // 맛
   "맛있어요", "또 가고 싶어요", "가성비 최고", "양 많음", "특별한 맛",
   "담백해요", "진해요", "매워요", "달콤해요", "신선해요",
-  // 서비스/편의
   "친절해요", "서비스 좋음", "주차 편함", "웨이팅 있음", "예약 필수",
   "반려동물 동반", "아이 동반", "혼밥 가능", "단체 모임",
-  // 기념일/특별함
   "기념일", "생일", "프로포즈", "첫 방문", "재방문", "특별한 날",
-  // 시간대
   "점심 추천", "저녁 추천", "브런치", "야식",
 ];
 
@@ -52,15 +49,45 @@ const inp: React.CSSProperties = {
   fontFamily: "inherit", outline: "none", boxSizing: "border-box",
 };
 
-interface AddEditModalProps {
-  onSave?: (data: VisitedFormData, imgUrls: string[]) => void;
+// 두 좌표 사이 거리 (km) — Haversine 간이 계산
+function distKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R  = 6371;
+  const dL = ((lat2 - lat1) * Math.PI) / 180;
+  const dG = ((lng2 - lng1) * Math.PI) / 180;
+  const a  = Math.sin(dL / 2) ** 2 +
+             Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dG / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export function AddEditModal({ onSave }: AddEditModalProps) {
+// 같은 가게 판별: 이름 일치 + (좌표 500m 이내 | 좌표 없으면 이름만)
+function findDuplicate(
+  records: VisitedRecord[],
+  name: string,
+  lat?: number,
+  lng?: number
+): VisitedRecord | undefined {
+  const trimmed = name.trim().toLowerCase();
+  return records.find((r) => {
+    if (r.name.trim().toLowerCase() !== trimmed) return false;
+    if (lat != null && lng != null && r.lat != null && r.lng != null) {
+      return distKm(lat, lng, r.lat, r.lng) < 0.5;
+    }
+    // 좌표 없으면 이름만으로 판별
+    return true;
+  });
+}
+
+interface AddEditModalProps {
+  onSave?:     (data: VisitedFormData, imgUrls: string[]) => void;
+  onAddVisit?: (existingId: string, entry: { date: string; rating: 1|2|3|4|5; memo: string; imgUrls: string[]; revisit: boolean | null }) => void;
+  existingRecords?: VisitedRecord[];
+}
+
+export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEditModalProps) {
   const { addModalOpen, editTarget, closeModal } = useUIStore();
   const { coupleId, myName }                     = useAuthStore();
 
-  // ── 폼 상태 (초기값은 빈 값 — useEffect에서 동기화) ──────
+  // ── 폼 상태 ──────────────────────────────────────────────
   const [name,       setName]       = useState("");
   const [sido,       setSido]       = useState("서울");
   const [district,   setDistrict]   = useState("");
@@ -79,12 +106,12 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
   const [uploading,  setUploading]  = useState(false);
   const [uploadPct,  setUploadPct]  = useState(0);
 
-  // ★ 핵심 Fix: 모달이 열릴 때마다 폼 상태를 editTarget 기준으로 동기화
-  //   - addModalOpen이 true가 될 때 실행
-  //   - editTarget = null  → 새 글 → 모든 필드 초기화
-  //   - editTarget = {...} → 수정 → 해당 글 데이터로 채움
+  // ★ 재방문 팝업 상태
+  const [dupTarget,  setDupTarget]  = useState<VisitedRecord | null>(null);
+
+  // 모달 열릴 때마다 폼 초기화
   useEffect(() => {
-    if (!addModalOpen) return; // 닫힐 때는 실행하지 않음
+    if (!addModalOpen) return;
 
     setName      (editTarget?.name        ?? "");
     setSido      (editTarget?.sido        ?? "서울");
@@ -101,9 +128,12 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
     setLat       (editTarget?.lat);
     setLng       (editTarget?.lng);
     setShowCal   (false);
-  }, [addModalOpen, editTarget]); // addModalOpen 또는 editTarget 변경 시 재실행
+    setDupTarget (null);
+  }, [addModalOpen, editTarget]);
 
   if (!addModalOpen) return null;
+
+  const isEdit = !!(editTarget?.id && editTarget.id !== "__from_wish__");
 
   const toggleTag = (t: string) =>
     setTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
@@ -136,26 +166,51 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
     }
   };
 
+  // ── 좌표 자동 조회 ─────────────────────────────────────
+  const resolveCoords = async (
+    targetLat: number | undefined,
+    targetLng: number | undefined,
+    targetName: string,
+    targetSido: string
+  ): Promise<{ lat?: number; lng?: number }> => {
+    if (targetLat != null) return { lat: targetLat, lng: targetLng };
+    if (!targetName.trim() || !process.env.NEXT_PUBLIC_KAKAO_REST_KEY) return {};
+    try {
+      const q   = encodeURIComponent(`${targetSido} ${targetName.trim()}`);
+      const res = await fetch(
+        `https://dapi.kakao.com/v2/local/search/keyword.json?query=${q}&size=1`,
+        { headers: { Authorization: `KakaoAK ${process.env.NEXT_PUBLIC_KAKAO_REST_KEY}` } }
+      );
+      if (res.ok) {
+        const json = await res.json();
+        const d    = json.documents?.[0];
+        if (d) return { lat: parseFloat(d.y), lng: parseFloat(d.x) };
+      }
+    } catch { /* 무시 */ }
+    return {};
+  };
+
+  // ── 저장 버튼 ─────────────────────────────────────────
   const handleSave = async () => {
     if (!name.trim() || !cuisine) return;
 
-    let finalLat = lat;
-    let finalLng = lng;
-    if (finalLat == null && name.trim() && process.env.NEXT_PUBLIC_KAKAO_REST_KEY) {
-      try {
-        const q   = encodeURIComponent(`${sido} ${name.trim()}`);
-        const res = await fetch(
-          `https://dapi.kakao.com/v2/local/search/keyword.json?query=${q}&size=1`,
-          { headers: { Authorization: `KakaoAK ${process.env.NEXT_PUBLIC_KAKAO_REST_KEY}` } }
-        );
-        if (res.ok) {
-          const data = await res.json();
-          const d    = data.documents?.[0];
-          if (d) { finalLat = parseFloat(d.y); finalLng = parseFloat(d.x); }
-        }
-      } catch { /* 좌표 조회 실패 시 무시 */ }
+    const coords = await resolveCoords(lat, lng, name, sido);
+    const finalLat = coords.lat;
+    const finalLng = coords.lng;
+
+    // ★ 수정 모드는 중복 검사 생략
+    if (!isEdit) {
+      const dup = findDuplicate(existingRecords, name, finalLat, finalLng);
+      if (dup) {
+        setDupTarget(dup);
+        return; // 팝업 표시 → 사용자 선택 대기
+      }
     }
 
+    doSave(finalLat, finalLng);
+  };
+
+  const doSave = (finalLat?: number, finalLng?: number) => {
     const data: VisitedFormData = {
       name, sido, district, cuisine, rating, date, memo,
       tags, revisit, imgUrls, emoji: "🍽️",
@@ -167,8 +222,75 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
     closeModal();
   };
 
-  const isEdit = !!(editTarget?.id && editTarget.id !== "__from_wish__");
+  // ★ 재방문으로 덧붙이기 선택
+  const handleMerge = () => {
+    if (!dupTarget) return;
+    onAddVisit?.(dupTarget.id, {
+      date,
+      rating,
+      memo,
+      imgUrls,
+      revisit,
+    });
+    closeModal();
+  };
 
+  // ★ 새 기록으로 추가 선택 (팝업 닫고 그냥 저장)
+  const handleForceNew = async () => {
+    setDupTarget(null);
+    const coords = await resolveCoords(lat, lng, name, sido);
+    doSave(coords.lat, coords.lng);
+  };
+
+  // ── 재방문 팝업 ───────────────────────────────────────
+  if (dupTarget) {
+    const visitCount = (dupTarget.visits?.length ?? 0) + 1; // 기존 visits + 이번까지
+    return (
+      <Modal onClose={() => setDupTarget(null)} maxWidth={380}>
+        <div style={{ textAlign: "center", padding: "4px 0 8px" }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>{dupTarget.emoji}</div>
+          <p style={{ fontSize: 16, fontWeight: 800, color: INK, marginBottom: 6 }}>
+            {dupTarget.name}에 또 다녀왔군요! 😊
+          </p>
+          <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.6, marginBottom: 20 }}>
+            이미 기록된 맛집이에요.<br />
+            재방문으로 덧붙일까요, 새 기록으로 추가할까요?
+          </p>
+
+          {/* 방문 횟수 미리보기 */}
+          <div style={{ background: CREAM, borderRadius: 12, padding: "10px 16px", marginBottom: 20, display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 18 }}>🔁</span>
+            <span style={{ fontSize: 13, color: "#8C4A38", fontWeight: 700 }}>
+              재방문으로 추가하면 총 {visitCount + 1}번째 방문이 돼요
+            </span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <button
+              onClick={handleMerge}
+              style={{ width: "100%", padding: "14px 0", background: ROSE, border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+            >
+              🔁 재방문으로 덧붙이기
+            </button>
+            <button
+              onClick={handleForceNew}
+              style={{ width: "100%", padding: "14px 0", background: WARM, border: `1.5px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+            >
+              ✚ 새 기록으로 추가하기
+            </button>
+            <button
+              onClick={() => setDupTarget(null)}
+              style={{ background: "none", border: "none", color: "#C0B8B0", fontSize: 13, cursor: "pointer", fontFamily: "inherit", marginTop: 2 }}
+            >
+              돌아가기
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  // ── 메인 폼 ───────────────────────────────────────────
   return (
     <Modal onClose={() => { setShowCal(false); closeModal(); }} maxWidth={440}>
       {/* 헤더 */}
@@ -203,7 +325,7 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
           </div>
           {uploading && (
             <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ flex: 1, height: 4, background: "#F2D5CC", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ flex: 1, height: 4, background: ROSE_LT, borderRadius: 2, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${uploadPct}%`, background: ROSE, borderRadius: 2, transition: "width 0.2s" }} />
               </div>
               <span style={{ fontSize: 11, color: MUTED }}>{uploadPct}%</span>
@@ -257,7 +379,7 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
           </div>
         </div>
 
-        {/* 날짜 — 단일 날짜 선택 (CalendarPicker) */}
+        {/* 날짜 */}
         <div style={{ position: "relative" }}>
           <p style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6 }}>📅 방문 날짜 *</p>
           <div onClick={() => setShowCal(!showCal)} style={{ ...inp, cursor: "pointer", color: date ? INK : MUTED }}>
@@ -294,7 +416,7 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
               const on = tags.includes(t);
               return (
                 <button key={t} onClick={() => toggleTag(t)}
-                  style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${on ? ROSE : BORDER}`, background: on ? "#F2D5CC" : WARM, color: on ? ROSE : MUTED, fontSize: 12, fontWeight: on ? 600 : 400, cursor: "pointer", fontFamily: "inherit" }}>
+                  style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${on ? ROSE : BORDER}`, background: on ? ROSE_LT : WARM, color: on ? ROSE : MUTED, fontSize: 12, fontWeight: on ? 600 : 400, cursor: "pointer", fontFamily: "inherit" }}>
                   #{t}
                 </button>
               );
@@ -310,7 +432,7 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
             💝 또 가고 싶어요!
           </button>
           <button onClick={() => setRevisit(false)}
-            style={{ width: "100%", padding: 13, borderRadius: 12, border: `1.5px solid ${revisit === false ? "#C0B8B0" : BORDER}`, background: revisit === false ? "#F0EBE3" : WARM, color: MUTED, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
+            style={{ width: "100%", padding: 13, borderRadius: 12, border: `1.5px solid ${revisit === false ? "#C0B8B0" : BORDER}`, background: revisit === false ? CREAM : WARM, color: MUTED, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
             😌 한 번이면 충분해요
           </button>
         </div>
@@ -331,11 +453,11 @@ export function AddEditModal({ onSave }: AddEditModalProps) {
               <p style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 8 }}>닉네임 공개 여부</p>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => setHideAuthor(false)}
-                  style={{ flex: 1, padding: "9px 6px", borderRadius: 10, border: `1.5px solid ${!hideAuthor ? ROSE : BORDER}`, background: !hideAuthor ? "#F2D5CC" : "#fff", color: !hideAuthor ? ROSE : MUTED, fontSize: 12, fontWeight: !hideAuthor ? 700 : 400, cursor: "pointer", fontFamily: "inherit" }}>
+                  style={{ flex: 1, padding: "9px 6px", borderRadius: 10, border: `1.5px solid ${!hideAuthor ? ROSE : BORDER}`, background: !hideAuthor ? ROSE_LT : "#fff", color: !hideAuthor ? ROSE : MUTED, fontSize: 12, fontWeight: !hideAuthor ? 700 : 400, cursor: "pointer", fontFamily: "inherit" }}>
                   👤 {myName}(으)로 공개
                 </button>
                 <button onClick={() => setHideAuthor(true)}
-                  style={{ flex: 1, padding: "9px 6px", borderRadius: 10, border: `1.5px solid ${hideAuthor ? ROSE : BORDER}`, background: hideAuthor ? "#F2D5CC" : "#fff", color: hideAuthor ? ROSE : MUTED, fontSize: 12, fontWeight: hideAuthor ? 700 : 400, cursor: "pointer", fontFamily: "inherit" }}>
+                  style={{ flex: 1, padding: "9px 6px", borderRadius: 10, border: `1.5px solid ${hideAuthor ? ROSE : BORDER}`, background: hideAuthor ? ROSE_LT : "#fff", color: hideAuthor ? ROSE : MUTED, fontSize: 12, fontWeight: hideAuthor ? 700 : 400, cursor: "pointer", fontFamily: "inherit" }}>
                   🙈 익명으로 공유
                 </button>
               </div>

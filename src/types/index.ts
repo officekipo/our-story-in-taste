@@ -31,6 +31,18 @@ export type CuisineType = (typeof CUISINES)[number];
 export type TagType     = (typeof TAGS)[number];
 export type UserRole    = "admin" | "user";
 
+// ★ 재방문 개별 기록 (visits 배열의 원소)
+export interface VisitEntry {
+  date:     string;                  // "YYYY-MM-DD"
+  rating:   1 | 2 | 3 | 4 | 5;
+  memo:     string;
+  imgUrls:  string[];
+  revisit:  boolean | null;
+  authorUid:   string;
+  authorName:  string;
+  createdAt:   string;               // ISO string
+}
+
 export interface VisitedRecord {
   id:           string;
   coupleId:     string;
@@ -47,11 +59,12 @@ export interface VisitedRecord {
   emoji:        string;
   authorUid:    string;
   authorName:   string;
-  // 커뮤니티 공유 시 닉네임 공개 여부
   shareToComm:  boolean;
-  hideAuthor:   boolean;   // true = "익명 커플"로 표시
+  hideAuthor:   boolean;
   lat?:         number;
   lng?:         number;
+  // ★ 재방문 히스토리 배열 (없으면 undefined — 하위 호환)
+  visits?:      VisitEntry[];
   createdAt:    string;
   updatedAt:    string;
 }
@@ -72,7 +85,7 @@ export interface WishRecord {
   addedByUid:  string;
   addedByName: string;
   emoji:       string;
-  imgUrls:     string[];   // ← 이미지 추가
+  imgUrls:     string[];
   lat?:        number;
   lng?:        number;
   addedDate:   string;

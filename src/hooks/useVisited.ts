@@ -1,18 +1,25 @@
 // ============================================================
 //  useVisited.ts  적용 경로: src/hooks/useVisited.ts
 //
-//  Fix:
-//    1. remove(): base64 URL을 Firebase Storage DELETE 호출하는 오류 수정
-//       → https://firebasestorage.googleapis.com 로 시작하는 URL만 삭제
-//    2. hideAuthor: data.hideAuthor ?? false (이전 수정 유지)
+//  Fix / Add:
+//    1. remove(): base64 URL 필터 (Storage URL만 삭제)
+//    2. hideAuthor: data.hideAuthor ?? false
+//    3. ★ addVisit(): 기존 문서에 visits 배열 원소 추가 (재방문)
+//       - 모든 visits 이미지 URL도 storageUrls에 포함해 삭제
 // ============================================================
 "use client";
 
 import { useEffect, useState } from "react";
-import { subscribeVisited, addVisited, updateVisited, deleteVisited } from "@/lib/firebase/firestore";
+import {
+  subscribeVisited,
+  addVisited,
+  updateVisited,
+  deleteVisited,
+  addVisitEntry,
+} from "@/lib/firebase/firestore";
 import { deleteImages } from "@/lib/firebase/storage";
 import { useAuthStore } from "@/store/authStore";
-import type { VisitedRecord, VisitedFormData } from "@/types";
+import type { VisitedRecord, VisitedFormData, VisitEntry } from "@/types";
 
 export function useVisited() {
   const { coupleId, myUid, myName } = useAuthStore();
@@ -52,9 +59,10 @@ export function useVisited() {
       imgUrls:     imgUrls          ?? [],
       emoji:       data.emoji       ?? "🍽️",
       shareToComm: data.shareToComm ?? false,
-      hideAuthor:  data.hideAuthor  ?? false,   // ★ 폼 값 반영
+      hideAuthor:  data.hideAuthor  ?? false,
       ...(data.lat != null && { lat: data.lat }),
       ...(data.lng != null && { lng: data.lng }),
+      visits:      [],   // ★ 초기 빈 배열
     };
 
     return addVisited(record);
@@ -71,20 +79,45 @@ export function useVisited() {
     return updateVisited(id, clean);
   };
 
+  // ★ 재방문 기록 추가 ────────────────────────────────────
+  const addVisit = async (
+    recordId: string,
+    entry: { date: string; rating: 1|2|3|4|5; memo: string; imgUrls: string[]; revisit: boolean | null }
+  ) => {
+    if (!myUid || !myName) throw new Error("useVisited.addVisit: 로그인 상태를 확인하세요.");
+
+    const visitEntry: VisitEntry = {
+      date:        entry.date,
+      rating:      entry.rating,
+      memo:        entry.memo,
+      imgUrls:     entry.imgUrls,
+      revisit:     entry.revisit,
+      authorUid:   myUid,
+      authorName:  myName,
+      createdAt:   new Date().toISOString(),
+    };
+
+    return addVisitEntry(recordId, visitEntry);
+  };
+
   // ── 삭제 ─────────────────────────────────────────────────
-  const remove = async (id: string, imgUrls: string[] = []) => {
-    // ★ Fix: base64 데이터 URL은 Firebase Storage에 없으므로 제외
-    //   base64는 'data:' 로 시작 / Firebase Storage URL은 'https://firebasestorage.googleapis.com' 으로 시작
-    const storageUrls = imgUrls.filter(
+  const remove = async (id: string, imgUrls: string[] = [], visits: VisitEntry[] = []) => {
+    // 본문 이미지 + 모든 visits 이미지 합산
+    const allUrls = [
+      ...imgUrls,
+      ...visits.flatMap(v => v.imgUrls ?? []),
+    ];
+
+    const storageUrls = allUrls.filter(
       (url) => url.startsWith("https://firebasestorage.googleapis.com")
     );
 
     if (storageUrls.length > 0) {
-      await deleteImages(storageUrls).catch(() => {}); // 실패해도 문서 삭제는 계속
+      await deleteImages(storageUrls).catch(() => {});
     }
 
     return deleteVisited(id);
   };
 
-  return { records, loading, add, update, remove };
+  return { records, loading, add, update, addVisit, remove };
 }
