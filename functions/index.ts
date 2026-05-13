@@ -94,7 +94,7 @@ export const onVisitedCreated = onDocumentCreated(
     const displayName = authorName || "파트너";
     await sendPush(
       token,
-      "새로운 맛집 기록 🍽️",
+      "새로운 맛지도 기록 🍽️",
       `${displayName}이(가) "${name}"을 다녀온 곳에 추가했어요!`,
       { type: "visited", name: String(name) },
     );

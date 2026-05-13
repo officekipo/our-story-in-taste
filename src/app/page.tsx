@@ -1,8 +1,9 @@
 // src/app/page.tsx
 //
 //  수정사항:
-//    ★ AddEditModal에 onAddVisit, existingRecords prop 추가 (재방문 C안)
+//    ★ handleDelete: closeConfirm() 후 showToast("기록을 삭제했어요") 추가 → Toast 버그 수정
 //    기존 수정:
+//      AddEditModal에 onAddVisit, existingRecords prop 추가 (재방문 C안)
 //      광고 슬롯 2개 제한에 맞게 배치 조정
 "use client";
 
@@ -46,7 +47,8 @@ export default function HomePage() {
   const [filterDateTo,   setFilterDateTo]   = useState("");
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
-  const { toastMsg, clearToast, confirmTarget, closeConfirm, openAddModal } = useUIStore();
+  // ★ showToast 추가
+  const { toastMsg, clearToast, confirmTarget, closeConfirm, openAddModal, showToast } = useUIStore();
   const { myName, coupleId } = useAuthStore();
 
   const filtered = useMemo(() => records
@@ -122,7 +124,7 @@ export default function HomePage() {
     }
   };
 
-  // ★ 재방문 기록 추가 핸들러
+  // 재방문 기록 추가 핸들러
   const handleAddVisit = async (
     existingId: string,
     entry: { date: string; rating: 1|2|3|4|5; memo: string; imgUrls: string[]; revisit: boolean | null }
@@ -143,6 +145,7 @@ export default function HomePage() {
     }
   };
 
+  // ★ 수정: closeConfirm() 후 showToast() 호출 추가 — Toast 버그 수정
   const handleDelete = async () => {
     if (!confirmTarget) return;
     if (DUMMY_MODE) {
@@ -152,6 +155,7 @@ export default function HomePage() {
       await firebase.remove(confirmTarget.id, target?.imgUrls ?? [], target?.visits ?? []);
     }
     closeConfirm();
+    showToast("기록을 삭제했어요 🗑️");
   };
 
   if (loading) return (
@@ -266,7 +270,7 @@ export default function HomePage() {
         style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: ROSE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(201,107,82,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, fontSize: 28 }}
       >+</button>
 
-      {/* ★ existingRecords, onAddVisit prop 추가 */}
+      {/* existingRecords, onAddVisit prop */}
       <AddEditModal
         onSave={handleSave}
         onAddVisit={handleAddVisit}

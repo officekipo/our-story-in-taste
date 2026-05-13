@@ -193,7 +193,6 @@ export default function WishlistPage() {
     setVisitSaving(true);
     try {
       const data: VisitedFormData = {
-        coupleId:    visitTarget.coupleId ?? coupleId ?? "",
         name:        visitTarget.name,
         sido:        visitTarget.sido,
         district:    visitTarget.district,
