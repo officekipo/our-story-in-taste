@@ -4,10 +4,9 @@
 //    ★ 이메일 로그인 후 router.push("/") 제거
 //      → signIn() 완료 후 onAuthStateChanged → authStore.myUid 설정
 //      → AuthGuard의 useEffect가 myUid 변화 감지 → 자동으로 "/" 이동
-//      기존: signIn() → 즉시 router.push("/") → authStore 미반영 상태에서 이동
-//            → AuthGuard가 myUid 없음으로 판단 → /login 으로 다시 튕김 (2회 필요)
 //    ★ Google 리다이렉트 결과도 동일하게 AuthGuard에 위임
 //    ★ signIn 성공 후 AuthGuard가 이동 못할 경우 대비 5초 안전장치 추가
+//    ★ 하단에 개인정보 처리방침 / 서비스 이용약관 링크 추가
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -49,21 +48,16 @@ export default function LoginPage() {
     if (saved) { setEmail(saved); setRemember(true); }
   }, []);
 
-  // ★ authStore의 myUid가 설정되면 AuthGuard가 처리하므로
-  //   여기서는 추가 라우팅 불필요.
-  //   단, Google 리다이렉트 후 신규 유저는 /couple로 보내야 함
   useEffect(() => {
     setLoading(true);
     handleGoogleRedirectResult()
       .then(async (user) => {
         if (!user) return;
-        // 신규 유저(coupleId 없음) → /couple
         try {
           const userDoc = await fetchUser(user.uid);
           if (!userDoc?.coupleId) {
             router.push("/couple");
           }
-          // coupleId 있으면 AuthGuard가 "/" 로 자동 이동
         } catch {
           // fetchUser 실패 시 AuthGuard에 위임
         }
@@ -102,10 +96,6 @@ export default function LoginPage() {
       else          { localStorage.removeItem(STORAGE_KEY); }
 
       await signIn(email, pw);
-      // ★ router.push 제거
-      //   signIn() → onAuthStateChanged → authStore.myUid 설정
-      //   → AuthGuard useEffect가 myUid 감지 → 자동으로 "/" 이동
-      // ★ AuthGuard가 myUid 감지 후 이동하지 못할 경우를 대비한 안전장치
       setTimeout(() => setLoading(false), 5000);
     } catch (e: any) {
       const msg = e.code ?? e.message ?? "";
@@ -123,7 +113,7 @@ export default function LoginPage() {
   const handleGoogle = async () => {
     setApiErr(""); setLoading(true);
     try {
-      await signInWithGoogle(); // 페이지가 Google로 이동
+      await signInWithGoogle();
     } catch (e: any) {
       console.error("[Google Auth] 오류:", e.code, e.message);
       setApiErr(`Google 로그인을 시작할 수 없습니다. (${e.code ?? e.message})`);
@@ -213,6 +203,24 @@ export default function LoginPage() {
         계정이 없으신가요?{" "}
         <button onClick={()=>router.push("/signup")} style={{ background:"none", border:"none", color:ROSE, fontWeight:700, cursor:"pointer", fontSize:13, fontFamily:"inherit" }}>회원가입</button>
       </p>
+
+      {/* ─── 약관 링크 ─── */}
+      <div style={{ marginTop:8, paddingTop:16, borderTop:`1px solid ${BORDER}`, display:"flex", justifyContent:"center", alignItems:"center", gap:4, flexWrap:"wrap" }}>
+        <button onClick={()=>router.push("/settings/privacy")}
+          style={{ background:"none", border:"none", color:MUTED, fontSize:11, cursor:"pointer", fontFamily:"inherit", padding:"2px 4px" }}>
+          개인정보 처리방침
+        </button>
+        <span style={{ color:BORDER, fontSize:11 }}>|</span>
+        <button onClick={()=>router.push("/settings/terms")}
+          style={{ background:"none", border:"none", color:MUTED, fontSize:11, cursor:"pointer", fontFamily:"inherit", padding:"2px 4px" }}>
+          서비스 이용약관
+        </button>
+        <span style={{ color:BORDER, fontSize:11 }}>|</span>
+        <button onClick={()=>router.push("/settings/location-terms")}
+          style={{ background:"none", border:"none", color:MUTED, fontSize:11, cursor:"pointer", fontFamily:"inherit", padding:"2px 4px" }}>
+          위치기반 서비스 약관
+        </button>
+      </div>
     </div>
   );
 }

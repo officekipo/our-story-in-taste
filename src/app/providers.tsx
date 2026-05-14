@@ -4,6 +4,7 @@
 //    ★ GlobalLoader → SplashScreen 교체 (감성적 랜딩)
 //    ★ setupAuthListener 반환값 변경 대응 (동기 방식)
 //    ★ 이미 로그인된 상태에서 /login 등 PUBLIC_PATHS 접근 시 "/" 로 리다이렉트
+//    ★ 약관/개인정보 페이지 로그인 없이 접근 가능하도록 PUBLIC_PATHS 추가
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -16,7 +17,16 @@ import { useFCM }                          from "@/hooks/useFCM";
 import { FCMToast }                        from "@/components/common/FCMToast";
 import { PWAInstallBanner }                from "@/components/common/PWAInstallBanner";
 
-const PUBLIC_PATHS = ["/onboarding", "/login", "/signup", "/couple"];
+const PUBLIC_PATHS = [
+  "/onboarding",
+  "/login",
+  "/signup",
+  "/couple",
+  // 약관 · 개인정보 — 로그인 없이 접근 가능 (Google Play 심사 요건)
+  "/settings/privacy",
+  "/settings/terms",
+  "/settings/location-terms",
+];
 
 // ─────────────────────────────────────────────
 //  감성적 스플래시 스크린
@@ -179,7 +189,11 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (isPublic && myUid && emailVerified) {
+    // 약관 페이지는 로그인 상태여도 리다이렉트하지 않음
+    const isLegalPage = ["/settings/privacy", "/settings/terms", "/settings/location-terms"]
+      .some((p) => pathname.startsWith(p));
+
+    if (isPublic && !isLegalPage && myUid && emailVerified) {
       // ★ 이미 로그인+인증된 상태에서 /login, /signup 등 접근 → 홈으로
       router.replace("/");
     }
@@ -189,6 +203,11 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   if (!initialized) return <SplashScreen />;
 
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  const isLegalPage = ["/settings/privacy", "/settings/terms", "/settings/location-terms"]
+    .some((p) => pathname.startsWith(p));
+
+  // 약관 페이지는 로그인 여부 무관하게 바로 렌더
+  if (isLegalPage) return <>{children}</>;
 
   // ★ 로그인된 상태에서 PUBLIC 페이지 접근 시 로더 표시 (리다이렉트 대기)
   if (isPublic && myUid && emailVerified) return <SplashScreen />;
