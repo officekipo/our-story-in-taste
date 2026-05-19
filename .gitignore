@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Bubblewrap / TWA
+our-taste-twa/
+our-taste-twa/android/
+our-taste-twa/build/
+our-taste-twa/.gradle/
+our-taste-twa/gradle/
+our-taste-twa/*.keystore
+our-taste-twa/*.jks
+our-taste-twa/*.aab
+our-taste-twa/*.apk
+our-taste-twa/*.idsig
