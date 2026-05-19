@@ -1,0 +1,14 @@
+[
+    {
+        "relation": [
+            "delegate_permission/common.handle_all_urls"
+        ],
+        "target": {
+            "namespace": "android_app",
+            "package_name": "app.vercel.our_story_in_taste_mauve.twa",
+            "sha256_cert_fingerprints": [
+                "99:90:48:D4:2D:06:64:5D:7A:82:C9:DE:FF:01:D0:06:2E:07:5D:5F:27:E9:68:E7:2E:A0:D3:27:E3:B4:63:42"
+            ]
+        }
+    }
+]
