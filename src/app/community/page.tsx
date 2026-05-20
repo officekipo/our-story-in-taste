@@ -1,14 +1,9 @@
 // ============================================================
 //  community/page.tsx  적용 경로: src/app/community/page.tsx
 //
-//  Fix:
-//    1. 지역/음식/태그 필터 추가
-//    2. isEdited: updatedAt > createdAt 60초 → CommunityCard에 전달
-//    3. isOwnPost 전달 (이전 수정 유지)
-//    4. 닉네임 비공개: showAuthorName=false → coupleLabel="익명 커플" (이전 수정 유지)
-//    5. 좋아요 +2 버그 수정 (이전 수정 유지)
-//    6. ★ submitReport: community_reports 컬렉션에 addDoc 추가
-//    7. ★ [좋아요 정렬] 최신순 / 인기순(❤️) 정렬 칩 추가
+//  Fix / Add:
+//    ★ KakaoAdFitInFeed 추가 — 피드 최상단 + 3개마다 인피드 광고
+//    (기존 기능 전부 유지)
 // ============================================================
 "use client";
 
@@ -17,14 +12,15 @@ import {
   collection, query, orderBy, onSnapshot,
   doc, updateDoc, arrayUnion, arrayRemove, increment, addDoc,
 } from "firebase/firestore";
-import { db }            from "@/lib/firebase/config";
-import { useAuthStore }  from "@/store/authStore";
-import { useWishlist }   from "@/hooks/useWishlist";
-import { AppShell }      from "@/components/layout/AppShell";
-import { CommunityCard } from "@/components/community/CommunityCard";
-import { ReportModal }   from "@/components/community/ReportModal";
-import { Toast }         from "@/components/common/Toast";
-import { SIDO, CUISINES } from "@/types";
+import { db }              from "@/lib/firebase/config";
+import { useAuthStore }    from "@/store/authStore";
+import { useWishlist }     from "@/hooks/useWishlist";
+import { AppShell }        from "@/components/layout/AppShell";
+import { CommunityCard }   from "@/components/community/CommunityCard";
+import { ReportModal }     from "@/components/community/ReportModal";
+import { Toast }           from "@/components/common/Toast";
+import { KakaoAdFitInFeed } from "@/components/common/KakaoAdFitInFeed"; // ★ 추가
+import { SIDO, CUISINES }  from "@/types";
 
 const INK    = "#1A1412";
 const MUTED  = "#8A8078";
@@ -85,7 +81,7 @@ export default function CommunityPage() {
   const [filterSido,    setFilterSido]    = useState("");
   const [filterCuisine, setFilterCuisine] = useState("");
   const [filterTag,     setFilterTag]     = useState("");
-  const [sortBy,        setSortBy]        = useState<"recent" | "likes">("recent"); // ★ 정렬
+  const [sortBy,        setSortBy]        = useState<"recent" | "likes">("recent");
 
   const allTags = Array.from(new Set(records.flatMap((r) => r.tags))).sort();
 
@@ -106,7 +102,7 @@ export default function CommunityPage() {
     .filter((r) => !filterSido    || r.sido    === filterSido)
     .filter((r) => !filterCuisine || r.cuisine === filterCuisine)
     .filter((r) => !filterTag     || r.tags.includes(filterTag))
-    .sort((a, b) =>                                                      // ★ 정렬
+    .sort((a, b) =>
       sortBy === "likes"
         ? b.likes - a.likes
         : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -153,23 +149,21 @@ export default function CommunityPage() {
     setReportTarget(record);
   }, [myUid]);
 
-  // ── ★ 신고 제출: community_reports addDoc + community reportedBy 업데이트
+  // ── 신고 제출
   const submitReport = useCallback(async (reason: string, detail: string) => {
     if (!myUid || !reportTarget) return;
     const now = new Date().toISOString();
 
-    // 1) community_reports 컬렉션에 신고 문서 생성 (관리자 페이지에서 조회)
     await addDoc(collection(db, "community_reports"), {
-      postId:     reportTarget.id,
-      postName:   reportTarget.name,
+      postId:      reportTarget.id,
+      postName:    reportTarget.name,
       reporterUid: myUid,
       reason,
-      detail:     detail || "",
-      reportedAt: now,
-      status:     "pending",
+      detail:      detail || "",
+      reportedAt:  now,
+      status:      "pending",
     });
 
-    // 2) community 문서에 reportedBy 추가 (HIDE_THRESHOLD 초과 시 자동 숨김)
     await updateDoc(doc(db, "community", reportTarget.id), {
       reportedBy: arrayUnion(myUid),
     });
@@ -195,8 +189,6 @@ export default function CommunityPage() {
 
         {/* 필터 바 */}
         <div style={{ display: "flex", gap: 6, padding: "0 16px 12px", overflowX: "auto", scrollbarWidth: "none" }}>
-
-          {/* ★ 정렬 칩 */}
           <button onClick={() => setSortBy("recent")} style={sortBy === "recent" ? chipActive : chipInactive}>최신순</button>
           <button onClick={() => setSortBy("likes")}  style={sortBy === "likes"  ? chipActive : chipInactive}>❤️ 인기순</button>
 
@@ -258,26 +250,34 @@ export default function CommunityPage() {
           </div>
         )}
 
+        {/* ★ 피드 목록 — 최상단 + 3개마다 인피드 광고 삽입 */}
         {!loading && displayed.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", padding: "0 16px" }}>
-            {displayed.map((record) => (
-              <CommunityCard
-                key={record.id}
-                record={record}
-                isLiked={!!myUid && record.likedBy.includes(myUid)}
-                isWished={wishedIds.has(record.id)}
-                isOwnPost={!!myUid && record.authorUid === myUid}
-                isEdited={record.edited}
-                onLike={()   => handleLike(record)}
-                onWish={()   => handleWish(record)}
-                onReport={() => handleReport(record)}
-              />
+            {/* 최상단 광고 */}
+            <KakaoAdFitInFeed />
+
+            {displayed.map((record, i) => (
+              <div key={record.id}>
+                <CommunityCard
+                  record={record}
+                  isLiked={!!myUid && record.likedBy.includes(myUid)}
+                  isWished={wishedIds.has(record.id)}
+                  isOwnPost={!!myUid && record.authorUid === myUid}
+                  isEdited={record.edited}
+                  onLike={()   => handleLike(record)}
+                  onWish={()   => handleWish(record)}
+                  onReport={() => handleReport(record)}
+                />
+                {/* 3개마다 광고 (인덱스 2, 5, 8 ...) */}
+                {(i + 1) % 3 === 0 && i + 1 < displayed.length && (
+                  <KakaoAdFitInFeed />
+                )}
+              </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* ★ onReport 시그니처 변경: (reason, detail) 전달 */}
       {reportTarget && (
         <ReportModal
           post={reportTarget}

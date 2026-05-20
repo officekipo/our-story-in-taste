@@ -11,7 +11,17 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 // 인증 없이 접근 가능한 경로
-const PUBLIC_PATHS = ["/onboarding", "/login", "/signup", "/couple"];
+const PUBLIC_PATHS = [
+  "/onboarding",
+  "/login",
+  "/signup",
+  "/couple",
+  // ★ 약관 페이지 — 로그인·온보딩 완료 여부와 무관하게 직접 접근 허용
+  //   (Google Play 심사 요건: 설치 전 약관 URL 직접 접근 가능해야 함)
+  "/settings/privacy",
+  "/settings/terms",
+  "/settings/location-terms",
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

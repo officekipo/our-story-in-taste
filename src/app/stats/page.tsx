@@ -5,6 +5,7 @@
 //    ★ byMonth: 재방문 날짜도 월별 집계에 포함
 //    ★ monthAvg: totalVisits 기준으로 변경
 //    ★ StatCards에 places, totalVisits 분리 전달
+//    ★ KakaoAdFitInFeed 추가 — 차트 섹션 사이 인피드 광고
 "use client";
 
 import { useMemo }               from "react";
@@ -15,6 +16,7 @@ import { CuisineChart }          from "@/components/stats/CuisineChart";
 import { RegionPieChart }        from "@/components/stats/RegionPieChart";
 import { RevisitBar }            from "@/components/stats/RevisitBar";
 import { RestaurantRanking }     from "@/components/stats/RestaurantRanking";
+import { KakaoAdFitInFeed }      from "@/components/common/KakaoAdFitInFeed"; // ★ 추가
 import { SAMPLE_VISITED }        from "@/lib/sample-data";
 import { useVisited }            from "@/hooks/useVisited";
 import { useWishlist }           from "@/hooks/useWishlist";
@@ -33,7 +35,7 @@ export default function StatsPage() {
   // 장소(레코드) 수
   const places = visited.length;
 
-  // ★ 재방문 포함 총 방문 횟수
+  // 재방문 포함 총 방문 횟수
   const totalVisits = useMemo(
     () => visited.reduce((s, r) => s + 1 + (r.visits?.length ?? 0), 0),
     [visited]
@@ -45,7 +47,7 @@ export default function StatsPage() {
     ? (visited.reduce((s, r) => s + r.rating, 0) / places).toFixed(1)
     : "—";
 
-  // ★ 재방문 날짜도 월별 집계에 포함
+  // 재방문 날짜도 월별 집계에 포함
   const byMonth = useMemo(() => visited.reduce((acc, r) => {
     const m = r.date.slice(0, 7);
     acc[m] = (acc[m] ?? 0) + 1;
@@ -58,7 +60,7 @@ export default function StatsPage() {
 
   const months = Object.keys(byMonth).sort().slice(-6);
 
-  // ★ monthAvg: totalVisits 기준
+  // monthAvg: totalVisits 기준
   const monthAvg = totalVisits > 0
     ? (totalVisits / Math.max(Object.keys(byMonth).length, 1)).toFixed(1)
     : "0";
@@ -75,12 +77,28 @@ export default function StatsPage() {
   return (
     <AppShell activeTab="stats" headerProps={{ visitedCount: places, avgRating, wishCount }}>
       <div style={{ padding: "16px 16px 0" }}>
-        {/* ★ places + totalVisits 분리 전달 */}
+        {/* 상단 요약 카드 */}
         <StatCards places={places} totalVisits={totalVisits} monthAvg={monthAvg} revisitPct={revisitPct} />
+
+        {/* ★ 광고 1 — StatCards 아래 */}
+        <KakaoAdFitInFeed />
+
+        {/* 월별 방문 바차트 */}
         <BarChart months={months} byMonth={byMonth} monthAvg={monthAvg} hasRevisit={totalVisits > places} />
+
+        {/* 음식 종류 차트 */}
         <CuisineChart visited={visited} />
+
+        {/* ★ 광고 2 — CuisineChart 아래 */}
+        <KakaoAdFitInFeed />
+
+        {/* 지역 파이차트 */}
         <RegionPieChart visited={visited} />
+
+        {/* 재방문 바 */}
         <RevisitBar visited={visited} />
+
+        {/* 식당 랭킹 */}
         <RestaurantRanking visited={visited} />
       </div>
     </AppShell>

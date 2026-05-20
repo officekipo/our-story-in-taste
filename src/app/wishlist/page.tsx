@@ -2,12 +2,7 @@
 //  wishlist/page.tsx  적용 경로: src/app/wishlist/page.tsx
 //
 //  Fix / Add:
-//    ★ P1 — "다녀왔어요" 버튼 1탭 즉시 이동
-//      → AddEditModal 대신 경량 확인 바텀시트로 교체
-//      → 오늘 날짜·기존 정보로 바로 저장, 위시 삭제
-//    기존:
-//      - handleDelete: confirmTarget.imgUrls → Storage 정리
-//      - handleSave(다녀왔어요): remove(pendingWish.id, pendingWish.imgUrls) 전달
+//    ★ KakaoAdFitInFeed 추가 — 리스트 최상단 + 3개마다 인피드 광고
 // ============================================================
 "use client";
 
@@ -18,6 +13,7 @@ import { WishModal }       from "@/components/wishlist/WishModal";
 import { Toast }           from "@/components/common/Toast";
 import { ConfirmDialog }   from "@/components/common/ConfirmDialog";
 import { StarRating }      from "@/components/common/StarRating";
+import { KakaoAdFitInFeed } from "@/components/common/KakaoAdFitInFeed"; // ★ 추가
 import { useUIStore }      from "@/store/uiStore";
 import { useAuthStore }    from "@/store/authStore";
 import { SAMPLE_WISHLIST } from "@/lib/sample-data";
@@ -129,7 +125,7 @@ export default function WishlistPage() {
   const [editingWish,   setEditingWish] = useState<WishRecord | null>(null);
   const [toast,         setToast]       = useState<string | null>(null);
 
-  // ★ 다녀왔어요 바텀시트 상태
+  // 다녀왔어요 바텀시트 상태
   const [visitTarget,   setVisitTarget] = useState<WishRecord | null>(null);
   const [visitSaving,   setVisitSaving] = useState(false);
 
@@ -187,7 +183,7 @@ export default function WishlistPage() {
     setEditingWish(null);
   };
 
-  // ★ 다녀왔어요 — 버튼 1탭 즉시 이동
+  // 다녀왔어요 — 버튼 1탭 즉시 이동
   const handleQuickVisit = async (rating: 1|2|3|4|5, revisit: boolean) => {
     if (!visitTarget) return;
     setVisitSaving(true);
@@ -269,16 +265,25 @@ export default function WishlistPage() {
         ))}
       </div>
 
-      {/* 카드 목록 */}
+      {/* ★ 카드 목록 — 최상단 + 3개마다 인피드 광고 삽입 */}
       <div style={{ padding: "0 16px" }}>
+        {displayed.length > 0 && (
+          // 최상단 광고
+          <KakaoAdFitInFeed />
+        )}
         {displayed.map((r, i) => (
-          <WishCard
-            key={r.id}
-            record={r}
-            index={i}
-            onVisited={() => setVisitTarget(r)}
-            onEdit={() => { setEditingWish(r); setWishModal(true); }}
-          />
+          <div key={r.id}>
+            <WishCard
+              record={r}
+              index={i}
+              onVisited={() => setVisitTarget(r)}
+              onEdit={() => { setEditingWish(r); setWishModal(true); }}
+            />
+            {/* 3개마다 광고 (0-based index 기준: 2, 5, 8 ...) */}
+            {(i + 1) % 3 === 0 && i + 1 < displayed.length && (
+              <KakaoAdFitInFeed />
+            )}
+          </div>
         ))}
         {displayed.length === 0 && (
           <div style={{ textAlign: "center", padding: "48px 0", color: "#C0B8B0" }}>
@@ -294,7 +299,7 @@ export default function WishlistPage() {
       <button onClick={() => { setEditingWish(null); setWishModal(true); }}
         style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: SAGE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(107,158,126,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, fontSize: 28 }}>+</button>
 
-      {/* ★ 다녀왔어요 바텀시트 */}
+      {/* 다녀왔어요 바텀시트 */}
       {visitTarget && (
         <QuickVisitSheet
           wish={visitTarget}
