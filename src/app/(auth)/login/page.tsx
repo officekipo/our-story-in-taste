@@ -1,12 +1,4 @@
 // src/app/(auth)/login/page.tsx
-//
-//  Fix:
-//    ★ 이메일 로그인 후 router.push("/") 제거
-//      → signIn() 완료 후 onAuthStateChanged → authStore.myUid 설정
-//      → AuthGuard의 useEffect가 myUid 변화 감지 → 자동으로 "/" 이동
-//    ★ Google 리다이렉트 결과도 동일하게 AuthGuard에 위임
-//    ★ signIn 성공 후 AuthGuard가 이동 못할 경우 대비 5초 안전장치 추가
-//    ★ 하단에 개인정보 처리방침 / 서비스 이용약관 링크 추가
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -15,12 +7,15 @@ import { signIn, signInWithGoogle, handleGoogleRedirectResult } from "@/lib/fire
 import { fetchUser }                   from "@/lib/firebase/auth";
 import { useAuthStore }                from "@/store/authStore";
 import { validateEmail, validatePassword } from "@/lib/utils/validation";
+import { sendPasswordResetEmail }      from "firebase/auth";
+import { auth }                        from "@/lib/firebase/config";
 
 const ROSE  = "#C96B52";
 const INK   = "#1A1412";
 const MUTED = "#8A8078";
 const BORDER= "#E2DDD8";
 const WARM  = "#FAF7F3";
+const SAGE  = "#6B9E7E";
 
 const STORAGE_KEY = "ourtaste_saved_email";
 
@@ -29,11 +24,131 @@ function FieldError({ msg }: { msg: string }) {
   return <p style={{ fontSize:11, color:"#EF4444", marginTop:4 }}>{msg}</p>;
 }
 
+// ── 비밀번호 찾기 인라인 폼
+function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
+  const [email,   setEmail]   = useState("");
+  const [emailErr, setEmailErr] = useState("");
+  const [status,  setStatus]  = useState<"idle"|"loading"|"sent"|"error">("idle");
+  const [errMsg,  setErrMsg]  = useState("");
+
+  const handleSend = async () => {
+    const err = validateEmail(email);
+    if (err) { setEmailErr(err); return; }
+    setEmailErr(""); setStatus("loading");
+    try {
+      const actionCodeSettings = {
+        url: `${window.location.origin}/reset-password`,
+        handleCodeInApp: true,
+      };
+      await sendPasswordResetEmail(auth, email.trim(), actionCodeSettings);
+      setStatus("sent");
+    } catch (e: any) {
+      const code = e.code ?? "";
+      if (code === "auth/user-not-found") {
+        // 보안상 성공처럼 표시 (이메일 존재 여부 노출 방지)
+        setStatus("sent");
+      } else if (code === "auth/invalid-email") {
+        setEmailErr("올바른 이메일 형식이 아닙니다.");
+        setStatus("idle");
+      } else if (code === "auth/too-many-requests") {
+        setErrMsg("잠시 후 다시 시도해주세요.");
+        setStatus("error");
+      } else {
+        setErrMsg("발송에 실패했습니다. 다시 시도해주세요.");
+        setStatus("error");
+      }
+    }
+  };
+
+  // 발송 성공 화면
+  if (status === "sent") {
+    return (
+      <div style={{ display:"flex", flexDirection:"column", gap:16, textAlign:"center" }}>
+        <div style={{ fontSize:48, marginBottom:4 }}>📬</div>
+        <p style={{ fontSize:17, fontWeight:800, color:INK }}>이메일을 확인해주세요</p>
+        <p style={{ fontSize:13, color:MUTED, lineHeight:1.7 }}>
+          <strong style={{ color:INK }}>{email}</strong>으로<br/>
+          비밀번호 재설정 링크를 보냈어요.<br/>
+          스팸함도 함께 확인해주세요.
+        </p>
+        <div style={{ background:"#F0FBF4", border:"1px solid #BBE5CA", borderRadius:12, padding:"12px 16px", textAlign:"left" }}>
+          <p style={{ fontSize:12, color:"#2D6A4F", lineHeight:1.6 }}>
+            💡 링크는 <strong>24시간</strong> 동안 유효해요.<br/>
+            이메일이 도착하지 않으면 아래 버튼으로 다시 시도해주세요.
+          </p>
+        </div>
+        <button onClick={onBack}
+          style={{ width:"100%", padding:14, background:ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+          로그인으로 돌아가기
+        </button>
+        <button onClick={()=>setStatus("idle")}
+          style={{ background:"none", border:"none", color:MUTED, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+          다시 보내기
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+      {/* 헤더 */}
+      <div>
+        <button onClick={onBack}
+          style={{ background:"none", border:"none", cursor:"pointer", fontSize:20, color:MUTED, lineHeight:1, padding:"0 4px 0 0", marginBottom:8 }}>
+          ‹
+        </button>
+        <p style={{ fontSize:18, fontWeight:800, color:INK, marginBottom:4 }}>비밀번호 재설정</p>
+        <p style={{ fontSize:13, color:MUTED, lineHeight:1.6 }}>
+          가입한 이메일을 입력하면 재설정 링크를 보내드려요.
+        </p>
+      </div>
+
+      {/* 아이디(이메일) 찾기 안내 */}
+      <div style={{ background:"#F5F0EB", borderRadius:12, padding:"12px 14px", display:"flex", gap:10, alignItems:"flex-start" }}>
+        <span style={{ fontSize:16, flexShrink:0 }}>💡</span>
+        <p style={{ fontSize:12, color:MUTED, lineHeight:1.6 }}>
+          <strong style={{ color:INK }}>아이디를 잊으셨나요?</strong><br/>
+          우리의 맛지도는 <strong style={{ color:INK }}>이메일이 곧 아이디</strong>예요.<br/>
+          가입 시 사용한 이메일을 입력하거나,<br/>
+          Google 계정으로 로그인해보세요.
+        </p>
+      </div>
+
+      {/* 이메일 입력 */}
+      <div>
+        <p style={{ fontSize:12, fontWeight:600, color:MUTED, marginBottom:6 }}>가입한 이메일</p>
+        <input
+          type="email"
+          value={email}
+          autoFocus
+          onChange={e=>{ setEmail(e.target.value); setEmailErr(""); setErrMsg(""); }}
+          onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); handleSend(); } }}
+          placeholder="example@email.com"
+          style={{ width:"100%", padding:"13px 14px", background:WARM, border:`1.5px solid ${emailErr?"#EF4444":BORDER}`, borderRadius:12, color:INK, fontSize:15, fontFamily:"inherit", outline:"none", boxSizing:"border-box" }}
+        />
+        <FieldError msg={emailErr} />
+      </div>
+
+      {errMsg && (
+        <div style={{ padding:"11px 14px", background:"#FFF0F0", border:"1px solid rgba(239,68,68,0.2)", borderRadius:10 }}>
+          <p style={{ fontSize:13, color:"#EF4444" }}>❌ {errMsg}</p>
+        </div>
+      )}
+
+      <button onClick={handleSend} disabled={status==="loading"}
+        style={{ width:"100%", padding:14, background:status==="loading"?"#C0B8B0":ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:15, fontWeight:700, cursor:status==="loading"?"default":"pointer", fontFamily:"inherit" }}>
+        {status==="loading" ? "발송 중…" : "재설정 링크 보내기"}
+      </button>
+    </div>
+  );
+}
+
 export default function LoginPage() {
   const router  = useRouter();
   const pwRef   = useRef<HTMLInputElement>(null);
   const { myUid } = useAuthStore();
 
+  const [mode,     setMode]     = useState<"login"|"forgot">("login");
   const [email,    setEmail]    = useState("");
   const [pw,       setPw]       = useState("");
   const [showPw,   setShowPw]   = useState(false);
@@ -128,6 +243,11 @@ export default function LoginPage() {
     if (e.key === "Enter") { e.preventDefault(); handleLogin(); }
   };
 
+  // 비밀번호 찾기 모드
+  if (mode === "forgot") {
+    return <ForgotPasswordForm onBack={()=>setMode("login")} />;
+  }
+
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
       <div>
@@ -141,7 +261,14 @@ export default function LoginPage() {
       </div>
 
       <div>
-        <p style={{ fontSize:12, fontWeight:600, color:MUTED, marginBottom:6 }}>비밀번호</p>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+          <p style={{ fontSize:12, fontWeight:600, color:MUTED }}>비밀번호</p>
+          {/* ── 비밀번호 찾기 링크 */}
+          <button onClick={()=>{ setApiErr(""); setMode("forgot"); }}
+            style={{ background:"none", border:"none", color:ROSE, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit", padding:0 }}>
+            비밀번호를 잊으셨나요?
+          </button>
+        </div>
         <div style={{ position:"relative" }}>
           <input ref={pwRef} type={showPw?"text":"password"} value={pw}
             onChange={e=>{ setPw(e.target.value); setErrors(p=>({...p,pw:""})); }}

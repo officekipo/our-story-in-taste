@@ -117,243 +117,189 @@ function EditDatePopup({ current, onSave, onClose }: { current:string; onSave:(v
   );
 }
 
-// ── ★ 완전히 교체된 InvitePopup
-// 연동 중: 파트너 정보 표시 + 연동 해제 버튼
-// 미연동:  내 코드 보기 / 코드 입력하기
-// function InvitePopup({ onClose }: { onClose:()=>void }) {
-//   const {
-//     coupleId, myUid, partnerName, partnerProfileImgUrl, startDate,
-//     setCoupleId: setStoreCoupleId, setAuth,
-//   } = useAuthStore();
+// ── ★ 비밀번호 변경 팝업
+function ChangePasswordPopup({ onClose }: { onClose:()=>void }) {
+  const [currentPw,  setCurrentPw]  = useState("");
+  const [newPw,      setNewPw]      = useState("");
+  const [confirmPw,  setConfirmPw]  = useState("");
+  const [showCur,    setShowCur]    = useState(false);
+  const [showNew,    setShowNew]    = useState(false);
+  const [showConf,   setShowConf]   = useState(false);
+  const [errors,     setErrors]     = useState({ currentPw:"", newPw:"", confirmPw:"" });
+  const [apiErr,     setApiErr]     = useState("");
+  const [loading,    setLoading]    = useState(false);
+  const [success,    setSuccess]    = useState(false);
 
-//   const [mode,        setMode]        = useState<"show"|"enter">("show");
-//   const [myCode,      setMyCode]      = useState("불러오는 중...");
-//   const [copied,      setCopied]      = useState(false);
-//   const [code,        setCode]        = useState("");
-//   const [joinStatus,  setJoinStatus]  = useState<"idle"|"loading"|"success"|"self"|"notfound"|"error">("idle");
-//   const [joinMsg,     setJoinMsg]     = useState("");
-//   const [disconnecting, setDisconnecting] = useState(false);
-//   const [showConfirm, setShowConfirm] = useState(false);
+  // Google 전용 계정 여부 확인
+  const isGoogleOnly = auth.currentUser?.providerData.every(p => p.providerId === "google.com") ?? false;
 
-//   // 내 초대 코드 불러오기
-//   useEffect(() => {
-//     if (!coupleId) { setMyCode("미연동"); return; }
-//     import("@/lib/firebase/auth").then(({ fetchCouple }) => {
-//       fetchCouple(coupleId)
-//         .then(couple => setMyCode(couple?.inviteCode ?? "코드 없음"))
-//         .catch(() => setMyCode("오류"));
-//     });
-//   }, [coupleId]);
+  const validate = () => {
+    const errs = { currentPw:"", newPw:"", confirmPw:"" };
+    if (!isGoogleOnly && !currentPw) errs.currentPw = "현재 비밀번호를 입력해주세요.";
+    if (!newPw) {
+      errs.newPw = "새 비밀번호를 입력해주세요.";
+    } else if (newPw.length < 6) {
+      errs.newPw = "비밀번호는 6자 이상이어야 합니다.";
+    } else if (!isGoogleOnly && newPw === currentPw) {
+      errs.newPw = "현재 비밀번호와 동일합니다.";
+    }
+    if (!confirmPw) {
+      errs.confirmPw = "새 비밀번호를 한 번 더 입력해주세요.";
+    } else if (newPw !== confirmPw) {
+      errs.confirmPw = "비밀번호가 일치하지 않습니다.";
+    }
+    setErrors(errs);
+    return !errs.currentPw && !errs.newPw && !errs.confirmPw;
+  };
 
-//   // 코드 입력 연동
-//   const handleJoin = async () => {
-//     const trimmed = code.trim().toUpperCase();
-//     if (!trimmed) { setJoinStatus("error"); setJoinMsg("코드를 입력해주세요."); return; }
-//     if (!/^TASTE-[A-Z0-9]{6}$/.test(trimmed)) { setJoinStatus("error"); setJoinMsg("코드 형식이 맞지 않아요. (TASTE-XXXXXX)"); return; }
-//     if (myCode !== "불러오는 중..." && myCode !== "미연동" && trimmed === myCode) {
-//       setJoinStatus("self"); setJoinMsg("😅 본인이 만든 코드예요. 파트너의 코드를 입력해주세요."); return;
-//     }
-//     setJoinStatus("loading"); setJoinMsg("");
-//     try {
-//       const { joinCouple, fetchCouple } = await import("@/lib/firebase/auth");
-//       const { getDoc, doc } = await import("firebase/firestore");
-//       const { db } = await import("@/lib/firebase/config");
+  const handleChange = async () => {
+    if (!validate()) return;
+    setApiErr(""); setLoading(true);
+    try {
+      const { updatePassword, reauthenticateWithCredential, EmailAuthProvider } = await import("firebase/auth");
+      const user = auth.currentUser;
+      if (!user) throw new Error("로그인 상태를 확인할 수 없습니다.");
 
-//       const newCoupleId = await joinCouple(trimmed, myUid);
+      // 이메일 로그인 유저는 재인증 필요
+      if (!isGoogleOnly) {
+        const credential = EmailAuthProvider.credential(user.email!, currentPw);
+        await reauthenticateWithCredential(user, credential);
+      }
 
-//       // ★ 연동 직후 파트너 정보를 Firestore에서 가져와 store 즉시 업데이트
-//       try {
-//         const coupleData = await fetchCouple(newCoupleId);
-//         if (coupleData) {
-//           const partnerUid = coupleData.user1Uid === myUid
-//             ? coupleData.user2Uid
-//             : coupleData.user1Uid;
-//           const startDate = coupleData.startDate ?? "";
+      await updatePassword(user, newPw);
+      setSuccess(true);
+    } catch (e: any) {
+      const code = e.code ?? "";
+      if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
+        setErrors(prev => ({ ...prev, currentPw:"현재 비밀번호가 올바르지 않습니다." }));
+      } else if (code === "auth/too-many-requests") {
+        setApiErr("시도 횟수가 너무 많습니다. 잠시 후 다시 시도해주세요.");
+      } else if (code === "auth/requires-recent-login") {
+        setApiErr("보안을 위해 재로그인 후 다시 시도해주세요.");
+      } else if (code === "auth/weak-password") {
+        setErrors(prev => ({ ...prev, newPw:"비밀번호가 너무 약합니다. 6자 이상으로 설정해주세요." }));
+      } else {
+        setApiErr("비밀번호 변경에 실패했습니다. 다시 시도해주세요.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
-//           let newPartnerName = "";
-//           let newPartnerImgUrl: string | null = null;
+  const inp = (hasErr: boolean): React.CSSProperties => ({
+    width:"100%", padding:"12px 44px 12px 14px", background:WARM,
+    border:`1.5px solid ${hasErr?RED:BORDER}`, borderRadius:10,
+    fontSize:14, color:INK, fontFamily:"inherit", outline:"none", boxSizing:"border-box",
+  });
 
-//           if (partnerUid) {
-//             const partnerSnap = await getDoc(doc(db, "users", partnerUid));
-//             if (partnerSnap.exists()) {
-//               newPartnerName   = partnerSnap.data().name           ?? "";
-//               newPartnerImgUrl = partnerSnap.data().profileImgUrl  ?? null;
-//             }
-//           }
+  // Google 전용 계정 안내
+  if (isGoogleOnly) {
+    return (
+      <Popup onClose={onClose}>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontSize:40, marginBottom:12 }}>🔑</div>
+          <p style={{ fontSize:16, fontWeight:700, color:INK, marginBottom:8 }}>비밀번호 변경 불가</p>
+          <p style={{ fontSize:13, color:MUTED, lineHeight:1.7, marginBottom:20 }}>
+            Google 계정으로 가입하셨어요.<br/>
+            비밀번호는 Google 계정에서 관리해주세요.
+          </p>
+          <button onClick={onClose} style={{ width:"100%", padding:12, background:ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>확인</button>
+        </div>
+      </Popup>
+    );
+  }
 
-//           setAuth({
-//             coupleId:             newCoupleId,
-//             partnerName:          newPartnerName,
-//             partnerProfileImgUrl: newPartnerImgUrl,
-//             startDate,
-//           });
-//         }
-//       } catch {
-//         // 파트너 정보 조회 실패 시 coupleId만 업데이트
-//         setStoreCoupleId(newCoupleId);
-//       }
+  // 변경 성공 화면
+  if (success) {
+    return (
+      <Popup onClose={onClose}>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontSize:40, marginBottom:12 }}>✅</div>
+          <p style={{ fontSize:16, fontWeight:700, color:INK, marginBottom:8 }}>비밀번호가 변경됐어요</p>
+          <p style={{ fontSize:13, color:MUTED, lineHeight:1.6, marginBottom:20 }}>
+            다음 로그인부터 새 비밀번호를 사용해주세요.
+          </p>
+          <button onClick={onClose} style={{ width:"100%", padding:12, background:ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>확인</button>
+        </div>
+      </Popup>
+    );
+  }
 
-//       setJoinStatus("success"); setJoinMsg("💑 커플 연동 성공!");
-//       setTimeout(() => onClose(), 1500);
-//     } catch (e: any) {
-//       const msg = e.message ?? "";
-//       if (msg.includes("사용된")) { setJoinStatus("notfound"); setJoinMsg("❌ 이미 사용된 코드예요."); }
-//       else if (msg.includes("유효하지") || msg.includes("없")) { setJoinStatus("notfound"); setJoinMsg("❌ 없는 코드예요. 다시 확인해주세요."); }
-//       else { setJoinStatus("error"); setJoinMsg("❌ 연동 실패. 다시 시도해주세요."); }
-//     }
-//   };
+  return (
+    <Popup onClose={onClose}>
+      <p style={{ fontSize:16, fontWeight:700, color:INK, marginBottom:20 }}>비밀번호 변경</p>
 
-//   // 연동 해제
-//   const handleDisconnect = async () => {
-//     if (!coupleId) return;
-//     setDisconnecting(true);
-//     try {
-//       const { disconnectCouple } = await import("@/lib/firebase/auth");
-//       await disconnectCouple(myUid, coupleId);
-//       setAuth({ coupleId: null, partnerName: "", partnerProfileImgUrl: null, startDate: "" });
-//       setShowConfirm(false);
-//       onClose();
-//     } catch (e: any) {
-//       console.error("연동 해제 오류:", e);
-//     } finally {
-//       setDisconnecting(false);
-//     }
-//   };
+      {/* 현재 비밀번호 */}
+      <div style={{ marginBottom:12 }}>
+        <p style={{ fontSize:12, fontWeight:600, color:MUTED, marginBottom:6 }}>현재 비밀번호</p>
+        <div style={{ position:"relative" }}>
+          <input type={showCur?"text":"password"} value={currentPw}
+            onChange={e=>{ setCurrentPw(e.target.value); setErrors(p=>({...p,currentPw:""})); setApiErr(""); }}
+            placeholder="현재 비밀번호 입력"
+            style={inp(!!errors.currentPw)} />
+          <button onClick={()=>setShowCur(s=>!s)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:15, color:MUTED }}>
+            {showCur?"🙈":"👁️"}
+          </button>
+        </div>
+        {errors.currentPw && <p style={{ fontSize:11, color:RED, marginTop:4 }}>{errors.currentPw}</p>}
+      </div>
 
-//   const ss = {
-//     idle:     { bg:"transparent", color:"transparent" },
-//     loading:  { bg:WARM,          color:MUTED },
-//     success:  { bg:"#D1F0E0",     color:"#0A5C36" },
-//     self:     { bg:"#FFF3CD",     color:"#856404" },
-//     notfound: { bg:"#F8D7DA",     color:"#842029" },
-//     error:    { bg:"#FFF3CD",     color:"#856404" },
-//   }[joinStatus];
+      {/* 새 비밀번호 */}
+      <div style={{ marginBottom:12 }}>
+        <p style={{ fontSize:12, fontWeight:600, color:MUTED, marginBottom:6 }}>새 비밀번호</p>
+        <div style={{ position:"relative" }}>
+          <input type={showNew?"text":"password"} value={newPw}
+            onChange={e=>{ setNewPw(e.target.value); setErrors(p=>({...p,newPw:""})); }}
+            placeholder="6자 이상 입력"
+            style={inp(!!errors.newPw)} />
+          <button onClick={()=>setShowNew(s=>!s)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:15, color:MUTED }}>
+            {showNew?"🙈":"👁️"}
+          </button>
+        </div>
+        {errors.newPw && <p style={{ fontSize:11, color:RED, marginTop:4 }}>{errors.newPw}</p>}
+      </div>
 
-//   // ── 연동 해제 확인 팝업
-//   if (showConfirm) {
-//     return (
-//       <div onClick={()=>setShowConfirm(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:900, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-//         <div onClick={e=>e.stopPropagation()} style={{ width:"100%", maxWidth:320, background:"#fff", borderRadius:20, padding:24, textAlign:"center" }}>
-//           <div style={{ fontSize:40, marginBottom:12 }}>💔</div>
-//           <p style={{ fontSize:16, fontWeight:700, color:INK, marginBottom:8 }}>커플 연동을 해제할까요?</p>
-//           <p style={{ fontSize:13, color:MUTED, lineHeight:1.6, marginBottom:6 }}>
-//             {partnerName ? <><strong style={{ color:ROSE }}>{partnerName}</strong>님과의 연동이 해제됩니다.</> : "파트너와의 연동이 해제됩니다."}
-//           </p>
-//           <p style={{ fontSize:12, color:RED, marginBottom:20, lineHeight:1.6 }}>
-//             ⚠️ 기록 데이터는 유지되지만<br/>서로의 기록을 볼 수 없게 됩니다.
-//           </p>
-//           <div style={{ display:"flex", gap:10 }}>
-//             <button onClick={()=>setShowConfirm(false)} disabled={disconnecting}
-//               style={{ flex:1, padding:12, background:WARM, border:`1px solid ${BORDER}`, borderRadius:12, color:MUTED, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>취소</button>
-//             <button onClick={handleDisconnect} disabled={disconnecting}
-//               style={{ flex:2, padding:12, background:disconnecting?"#C0B8B0":RED, border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:disconnecting?"default":"pointer", fontFamily:"inherit" }}>
-//               {disconnecting ? "해제 중…" : "연동 해제"}
-//             </button>
-//           </div>
-//         </div>
-//       </div>
-//     );
-//   }
+      {/* 새 비밀번호 확인 */}
+      <div style={{ marginBottom:16 }}>
+        <p style={{ fontSize:12, fontWeight:600, color:MUTED, marginBottom:6 }}>새 비밀번호 확인</p>
+        <div style={{ position:"relative" }}>
+          <input type={showConf?"text":"password"} value={confirmPw}
+            onChange={e=>{ setConfirmPw(e.target.value); setErrors(p=>({...p,confirmPw:""})); }}
+            onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); handleChange(); } }}
+            placeholder="새 비밀번호 재입력"
+            style={inp(!!errors.confirmPw)} />
+          <button onClick={()=>setShowConf(s=>!s)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:15, color:MUTED }}>
+            {showConf?"🙈":"👁️"}
+          </button>
+        </div>
+        {errors.confirmPw && <p style={{ fontSize:11, color:RED, marginTop:4 }}>{errors.confirmPw}</p>}
+      </div>
 
-//   return (
-//     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:800, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-//       <div onClick={(e)=>e.stopPropagation()} style={{ width:"100%", maxWidth:360, background:"#fff", borderRadius:20, padding:24 }}>
+      {/* 비밀번호 강도 힌트 */}
+      {newPw.length > 0 && (
+        <div style={{ marginBottom:16, padding:"10px 12px", background:newPw.length<6?"#FFF0F0":newPw.length<10?"#FFF8E7":"#F0FBF4", borderRadius:10, border:`1px solid ${newPw.length<6?"rgba(239,68,68,0.2)":newPw.length<10?"rgba(234,179,8,0.2)":"rgba(74,164,94,0.2)"}` }}>
+          <p style={{ fontSize:12, color:newPw.length<6?RED:newPw.length<10?"#856404":"#2D6A4F" }}>
+            {newPw.length<6 ? "❌ 6자 이상 입력해주세요" : newPw.length<10 ? "⚠️ 조금 더 길면 더 안전해요" : "✅ 안전한 비밀번호예요"}
+          </p>
+        </div>
+      )}
 
-//         {/* ── 연동 중인 경우: 파트너 정보 + 해제 버튼 */}
-//         {coupleId && partnerName ? (
-//           <>
-//             <p style={{ fontSize:16, fontWeight:700, color:INK, marginBottom:20 }}>커플 연동 정보</p>
+      {apiErr && (
+        <div style={{ marginBottom:12, padding:"10px 14px", background:"#FFF0F0", border:"1px solid rgba(239,68,68,0.2)", borderRadius:10 }}>
+          <p style={{ fontSize:13, color:RED }}>❌ {apiErr}</p>
+        </div>
+      )}
 
-//             {/* 파트너 프로필 카드 */}
-//             <div style={{ background:WARM, borderRadius:16, padding:"16px", marginBottom:16, display:"flex", alignItems:"center", gap:14 }}>
-//               <div style={{ width:52, height:52, borderRadius:"50%", background:SAGE, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:20, fontWeight:700, flexShrink:0 }}>
-//                 {partnerProfileImgUrl
-//                   ? <img src={partnerProfileImgUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-//                   : partnerName[0]}
-//               </div>
-//               <div style={{ flex:1 }}>
-//                 <p style={{ fontSize:15, fontWeight:700, color:INK, marginBottom:2 }}>{partnerName}</p>
-//                 <p style={{ fontSize:12, color:MUTED }}>연동된 파트너</p>
-//                 {startDate && (
-//                   <p style={{ fontSize:11, color:ROSE, marginTop:4, fontWeight:600 }}>
-//                     💑 함께한 지 D+{calcDDay(startDate)}일
-//                   </p>
-//                 )}
-//               </div>
-//             </div>
-
-//             {/* 내 초대 코드 */}
-//             <div style={{ background:"#fff", border:`1px solid ${BORDER}`, borderRadius:12, padding:"12px 16px", marginBottom:16 }}>
-//               <p style={{ fontSize:11, color:MUTED, marginBottom:6 }}>내 초대 코드</p>
-//               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
-//                 <p style={{ fontSize:16, fontWeight:800, color:ROSE, letterSpacing:3, fontFamily:"monospace" }}>{myCode}</p>
-//                 <button onClick={()=>{ navigator.clipboard.writeText(myCode); setCopied(true); setTimeout(()=>setCopied(false),2000); }}
-//                   style={{ padding:"5px 12px", background:copied?SAGE:ROSE_LT, border:"none", borderRadius:20, color:copied?"#fff":ROSE, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit", flexShrink:0, transition:"all 0.2s" }}>
-//                   {copied ? "✅ 복사됨" : "📋 복사"}
-//                 </button>
-//               </div>
-//             </div>
-
-//             {/* 연동 해제 버튼 */}
-//             <button onClick={()=>setShowConfirm(true)}
-//               style={{ width:"100%", padding:"12px 0", background:"transparent", border:`1.5px solid ${RED}`, borderRadius:12, color:RED, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
-//               💔 커플 연동 해제하기
-//             </button>
-//           </>
-//         ) : (
-//           /* ── 미연동 또는 파트너 미연결: 코드 생성/입력 */
-//           <>
-//             <p style={{ fontSize:16, fontWeight:700, color:INK, marginBottom:20 }}>커플 연동</p>
-//             <div style={{ display:"flex", background:WARM, borderRadius:12, padding:3, border:`1px solid ${BORDER}`, marginBottom:20 }}>
-//               {(["show","enter"] as const).map(m=>(
-//                 <button key={m} onClick={()=>{ setMode(m); setJoinStatus("idle"); }}
-//                   style={{ flex:1, padding:9, border:"none", borderRadius:9, background:mode===m?"#fff":"transparent", color:mode===m?ROSE:MUTED, fontSize:13, fontWeight:mode===m?700:400, cursor:"pointer", fontFamily:"inherit" }}>
-//                   {m==="show" ? "내 코드 보기" : "코드 입력하기"}
-//                 </button>
-//               ))}
-//             </div>
-
-//             {mode==="show" ? (
-//               <div style={{ textAlign:"center" }}>
-//                 <p style={{ fontSize:12, color:MUTED, marginBottom:14 }}>파트너에게 코드를 전달하세요</p>
-//                 <div style={{ background:ROSE_LT, borderRadius:14, padding:"18px 24px", marginBottom:14 }}>
-//                   <p style={{ fontSize:24, fontWeight:800, color:ROSE, letterSpacing:5, fontFamily:"monospace" }}>{myCode}</p>
-//                 </div>
-//                 <button onClick={()=>{ navigator.clipboard.writeText(myCode); setCopied(true); setTimeout(()=>setCopied(false),2000); }}
-//                   style={{ padding:"8px 20px", background:copied?SAGE:ROSE, border:"none", borderRadius:20, color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit", transition:"background 0.2s" }}>
-//                   {copied ? "✅ 복사됨" : "📋 코드 복사"}
-//                 </button>
-//                 {myCode === "미연동" && (
-//                   <p style={{ fontSize:11, color:MUTED, marginTop:12, lineHeight:1.6 }}>
-//                     아직 초대 코드가 없어요.<br/>커플 연동 페이지에서 코드를 만들어보세요.
-//                   </p>
-//                 )}
-//               </div>
-//             ) : (
-//               <div>
-//                 <input placeholder="TASTE-XXXXXX" value={code}
-//                   onChange={(e)=>{ setCode(e.target.value.toUpperCase()); setJoinStatus("idle"); }}
-//                   style={{ width:"100%", padding:"12px 14px", background:WARM,
-//                     border:`1.5px solid ${joinStatus==="notfound"||joinStatus==="error"?RED:joinStatus==="success"?SAGE:joinStatus==="self"?"#F59E0B":BORDER}`,
-//                     borderRadius:10, letterSpacing:3, fontWeight:600, textAlign:"center", fontSize:16, color:INK, fontFamily:"inherit", outline:"none", boxSizing:"border-box", marginBottom:10 }} />
-//                 {joinStatus!=="idle" && (
-//                   <div style={{ padding:"10px 14px", borderRadius:10, background:ss.bg, marginBottom:12, textAlign:"center" }}>
-//                     <p style={{ fontSize:13, fontWeight:600, color:ss.color }}>{joinMsg}</p>
-//                   </div>
-//                 )}
-//                 <p style={{ fontSize:11, color:MUTED, textAlign:"center", marginBottom:16 }}>형식: TASTE-XXXXXX</p>
-//                 <button onClick={handleJoin} disabled={joinStatus==="loading"||joinStatus==="success"}
-//                   style={{ width:"100%", padding:13, background:joinStatus==="loading"?"#C0B8B0":joinStatus==="success"?SAGE:ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
-//                   {joinStatus==="loading" ? "연동 중…" : joinStatus==="success" ? "연동 완료 ✅" : "💑 커플 연동하기"}
-//                 </button>
-//               </div>
-//             )}
-//           </>
-//         )}
-//       </div>
-//     </div>
-//   );
-// }
+      <div style={{ display:"flex", gap:10 }}>
+        <button onClick={onClose} style={{ flex:1, padding:12, background:WARM, border:`1px solid ${BORDER}`, borderRadius:12, color:MUTED, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>취소</button>
+        <button onClick={handleChange} disabled={loading}
+          style={{ flex:2, padding:12, background:loading?"#C0B8B0":ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:loading?"default":"pointer", fontFamily:"inherit" }}>
+          {loading ? "변경 중…" : "변경하기"}
+        </button>
+      </div>
+    </Popup>
+  );
+}
 
 function ConfirmPopup({ emoji, title, desc, sub, confirmLabel, danger=false, onConfirm, onClose }: {
   emoji:string; title:string; desc:string; sub?:string; confirmLabel:string; danger?:boolean; onConfirm:()=>void; onClose:()=>void;
@@ -438,6 +384,9 @@ export default function SettingsPage() {
   const setMyName    = (v: string) => setAuth({ myName: v });
   const setStartDate = (v: string) => { setAuth({ startDate: v }); setAuthStartDate(v); };
   const close = () => setModal(null);
+
+  // Google 전용 계정 여부 (비밀번호 변경 Row 표시용)
+  const isGoogleOnly = auth.currentUser?.providerData.every(p => p.providerId === "google.com") ?? false;
 
   useEffect(() => {
     setNotif(loadNotifSettings());
@@ -572,7 +521,6 @@ export default function SettingsPage() {
       <SectionLabel title="커플 정보" />
       <div style={{ borderTop:`1px solid ${BORDER}` }}>
         <Row icon="💑" label="교제 시작일" value={startDate || "미설정"} sub={startDate ? `D+${dday}` : undefined} onClick={()=>setModal("date")} />
-        {/* ★ 연동 상태를 서브텍스트로 표시 */}
         <Row
           icon="🔗"
           label="커플 연동 / 초대 코드"
@@ -619,14 +567,17 @@ export default function SettingsPage() {
 
       <SectionLabel title="계정" />
       <div style={{ borderTop:`1px solid ${BORDER}` }}>
+        {/* ── ★ 비밀번호 변경 (Google 전용 계정도 표시, 팝업에서 안내) */}
+        <Row icon="🔑" label="비밀번호 변경" sub={isGoogleOnly ? "Google 계정으로 로그인됨" : "현재 비밀번호 확인 후 변경"} onClick={()=>setModal("password")} />
         <Row icon="🚪" label="로그아웃"  onClick={()=>setModal("logout")}   danger />
         <Row icon="⚠️" label="회원 탈퇴" onClick={()=>setModal("withdraw")} danger />
       </div>
 
-      {modal==="name"    && <EditNamePopup  current={myName}    onSave={setMyName}    onClose={close} />}
-      {modal==="date"    && <EditDatePopup  current={startDate} onSave={setStartDate} onClose={close} />}
-      {modal==="invite"  && <InvitePopup onClose={close} />}
-      {modal==="logout"  && <ConfirmPopup emoji="👋" title="로그아웃 하시겠어요?" desc="다시 로그인하면 기록이 그대로 있어요." confirmLabel="로그아웃" onConfirm={handleLogout} onClose={close} />}
+      {modal==="name"     && <EditNamePopup  current={myName}    onSave={setMyName}    onClose={close} />}
+      {modal==="date"     && <EditDatePopup  current={startDate} onSave={setStartDate} onClose={close} />}
+      {modal==="invite"   && <InvitePopup onClose={close} />}
+      {modal==="password" && <ChangePasswordPopup onClose={close} />}
+      {modal==="logout"   && <ConfirmPopup emoji="👋" title="로그아웃 하시겠어요?" desc="다시 로그인하면 기록이 그대로 있어요." confirmLabel="로그아웃" onConfirm={handleLogout} onClose={close} />}
       {modal==="withdraw" && <ConfirmPopup emoji="⚠️" title="정말 탈퇴하시겠어요?" desc="탈퇴하면 모든 기록이 삭제됩니다." sub="커플 기록도 함께 삭제됩니다." confirmLabel="탈퇴하기" danger onConfirm={handleWithdraw} onClose={close} />}
       <style>{`@keyframes scaleIn{from{opacity:0;transform:scale(0.93)}to{opacity:1;transform:scale(1)}}`}</style>
     </div>
