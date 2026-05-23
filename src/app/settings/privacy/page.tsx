@@ -1,12 +1,14 @@
 // src/app/settings/privacy/page.tsx
 // 개인정보 처리방침
 "use client";
-import { useRouter } from "next/navigation";
+import { useRouter }           from "next/navigation";
+import { useState, useEffect } from "react";
+import { doc, onSnapshot }     from "firebase/firestore";
+import { db }                  from "@/lib/firebase/config";
 
 const INK    = "#1A1412";
 const MUTED  = "#8A8078";
 const BORDER = "#E2DDD8";
-const ROSE   = "#C96B52";
 const WARM   = "#FAF7F3";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -20,6 +22,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function PrivacyPage() {
   const router = useRouter();
+  const [companyName,  setCompanyName]  = useState("Our Taste Inc.");
+  const [supportEmail, setSupportEmail] = useState("privacy@ourtaste.app");
+  const [termsDate,    setTermsDate]    = useState("2024년 1월 1일");
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "config", "app"), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        if (d.companyName)  setCompanyName(d.companyName);
+        if (d.supportEmail) setSupportEmail(d.supportEmail);
+        if (d.termsDate)    setTermsDate(d.termsDate);
+      }
+    });
+    return () => unsub();
+  }, []);
+
   return (
     <div style={{ minHeight: "100vh", background: "#F5F0EB", maxWidth: 480, margin: "0 auto", fontFamily: "inherit" }}>
       <div style={{ background: "#fff", borderBottom: `1px solid ${BORDER}`, padding: "14px 20px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 20 }}>
@@ -29,8 +47,8 @@ export default function PrivacyPage() {
 
       <div style={{ padding: "24px 20px 48px", background: "#fff", margin: "12px 0" }}>
         <p style={{ fontSize: 12, color: MUTED, marginBottom: 24, lineHeight: 1.7, background: WARM, padding: "12px 14px", borderRadius: 10 }}>
-          Our Taste Inc.(이하 "회사")는 정보통신망 이용촉진 및 정보보호 등에 관한 법률, 개인정보보호법 등 관련 법령을 준수하며, 이용자의 개인정보를 소중히 여깁니다.
-          본 방침은 <strong>2024년 1월 1일</strong>부터 시행됩니다.
+          {companyName}(이하 "회사")는 정보통신망 이용촉진 및 정보보호 등에 관한 법률, 개인정보보호법 등 관련 법령을 준수하며, 이용자의 개인정보를 소중히 여깁니다.
+          본 방침은 <strong>{termsDate}</strong>부터 시행됩니다.
         </p>
 
         <Section title="제1조 (수집하는 개인정보 항목)">
@@ -94,8 +112,8 @@ export default function PrivacyPage() {
 
         <Section title="제8조 (개인정보 보호 책임자)">
           <p>
-          • 책임자: Our Taste Inc. 개인정보 보호 담당<br />
-          • 이메일: privacy@ourtaste.app<br />
+          • 책임자: {companyName} 개인정보 보호 담당<br />
+          • 이메일: {supportEmail}<br />
           • 개인정보 침해 신고: 개인정보보호위원회 (privacy.go.kr, 국번없이 182)
           </p>
         </Section>
@@ -105,7 +123,7 @@ export default function PrivacyPage() {
         </Section>
 
         <p style={{ fontSize: 11, color: "#C0B8B0", textAlign: "center", marginTop: 8 }}>
-          공고일: 2024년 1월 1일 · 시행일: 2024년 1월 1일
+          공고일: {termsDate} · 시행일: {termsDate}
         </p>
       </div>
     </div>

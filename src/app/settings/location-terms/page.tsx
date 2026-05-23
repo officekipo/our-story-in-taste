@@ -1,7 +1,10 @@
 // src/app/settings/location-terms/page.tsx
 // 위치기반 서비스 이용약관
 "use client";
-import { useRouter } from "next/navigation";
+import { useRouter }           from "next/navigation";
+import { useState, useEffect } from "react";
+import { doc, onSnapshot }     from "firebase/firestore";
+import { db }                  from "@/lib/firebase/config";
 
 const INK    = "#1A1412";
 const MUTED  = "#8A8078";
@@ -19,6 +22,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function LocationTermsPage() {
   const router = useRouter();
+  const [companyName,  setCompanyName]  = useState("Our Taste Inc.");
+  const [supportEmail, setSupportEmail] = useState("privacy@ourtaste.app");
+  const [termsDate,    setTermsDate]    = useState("2024년 1월 1일");
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "config", "app"), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        if (d.companyName)  setCompanyName(d.companyName);
+        if (d.supportEmail) setSupportEmail(d.supportEmail);
+        if (d.termsDate)    setTermsDate(d.termsDate);
+      }
+    });
+    return () => unsub();
+  }, []);
+
   return (
     <div style={{ minHeight: "100vh", background: "#F5F0EB", maxWidth: 480, margin: "0 auto", fontFamily: "inherit" }}>
       <div style={{ background: "#fff", borderBottom: `1px solid ${BORDER}`, padding: "14px 20px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 20 }}>
@@ -28,8 +47,8 @@ export default function LocationTermsPage() {
 
       <div style={{ padding: "24px 20px 48px", background: "#fff", margin: "12px 0" }}>
         <p style={{ fontSize: 12, color: MUTED, marginBottom: 24, lineHeight: 1.7, background: WARM, padding: "12px 14px", borderRadius: 10 }}>
-          Our Taste Inc.(이하 "회사")는 <strong>위치정보의 보호 및 이용 등에 관한 법률</strong>에 따라 위치기반 서비스 이용약관을 다음과 같이 정합니다.
-          본 약관은 <strong>2024년 1월 1일</strong>부터 적용됩니다.
+          {companyName}(이하 "회사")는 <strong>위치정보의 보호 및 이용 등에 관한 법률</strong>에 따라 위치기반 서비스 이용약관을 다음과 같이 정합니다.
+          본 약관은 <strong>{termsDate}</strong>부터 적용됩니다.
         </p>
 
         <Section title="제1조 (목적)">
@@ -67,8 +86,8 @@ export default function LocationTermsPage() {
         </Section>
 
         <Section title="제7조 (위치 정보 관리 책임자)">
-          <p>• 책임자: Our Taste Inc. 개인정보 보호 담당<br />
-          • 이메일: privacy@ourtaste.app</p>
+          <p>• 책임자: {companyName} 개인정보 보호 담당<br />
+          • 이메일: {supportEmail}</p>
         </Section>
 
         <Section title="제8조 (손해배상 및 면책)">
@@ -77,7 +96,7 @@ export default function LocationTermsPage() {
         </Section>
 
         <p style={{ fontSize: 11, color: "#C0B8B0", textAlign: "center", marginTop: 8 }}>
-          공고일: 2024년 1월 1일 · 시행일: 2024년 1월 1일
+          공고일: {termsDate} · 시행일: {termsDate}
         </p>
       </div>
     </div>

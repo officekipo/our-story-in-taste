@@ -34,7 +34,7 @@ interface FAQItem     { id: string; question: string; answer: string; order: num
 interface ContactItem { id: string; name: string; email: string; message: string; createdAt: string; status: "pending" | "done"; }
 interface ReportItem  { id: string; postId: string; postName: string; reason: string; reportedAt: string; status: "pending" | "resolved"; }
 interface PostItem    { id: string; name: string; emoji: string; coupleLabel: string; likes: number; authorUid: string; }
-interface ConfigItem  { appVersion: string; supportEmail: string; notice: string; }
+interface ConfigItem  { appVersion: string; supportEmail: string; notice: string; companyName: string; termsDate: string; }
 interface UserItem    { id: string; name: string; role: "admin" | "user"; coupleId: string | null; profileImgUrl: string | null; }
 interface UserPost    { id: string; name: string; emoji: string; likes: number; createdAt: string; }
 
@@ -333,7 +333,7 @@ export default function AdminPage() {
   const [faqs,     setFaqs]     = useState<FAQItem[]>([]);
   const [contacts, setContacts] = useState<ContactItem[]>([]);
   const [users,    setUsers]    = useState<UserItem[]>([]);
-  const [config,   setConfig]   = useState<ConfigItem>({ appVersion: "1.0.0", supportEmail: "", notice: "" });
+  const [config,   setConfig]   = useState<ConfigItem>({ appVersion: "1.0.0", supportEmail: "", notice: "", companyName: "", termsDate: "" });
 
   const [badgeCounts, setBadgeCounts] = useState({ reports: 0, posts: 0, contacts: 0 });
 
@@ -432,7 +432,18 @@ export default function AdminPage() {
       }
       case "config": {
         unsub = onSnapshot(doc(db, "config", "app"), (snap) => {
-          if (snap.exists()) { const d = snap.data() as ConfigItem; setConfig(d); setCfgDraft(d); }
+          if (snap.exists()) {
+            const d = snap.data();
+            const cfg: ConfigItem = {
+              appVersion:   d.appVersion   ?? "1.0.0",
+              supportEmail: d.supportEmail ?? "",
+              notice:       d.notice       ?? "",
+              companyName:  d.companyName  ?? "",
+              termsDate:    d.termsDate    ?? "",
+            };
+            setConfig(cfg);
+            setCfgDraft(cfg);
+          }
         });
         break;
       }
@@ -713,7 +724,11 @@ export default function AdminPage() {
                   <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 4 }}>고객센터 이메일</label>
                   <input value={cfgDraft.supportEmail} onChange={(e) => setCfgDraft((p) => ({ ...p, supportEmail: e.target.value }))} style={{ ...inp, marginBottom: 10 }} />
                   <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 4 }}>공지사항 (앱 내 표시)</label>
-                  <textarea value={cfgDraft.notice} onChange={(e) => setCfgDraft((p) => ({ ...p, notice: e.target.value }))} rows={3} style={{ ...inp, resize: "none", marginBottom: 12 }} />
+                  <textarea value={cfgDraft.notice} onChange={(e) => setCfgDraft((p) => ({ ...p, notice: e.target.value }))} rows={3} style={{ ...inp, resize: "none", marginBottom: 10 }} />
+                  <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 4 }}>회사명 (약관 내 표시)</label>
+                  <input value={cfgDraft.companyName} onChange={(e) => setCfgDraft((p) => ({ ...p, companyName: e.target.value }))} placeholder="예: Our Taste Inc." style={{ ...inp, marginBottom: 10 }} />
+                  <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 4 }}>약관 시행일 (약관 내 표시)</label>
+                  <input value={cfgDraft.termsDate} onChange={(e) => setCfgDraft((p) => ({ ...p, termsDate: e.target.value }))} placeholder="예: 2024년 1월 1일" style={{ ...inp, marginBottom: 12 }} />
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={() => { setCfgEdit(false); setCfgDraft(config); }} style={{ flex: 1, padding: "10px 0", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 10, color: MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>취소</button>
                     <button onClick={saveConfig} style={{ flex: 2, padding: "10px 0", background: SAGE, border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>저장</button>
@@ -724,9 +739,11 @@ export default function AdminPage() {
                   <Row label="앱 버전"        value={config.appVersion   || "미설정"} />
                   <Row label="고객센터 이메일" value={config.supportEmail || "미설정"} />
                   <Row label="공지사항"        value={config.notice       || "없음"} />
+                  <Row label="회사명"          value={config.companyName  || "미설정"} />
+                  <Row label="약관 시행일"     value={config.termsDate    || "미설정"} />
                   <div style={{ marginTop: 14, padding: "12px 14px", background: WARM, borderRadius: 10, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
                     💡 앱 버전은 배포 시 여기서 수동으로 업데이트하세요.<br />
-                    고객센터 페이지에서 이 이메일로 연결됩니다.
+                    회사명·약관 시행일은 개인정보처리방침, 이용약관, 위치기반서비스 약관에 자동 반영됩니다.
                   </div>
                 </>
               )}

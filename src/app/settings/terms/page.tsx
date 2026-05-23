@@ -1,7 +1,10 @@
 // src/app/settings/terms/page.tsx
 // 서비스 이용약관
 "use client";
-import { useRouter } from "next/navigation";
+import { useRouter }           from "next/navigation";
+import { useState, useEffect } from "react";
+import { doc, onSnapshot }     from "firebase/firestore";
+import { db }                  from "@/lib/firebase/config";
 
 const INK    = "#1A1412";
 const MUTED  = "#8A8078";
@@ -19,6 +22,20 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function TermsPage() {
   const router = useRouter();
+  const [companyName, setCompanyName] = useState("Our Taste Inc.");
+  const [termsDate,   setTermsDate]   = useState("2024년 1월 1일");
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "config", "app"), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        if (d.companyName) setCompanyName(d.companyName);
+        if (d.termsDate)   setTermsDate(d.termsDate);
+      }
+    });
+    return () => unsub();
+  }, []);
+
   return (
     <div style={{ minHeight: "100vh", background: "#F5F0EB", maxWidth: 480, margin: "0 auto", fontFamily: "inherit" }}>
       <div style={{ background: "#fff", borderBottom: `1px solid ${BORDER}`, padding: "14px 20px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 20 }}>
@@ -28,8 +45,8 @@ export default function TermsPage() {
 
       <div style={{ padding: "24px 20px 48px", background: "#fff", margin: "12px 0" }}>
         <p style={{ fontSize: 12, color: MUTED, marginBottom: 24, lineHeight: 1.7, background: WARM, padding: "12px 14px", borderRadius: 10 }}>
-          본 약관은 Our Taste Inc.(이하 "회사")가 운영하는 <strong>우리의 맛지도</strong> 서비스 이용에 관한 조건 및 절차를 규정합니다.
-          본 약관은 <strong>2024년 1월 1일</strong>부터 적용됩니다.
+          본 약관은 {companyName}(이하 "회사")가 운영하는 <strong>우리의 맛지도</strong> 서비스 이용에 관한 조건 및 절차를 규정합니다.
+          본 약관은 <strong>{termsDate}</strong>부터 적용됩니다.
         </p>
 
         <Section title="제1조 (목적)">
@@ -105,7 +122,7 @@ export default function TermsPage() {
         </Section>
 
         <p style={{ fontSize: 11, color: "#C0B8B0", textAlign: "center", marginTop: 8 }}>
-          공고일: 2024년 1월 1일 · 시행일: 2024년 1월 1일
+          공고일: {termsDate} · 시행일: {termsDate}
         </p>
       </div>
     </div>
