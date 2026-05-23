@@ -5,13 +5,15 @@
 //    1. remove(): base64 URL 필터 (Storage URL만 삭제)
 //    2. hideAuthor: data.hideAuthor ?? false
 //    3. ★ addVisit(): 기존 문서에 visits 배열 원소 추가 (재방문)
-//       - 모든 visits 이미지 URL도 storageUrls에 포함해 삭제
+//    4. ★ coupleId 없을 때 authorUid 기준 fallback 구독
+//       (커플 미연동 or 연동 해제 후 본인 기록 표시)
 // ============================================================
 "use client";
 
 import { useEffect, useState } from "react";
 import {
   subscribeVisited,
+  subscribeVisitedByAuthor,
   addVisited,
   updateVisited,
   deleteVisited,
@@ -27,24 +29,35 @@ export function useVisited() {
   const [loading, setLoading]       = useState(true);
 
   useEffect(() => {
-    if (!coupleId) { setLoading(false); return; }
+    // ★ coupleId 있으면 커플 전체 기록, 없으면 본인 기록만
+    if (coupleId) {
+      const unsub = subscribeVisited(coupleId, (data) => {
+        setRecords(data);
+        setLoading(false);
+      });
+      return () => unsub();
+    }
 
-    const unsub = subscribeVisited(coupleId, (data) => {
-      setRecords(data);
-      setLoading(false);
-    });
+    if (myUid) {
+      // 커플 미연동 or 연동 해제 후 → 본인이 작성한 기록만 표시
+      const unsub = subscribeVisitedByAuthor(myUid, (data) => {
+        setRecords(data);
+        setLoading(false);
+      });
+      return () => unsub();
+    }
 
-    return () => unsub();
-  }, [coupleId]);
+    setLoading(false);
+  }, [coupleId, myUid]);
 
   // ── 추가 ─────────────────────────────────────────────────
   const add = async (data: VisitedFormData, imgUrls: string[]) => {
-    if (!coupleId || !myUid || !myName) {
-      throw new Error("useVisited.add: 로그인/커플 연동 상태를 확인하세요.");
+    if (!myUid || !myName) {
+      throw new Error("useVisited.add: 로그인 상태를 확인하세요.");
     }
 
     const record: Omit<VisitedRecord, "id" | "createdAt" | "updatedAt"> = {
-      coupleId,
+      coupleId:    coupleId ?? "",   // ★ 커플 미연동 시 빈 문자열로 저장
       authorUid:   myUid,
       authorName:  myName,
       name:        data.name,
@@ -62,7 +75,7 @@ export function useVisited() {
       hideAuthor:  data.hideAuthor  ?? false,
       ...(data.lat != null && { lat: data.lat }),
       ...(data.lng != null && { lng: data.lng }),
-      visits:      [],   // ★ 초기 빈 배열
+      visits:      [],
     };
 
     return addVisited(record);
@@ -102,7 +115,6 @@ export function useVisited() {
 
   // ── 삭제 ─────────────────────────────────────────────────
   const remove = async (id: string, imgUrls: string[] = [], visits: VisitEntry[] = []) => {
-    // 본문 이미지 + 모든 visits 이미지 합산
     const allUrls = [
       ...imgUrls,
       ...visits.flatMap(v => v.imgUrls ?? []),

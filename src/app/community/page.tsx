@@ -30,6 +30,9 @@ const ROSE   = "#C96B52";
 const HIDE_THRESHOLD = 3;
 
 function wasEdited(raw: any): boolean {
+  // ★ Firestore에 저장된 isEdited 필드 우선 사용
+  if (typeof raw.isEdited === "boolean") return raw.isEdited;
+  // fallback: updatedAt - createdAt > 60초 (isEdited 필드 없는 기존 데이터 대응)
   if (!raw.updatedAt || !raw.createdAt) return false;
   return new Date(raw.updatedAt).getTime() - new Date(raw.createdAt).getTime() > 60_000;
 }

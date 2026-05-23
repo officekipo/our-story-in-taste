@@ -551,7 +551,7 @@ export default function SettingsPage() {
         <Row icon="ℹ️" label="앱 버전" value={`v${appConfig.appVersion || "1.0.0"}`} />
         <Row icon="📄" label="개인정보 처리방침"       onClick={()=>router.push("/settings/privacy")} />
         <Row icon="📋" label="서비스 이용약관"          onClick={()=>router.push("/settings/terms")} />
-        <Row icon="📍" label="위치기반 서비스 이용약관" onClick={()=>router.push("/settings/location-terms")} />
+        <Row icon="📤" label="데이터 내보내기" sub="고객센터 문의를 통해 요청하세요" onClick={()=>router.push("/settings/support")} />
         <Row icon="💬" label="고객센터 / 문의하기" sub={appConfig.supportEmail || undefined} onClick={()=>router.push("/settings/support")} />
       </div>
 
@@ -578,7 +578,7 @@ export default function SettingsPage() {
       {modal==="invite"   && <InvitePopup onClose={close} />}
       {modal==="password" && <ChangePasswordPopup onClose={close} />}
       {modal==="logout"   && <ConfirmPopup emoji="👋" title="로그아웃 하시겠어요?" desc="다시 로그인하면 기록이 그대로 있어요." confirmLabel="로그아웃" onConfirm={handleLogout} onClose={close} />}
-      {modal==="withdraw" && <ConfirmPopup emoji="⚠️" title="정말 탈퇴하시겠어요?" desc="탈퇴하면 모든 기록이 삭제됩니다." sub="커플 기록도 함께 삭제됩니다." confirmLabel="탈퇴하기" danger onConfirm={handleWithdraw} onClose={close} />}
+      {modal==="withdraw" && <ConfirmPopup emoji="⚠️" title="정말 탈퇴하시겠어요?" desc="탈퇴 시 내가 작성한 방문 기록, 위시리스트, 프로필 이미지가 모두 삭제되며 복구가 불가능합니다." sub="커플 공유 기록도 함께 삭제됩니다." confirmLabel="탈퇴하기" danger onConfirm={handleWithdraw} onClose={close} />}
       <style>{`@keyframes scaleIn{from{opacity:0;transform:scale(0.93)}to{opacity:1;transform:scale(1)}}`}</style>
     </div>
   );

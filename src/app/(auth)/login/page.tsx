@@ -8,14 +8,14 @@ import { fetchUser }                   from "@/lib/firebase/auth";
 import { useAuthStore }                from "@/store/authStore";
 import { validateEmail, validatePassword } from "@/lib/utils/validation";
 import { sendPasswordResetEmail }      from "firebase/auth";
-import { auth }                        from "@/lib/firebase/config";
+import { auth, db }                    from "@/lib/firebase/config";
+import { doc, onSnapshot }             from "firebase/firestore";
 
 const ROSE  = "#C96B52";
 const INK   = "#1A1412";
 const MUTED = "#8A8078";
 const BORDER= "#E2DDD8";
 const WARM  = "#FAF7F3";
-const SAGE  = "#6B9E7E";
 
 const STORAGE_KEY = "ourtaste_saved_email";
 
@@ -45,7 +45,6 @@ function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
     } catch (e: any) {
       const code = e.code ?? "";
       if (code === "auth/user-not-found") {
-        // 보안상 성공처럼 표시 (이메일 존재 여부 노출 방지)
         setStatus("sent");
       } else if (code === "auth/invalid-email") {
         setEmailErr("올바른 이메일 형식이 아닙니다.");
@@ -60,7 +59,6 @@ function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
     }
   };
 
-  // 발송 성공 화면
   if (status === "sent") {
     return (
       <div style={{ display:"flex", flexDirection:"column", gap:16, textAlign:"center" }}>
@@ -91,7 +89,6 @@ function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-      {/* 헤더 */}
       <div>
         <button onClick={onBack}
           style={{ background:"none", border:"none", cursor:"pointer", fontSize:20, color:MUTED, lineHeight:1, padding:"0 4px 0 0", marginBottom:8 }}>
@@ -114,7 +111,6 @@ function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
         </p>
       </div>
 
-      {/* 이메일 입력 */}
       <div>
         <p style={{ fontSize:12, fontWeight:600, color:MUTED, marginBottom:6 }}>가입한 이메일</p>
         <input
@@ -148,19 +144,28 @@ export default function LoginPage() {
   const pwRef   = useRef<HTMLInputElement>(null);
   const { myUid } = useAuthStore();
 
-  const [mode,     setMode]     = useState<"login"|"forgot">("login");
-  const [email,    setEmail]    = useState("");
-  const [pw,       setPw]       = useState("");
-  const [showPw,   setShowPw]   = useState(false);
-  const [remember, setRemember] = useState(false);
-  const [errors,   setErrors]   = useState({ email:"", pw:"" });
-  const [apiErr,   setApiErr]   = useState("");
-  const [loading,  setLoading]  = useState(false);
+  const [mode,         setMode]         = useState<"login"|"forgot">("login");
+  const [email,        setEmail]        = useState("");
+  const [pw,           setPw]           = useState("");
+  const [showPw,       setShowPw]       = useState(false);
+  const [remember,     setRemember]     = useState(false);
+  const [errors,       setErrors]       = useState({ email:"", pw:"" });
+  const [apiErr,       setApiErr]       = useState("");
+  const [loading,      setLoading]      = useState(false);
+  const [supportEmail, setSupportEmail] = useState("");
 
   // 저장된 이메일 불러오기
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) { setEmail(saved); setRemember(true); }
+  }, []);
+
+  // Firestore config/app 에서 고객센터 이메일 불러오기
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "config", "app"), (snap) => {
+      if (snap.exists()) setSupportEmail(snap.data().supportEmail ?? "");
+    });
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -243,7 +248,6 @@ export default function LoginPage() {
     if (e.key === "Enter") { e.preventDefault(); handleLogin(); }
   };
 
-  // 비밀번호 찾기 모드
   if (mode === "forgot") {
     return <ForgotPasswordForm onBack={()=>setMode("login")} />;
   }
@@ -263,7 +267,6 @@ export default function LoginPage() {
       <div>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
           <p style={{ fontSize:12, fontWeight:600, color:MUTED }}>비밀번호</p>
-          {/* ── 비밀번호 찾기 링크 */}
           <button onClick={()=>{ setApiErr(""); setMode("forgot"); }}
             style={{ background:"none", border:"none", color:ROSE, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit", padding:0 }}>
             비밀번호를 잊으셨나요?
@@ -331,22 +334,30 @@ export default function LoginPage() {
         <button onClick={()=>router.push("/signup")} style={{ background:"none", border:"none", color:ROSE, fontWeight:700, cursor:"pointer", fontSize:13, fontFamily:"inherit" }}>회원가입</button>
       </p>
 
-      {/* ─── 약관 링크 ─── */}
-      <div style={{ marginTop:8, paddingTop:16, borderTop:`1px solid ${BORDER}`, display:"flex", justifyContent:"center", alignItems:"center", gap:4, flexWrap:"wrap" }}>
-        <button onClick={()=>router.push("/settings/privacy")}
-          style={{ background:"none", border:"none", color:MUTED, fontSize:11, cursor:"pointer", fontFamily:"inherit", padding:"2px 4px" }}>
-          개인정보 처리방침
-        </button>
-        <span style={{ color:BORDER, fontSize:11 }}>|</span>
-        <button onClick={()=>router.push("/settings/terms")}
-          style={{ background:"none", border:"none", color:MUTED, fontSize:11, cursor:"pointer", fontFamily:"inherit", padding:"2px 4px" }}>
-          서비스 이용약관
-        </button>
-        <span style={{ color:BORDER, fontSize:11 }}>|</span>
-        <button onClick={()=>router.push("/settings/location-terms")}
-          style={{ background:"none", border:"none", color:MUTED, fontSize:11, cursor:"pointer", fontFamily:"inherit", padding:"2px 4px" }}>
-          위치기반 서비스 약관
-        </button>
+      {/* ─── 하단 약관 + 고객센터 ─── */}
+      <div style={{ marginTop:8, paddingTop:16, borderTop:`1px solid ${BORDER}`, display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+        {/* 약관 링크 */}
+        <div style={{ display:"flex", justifyContent:"center", alignItems:"center", gap:4, flexWrap:"wrap" }}>
+          <button onClick={()=>router.push("/settings/privacy")}
+            style={{ background:"none", border:"none", color:MUTED, fontSize:11, cursor:"pointer", fontFamily:"inherit", padding:"2px 4px" }}>
+            개인정보 처리방침
+          </button>
+          <span style={{ color:BORDER, fontSize:11 }}>|</span>
+          <button onClick={()=>router.push("/settings/terms")}
+            style={{ background:"none", border:"none", color:MUTED, fontSize:11, cursor:"pointer", fontFamily:"inherit", padding:"2px 4px" }}>
+            서비스 이용약관
+          </button>
+        </div>
+        {/* 고객센터 이메일 */}
+        {supportEmail ? (
+          <p style={{ fontSize:11, color:MUTED, textAlign:"center" }}>
+            문제가 있으신가요?{" "}
+            <a href={`mailto:${supportEmail}`}
+              style={{ color:ROSE, fontWeight:600, textDecoration:"none" }}>
+              {supportEmail}
+            </a>
+          </p>
+        ) : null}
       </div>
     </div>
   );

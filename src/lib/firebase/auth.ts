@@ -1,13 +1,4 @@
 // src/lib/firebase/auth.ts
-//
-//  Fix:
-//    ★ signInWithGoogle — signInWithPopup → signInWithRedirect 방식으로 변경
-//      원인: Vercel의 COOP(Cross-Origin-Opener-Policy) 헤더가 same-origin으로
-//            설정되어 팝업↔메인창 통신이 차단 → popup-closed-by-user 오류
-//      해결: 팝업 없이 Google 인증 페이지로 이동 후 돌아오는 리다이렉트 방식 사용
-//            login 페이지에서 getRedirectResult()로 결과 수신
-//  Debug:
-//    ★ signIn / onAuthStateChanged 콘솔 로그 추가 (문제 확인 후 제거)
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -21,7 +12,7 @@ import {
 } from "firebase/auth";
 import {
   doc, setDoc, getDoc, updateDoc,
-  collection, query, where, getDocs,
+  collection, query, where, getDocs, writeBatch,
   serverTimestamp, deleteDoc,
 } from "firebase/firestore";
 import { auth, db } from "./config";
@@ -53,7 +44,6 @@ export async function signIn(
   password: string,
 ): Promise<FirebaseUser> {
   const { user } = await signInWithEmailAndPassword(auth, email, password);
-  // console.log("[signIn] 성공 uid:", user.uid, "| emailVerified:", user.emailVerified);
   return user;
 }
 
@@ -63,15 +53,10 @@ googleProvider.addScope("email");
 googleProvider.addScope("profile");
 googleProvider.setCustomParameters({ prompt: "select_account" });
 
-// ★ Step 1: Google 인증 페이지로 리다이렉트
-//   호출 즉시 페이지가 Google로 이동하므로 반환값 없음
 export async function signInWithGoogle(): Promise<void> {
   await signInWithRedirect(auth, googleProvider);
 }
 
-// ★ Step 2: 리다이렉트 후 돌아왔을 때 결과 수신
-//   login 페이지의 useEffect에서 호출
-//   결과가 없으면(일반 페이지 로드) null 반환
 export async function handleGoogleRedirectResult(): Promise<FirebaseUser | null> {
   try {
     const result = await getRedirectResult(auth);
@@ -116,6 +101,27 @@ export async function fetchUser(uid: string): Promise<AppUser | null> {
   return snap.data() as AppUser;
 }
 
+// ★ 특정 유저의 기존 기록(visited/wishlist)에 coupleId 일괄 업데이트
+//   커플 연동 시 coupleId="" 로 저장된 기록을 실제 coupleId로 갱신
+async function backfillCoupleId(uid: string, coupleId: string): Promise<void> {
+  const batch = writeBatch(db);
+  let   count = 0;
+
+  // visited — coupleId 가 비어있는 본인 기록만 대상
+  const visitedSnap = await getDocs(
+    query(collection(db, "visited"), where("authorUid", "==", uid), where("coupleId", "==", ""))
+  );
+  visitedSnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
+
+  // wishlist — coupleId 가 비어있는 본인 기록만 대상
+  const wishSnap = await getDocs(
+    query(collection(db, "wishlist"), where("addedByUid", "==", uid), where("coupleId", "==", ""))
+  );
+  wishSnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
+
+  if (count > 0) await batch.commit();
+}
+
 /* ── 커플 방 생성 (초대 코드 발급) ── */
 export async function createCouple(
   myUid: string,
@@ -150,6 +156,10 @@ export async function createCouple(
     createdAt:  serverTimestamp(),
   });
   await updateDoc(doc(db, "users", myUid), { coupleId });
+
+  // ★ 코드 생성자의 기존 기록(coupleId="")도 갱신
+  await backfillCoupleId(myUid, coupleId).catch(() => {});
+
   return { coupleId, inviteCode };
 }
 
@@ -188,9 +198,20 @@ export async function joinCouple(
   if (coupleData.user1Uid === myUid)
     throw new Error("본인이 만든 코드는 사용할 수 없습니다.");
 
+  const newCoupleId = coupleDoc.id;
+
   await updateDoc(coupleDoc.ref,           { user2Uid: myUid });
-  await updateDoc(doc(db, "users", myUid), { coupleId: coupleDoc.id });
-  return coupleDoc.id;
+  await updateDoc(doc(db, "users", myUid), { coupleId: newCoupleId });
+
+  // ★ 양쪽 기존 기록(coupleId="") 일괄 업데이트
+  //   - 나(user2): 연동 전 작성한 기록
+  //   - 파트너(user1): 코드 만든 후 연동 대기 중 작성한 기록
+  await Promise.all([
+    backfillCoupleId(myUid,               newCoupleId).catch(() => {}),
+    backfillCoupleId(coupleData.user1Uid, newCoupleId).catch(() => {}),
+  ]);
+
+  return newCoupleId;
 }
 
 /* ── 커플 연동 해제 ── */

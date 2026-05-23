@@ -17,12 +17,12 @@ export async function addVisited(
   const now = new Date().toISOString();
   const ref = await addDoc(collection(db, "visited"), {
     ...data,
-    visits:    data.visits ?? [],   // ★ visits 배열 초기화 보장
+    visits:    data.visits ?? [],
     createdAt: now,
     updatedAt: now,
   });
   if (data.shareToComm) {
-    await addDoc(collection(db, "community"), buildCommunityPost(ref.id, data));
+    await addDoc(collection(db, "community"), buildCommunityPost(ref.id, data, now));
   }
   return ref.id;
 }
@@ -54,10 +54,12 @@ export async function updateVisited(
 
   if (data.shareToComm === true) {
     if (commSnap.empty) {
+      // community 문서 없음 → 새로 생성
       const snap   = await getDoc(visitedRef);
       const merged = { ...(snap.data() as VisitedRecord), ...data };
-      batch.set(doc(collection(db, "community")), buildCommunityPost(id, merged));
+      batch.set(doc(collection(db, "community")), buildCommunityPost(id, merged, now));
     } else {
+      // community 문서 있음 → 필드 업데이트 + ★ isEdited: true
       commSnap.docs.forEach((d) =>
         batch.update(d.ref, {
           restaurantName: data.name,
@@ -72,16 +74,22 @@ export async function updateVisited(
           emoji:          data.emoji,
           showAuthorName: data.hideAuthor === undefined ? undefined : !data.hideAuthor,
           updatedAt:      now,
+          isEdited:       true,           // ★ 수정됨 뱃지용
           ...(data.lat != null && { lat: data.lat }),
           ...(data.lng != null && { lng: data.lng }),
         })
       );
     }
   } else if (data.shareToComm === false) {
+    // 공유 해제 → community 문서 삭제
     commSnap.docs.forEach((d) => batch.delete(d.ref));
   } else if (!commSnap.empty) {
+    // shareToComm 변경 없이 내용만 수정 → community 문서도 동기화 + ★ isEdited: true
     commSnap.docs.forEach((d) => {
-      const updateFields: Record<string, unknown> = { updatedAt: now };
+      const updateFields: Record<string, unknown> = {
+        updatedAt: now,
+        isEdited:  true,                  // ★ 수정됨 뱃지용
+      };
       if (data.name       !== undefined) { updateFields.restaurantName = data.name; updateFields.name = data.name; }
       if (data.cuisine    !== undefined) updateFields.cuisine    = data.cuisine;
       if (data.sido       !== undefined) updateFields.sido       = data.sido;
@@ -109,6 +117,7 @@ export async function deleteVisited(id: string): Promise<void> {
   await batch.commit();
 }
 
+// coupleId 기준 구독 (커플 연동 상태)
 export function subscribeVisited(
   coupleId: string,
   callback: (records: VisitedRecord[]) => void
@@ -116,6 +125,21 @@ export function subscribeVisited(
   const q = query(
     collection(db, "visited"),
     where("coupleId", "==", coupleId),
+    orderBy("createdAt", "desc")
+  );
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as VisitedRecord)));
+  });
+}
+
+// ★ authorUid 기준 구독 (커플 미연동 or 연동 해제 후 본인 기록만)
+export function subscribeVisitedByAuthor(
+  authorUid: string,
+  callback: (records: VisitedRecord[]) => void
+): Unsubscribe {
+  const q = query(
+    collection(db, "visited"),
+    where("authorUid", "==", authorUid),
     orderBy("createdAt", "desc")
   );
   return onSnapshot(q, (snap) => {
@@ -160,8 +184,13 @@ export function subscribeWishlist(
 //  COMMUNITY
 // ══════════════════════════════════════════════════════════
 
-function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): Record<string, unknown> {
-  const now = new Date().toISOString();
+// ★ now 파라미터 추가 — addVisited 와 동일한 타임스탬프 사용
+function buildCommunityPost(
+  visitedId: string,
+  data: Partial<VisitedRecord>,
+  now?: string
+): Record<string, unknown> {
+  const ts = now ?? new Date().toISOString();
   const post: Record<string, unknown> = {
     coupleId:       data.coupleId    ?? "",
     visitedId,
@@ -178,11 +207,12 @@ function buildCommunityPost(visitedId: string, data: Partial<VisitedRecord>): Re
     authorUid:      data.authorUid   ?? "",
     authorName:     data.authorName  ?? "",
     showAuthorName: !(data.hideAuthor ?? false),
+    isEdited:       false,           // ★ 최초 게시 시 false
     likeCount:      0,
     likedBy:        [],
     reportedBy:     [],
-    createdAt:      now,
-    updatedAt:      now,
+    createdAt:      ts,
+    updatedAt:      ts,
   };
   if (data.lat != null) post.lat = data.lat;
   if (data.lng != null) post.lng = data.lng;

@@ -1,13 +1,4 @@
-// ============================================================
-//  signup/page.tsx  적용 경로: src/app/(auth)/signup/page.tsx
-//
-//  이메일 인증 필수 추가:
-//    1. signUp() 후 인증 메일 자동 발송
-//    2. 인증 대기 화면으로 전환
-//    3. "인증 완료했어요" → emailVerified 확인 후 /couple 이동
-//    4. 재발송 버튼 (60초 쿨다운)
-//    5. "다시 가입" → 미인증 계정 삭제 후 폼으로 복귀
-// ============================================================
+// src/app/(auth)/signup/page.tsx
 "use client";
 
 import { useState }                                     from "react";
@@ -58,14 +49,12 @@ function VerifyEmailScreen({
   const [cooldown,   setCooldown]   = useState(0);
   const [checkErr,   setCheckErr]   = useState("");
 
-  // 재발송
   const handleResend = async () => {
     if (cooldown > 0 || resending) return;
     setResending(true);
     try {
       const user = auth.currentUser;
       if (user) await sendEmailVerification(user);
-      // 60초 쿨다운
       setCooldown(60);
       const timer = setInterval(() => {
         setCooldown((c) => {
@@ -78,7 +67,6 @@ function VerifyEmailScreen({
     }
   };
 
-  // 인증 확인
   const handleConfirm = async () => {
     setChecking(true);
     setCheckErr("");
@@ -96,7 +84,6 @@ function VerifyEmailScreen({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "10px 0" }}>
-      {/* 아이콘 */}
       <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#FFF0EC", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 }}>
         📧
       </div>
@@ -116,7 +103,6 @@ function VerifyEmailScreen({
         </div>
       )}
 
-      {/* 인증 완료 확인 버튼 */}
       <button
         onClick={handleConfirm}
         disabled={checking}
@@ -125,7 +111,6 @@ function VerifyEmailScreen({
         {checking ? "확인 중…" : "✅ 인증 완료했어요"}
       </button>
 
-      {/* 재발송 */}
       <button
         onClick={handleResend}
         disabled={cooldown > 0 || resending}
@@ -134,7 +119,6 @@ function VerifyEmailScreen({
         {resending ? "발송 중…" : cooldown > 0 ? `재발송 (${cooldown}초 후 가능)` : "📨 인증 메일 재발송"}
       </button>
 
-      {/* 다시 가입 */}
       <button
         onClick={onBack}
         style={{ background: "none", border: "none", color: MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textDecoration: "underline" }}
@@ -149,9 +133,7 @@ function VerifyEmailScreen({
 export default function SignupPage() {
   const router = useRouter();
 
-  // step: "form" | "verify"
   const [step,    setStep]    = useState<"form" | "verify">("form");
-
   const [name,    setName]    = useState("");
   const [email,   setEmail]   = useState("");
   const [pw,      setPw]      = useState("");
@@ -181,16 +163,13 @@ export default function SignupPage() {
     return !e.name && !e.email && !e.pw && !e.pwc;
   };
 
-  /* ── 회원가입 → 인증 메일 발송 ── */
   const handleSignup = async () => {
     if (!validate()) return;
     setApiErr(""); setLoading(true);
     try {
       await signUp(email, pw, name.trim());
-      // 인증 메일 발송
       const user = auth.currentUser;
       if (user) await sendEmailVerification(user);
-      // 인증 대기 화면으로 전환
       setStep("verify");
     } catch (e: any) {
       const msg = e.code ?? e.message ?? "";
@@ -200,12 +179,10 @@ export default function SignupPage() {
     } finally { setLoading(false); }
   };
 
-  /* ── 인증 완료 확인 → /couple 이동 ── */
   const handleVerified = async () => {
     router.push("/couple");
   };
 
-  /* ── 미인증 계정 삭제 → 폼으로 복귀 ── */
   const handleBack = async () => {
     try {
       const user = auth.currentUser;
@@ -218,7 +195,6 @@ export default function SignupPage() {
     setApiErr("");
   };
 
-  /* ── 인증 대기 화면 ── */
   if (step === "verify") {
     return (
       <VerifyEmailScreen
@@ -229,7 +205,6 @@ export default function SignupPage() {
     );
   }
 
-  /* ── 가입 폼 ── */
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* 닉네임 */}
@@ -292,6 +267,21 @@ export default function SignupPage() {
         style={{ width: "100%", padding: 14, background: loading ? "#C0B8B0" : ROSE, border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "inherit" }}>
         {loading ? "가입 중…" : "시작하기 🍽️"}
       </button>
+
+      {/* ─── 약관 동의 안내 ─── */}
+      <p style={{ textAlign: "center", fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
+        "시작하기"를 누르면{" "}
+        <button onClick={() => router.push("/settings/terms")}
+          style={{ background: "none", border: "none", color: ROSE, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: 0, textDecoration: "underline" }}>
+          서비스 이용약관
+        </button>
+        {" "}및{" "}
+        <button onClick={() => router.push("/settings/privacy")}
+          style={{ background: "none", border: "none", color: ROSE, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: 0, textDecoration: "underline" }}>
+          개인정보 처리방침
+        </button>
+        에 동의하는 것으로 간주됩니다.
+      </p>
 
       <p style={{ textAlign: "center", fontSize: 13, color: MUTED }}>
         이미 계정이 있으신가요?{" "}
