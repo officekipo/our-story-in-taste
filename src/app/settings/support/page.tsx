@@ -45,7 +45,7 @@ export default function SupportPage() {
   const [notice,       setNotice]       = useState("");
 
   const [openFaq,   setOpenFaq]   = useState<string | null>(null);
-  const [activeCat, setActiveCat] = useState("전체");
+  const [activeCat, setActiveCat] = useState(FAQ_CATEGORIES[0]); // 기본값: 첫 번째 카테고리
   const [category,  setCategory]  = useState("");
   const [name,      setName]      = useState("");
   const [email,     setEmail]     = useState("");
@@ -75,16 +75,12 @@ export default function SupportPage() {
     });
   }, []);
 
-  /* ── 이름 · 이메일 자동 입력 ── */
-  useEffect(() => {
-    if (myName) setName(myName);
-  }, [myName]);
+  useEffect(() => { if (myName) setName(myName); }, [myName]);
 
   useEffect(() => {
-    /* authStore에 myEmail이 있으면 우선 사용, 없으면 Firebase currentUser에서 가져옴 */
     const currentEmail = auth.currentUser?.email ?? "";
     if (currentEmail) setEmail(currentEmail);
-  }, [myUid]); // myUid가 세팅되는 시점 = 로그인 완료 시점
+  }, [myUid]);
 
   const handleSend = async () => {
     if (!name.trim())    { showToast("이름을 입력해주세요"); return; }
@@ -108,8 +104,8 @@ export default function SupportPage() {
 
   const canSend = !!name.trim() && !!email.trim() && !!category && !!content.trim() && !sending;
 
-  /* 카테고리 필터 적용 */
-  const filteredFaqs = activeCat === "전체" ? faqs : faqs.filter((f) => f.category === activeCat);
+  /* 선택된 카테고리의 FAQ만 표시 */
+  const filteredFaqs = faqs.filter((f) => f.category === activeCat);
 
   return (
     <div style={{ minHeight: "100vh", background: "#F5F0EB", maxWidth: 480, margin: "0 auto", fontFamily: "inherit", paddingBottom: 48 }}>
@@ -172,12 +168,12 @@ export default function SupportPage() {
       <div style={{ margin: "20px 16px 0" }}>
         <p style={{ fontSize: 13, fontWeight: 700, color: MUTED, letterSpacing: 1, textTransform: "uppercase", marginBottom: 12 }}>자주 묻는 질문</p>
 
-        {/* 카테고리 필터 탭 */}
+        {/* 카테고리 탭 (전체 없음, 기본: 커플 연동) */}
         <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 12, paddingBottom: 2 }}>
-          {["전체", ...FAQ_CATEGORIES].map((cat) => {
+          {FAQ_CATEGORIES.map((cat) => {
             const active = activeCat === cat;
-            const count  = cat === "전체" ? faqs.length : faqs.filter((f) => f.category === cat).length;
-            if (cat !== "전체" && count === 0) return null;
+            const count  = faqs.filter((f) => f.category === cat).length;
+            if (count === 0) return null; // 항목 없는 카테고리 숨김
             return (
               <button key={cat} onClick={() => { setActiveCat(cat); setOpenFaq(null); }}
                 style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 20, border: `1.5px solid ${active ? ROSE : BORDER}`, background: active ? ROSE_LT : "#fff", color: active ? ROSE : MUTED, fontSize: 12, fontWeight: active ? 700 : 400, cursor: "pointer", fontFamily: "inherit" }}>
@@ -240,14 +236,8 @@ export default function SupportPage() {
               style={{ width: "100%", padding: "12px 14px", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 10, color: INK, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 14 }} />
 
             <p style={{ fontSize: 13, fontWeight: 600, color: INK, marginBottom: 8 }}>답변받을 이메일 *</p>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="example@email.com"
-              style={{ width: "100%", padding: "12px 14px", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 10, color: INK, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 4 }}
-            />
-            {/* 소셜 로그인(구글 등) 사용자는 이메일이 자동 입력되지 않을 수 있음을 안내 */}
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@email.com"
+              style={{ width: "100%", padding: "12px 14px", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 10, color: INK, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 4 }} />
             {!auth.currentUser?.email && (
               <p style={{ fontSize: 11, color: MUTED, marginBottom: 14 }}>답변받으실 이메일을 직접 입력해주세요.</p>
             )}

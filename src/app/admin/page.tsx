@@ -342,7 +342,7 @@ export default function AdminPage() {
   const [faqQ,         setFaqQ]         = useState("");
   const [faqA,         setFaqA]         = useState("");
   const [faqCat,       setFaqCat]       = useState(FAQ_CATEGORIES[0]);
-  const [faqFilterCat, setFaqFilterCat] = useState("전체");
+  const [faqFilterCat, setFaqFilterCat] = useState(FAQ_CATEGORIES[0]);
 
   const [cfgEdit,  setCfgEdit]  = useState(false);
   const [cfgDraft, setCfgDraft] = useState<ConfigItem>(config);
@@ -523,7 +523,7 @@ export default function AdminPage() {
   const inp: CSSProperties = { width: "100%", padding: "10px 12px", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 10, fontSize: 13, fontFamily: "inherit", outline: "none", color: INK, boxSizing: "border-box" };
 
   const filteredUsers = users.filter((u) => u.name.toLowerCase().includes(userSearch.toLowerCase()));
-  const filteredFaqs  = faqFilterCat === "전체" ? faqs : faqs.filter((f) => f.category === faqFilterCat);
+  const filteredFaqs  = faqs.filter((f) => f.category === faqFilterCat);
 
   return (
     <div style={{ minHeight: "100vh", background: "#F5F0EB", maxWidth: 480, margin: "0 auto", fontFamily: "inherit", paddingBottom: 40 }}>
@@ -624,8 +624,8 @@ export default function AdminPage() {
 
             {/* 카테고리 필터 탭 */}
             <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 10, paddingBottom: 2 }}>
-              {["전체", ...FAQ_CATEGORIES].map((cat) => {
-                const count  = cat === "전체" ? faqs.length : faqs.filter((f) => f.category === cat).length;
+              {FAQ_CATEGORIES.map((cat) => {
+                const count  = faqs.filter((f) => f.category === cat).length;
                 const active = faqFilterCat === cat;
                 return (
                   <button key={cat} onClick={() => setFaqFilterCat(cat)}
