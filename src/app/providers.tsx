@@ -1,10 +1,4 @@
 // src/app/providers.tsx
-//
-//  수정사항:
-//    ★ GlobalLoader → SplashScreen 교체 (감성적 랜딩)
-//    ★ setupAuthListener 반환값 변경 대응 (동기 방식)
-//    ★ 이미 로그인된 상태에서 /login 등 PUBLIC_PATHS 접근 시 "/" 로 리다이렉트
-//    ★ 약관/개인정보 페이지 로그인 없이 접근 가능하도록 PUBLIC_PATHS 추가
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -22,15 +16,11 @@ const PUBLIC_PATHS = [
   "/login",
   "/signup",
   "/couple",
-  // 약관 · 개인정보 — 로그인 없이 접근 가능 (Google Play 심사 요건)
   "/settings/privacy",
   "/settings/terms",
   "/settings/location-terms",
 ];
 
-// ─────────────────────────────────────────────
-//  감성적 스플래시 스크린
-// ─────────────────────────────────────────────
 function SplashScreen() {
   const [phase, setPhase] = useState<"in" | "hold" | "out">("in");
 
@@ -75,7 +65,6 @@ function SplashScreen() {
         }
       `}</style>
 
-      {/* 배경 원형 오브 */}
       <div style={{
         position: "absolute", top: "18%", left: "50%", transform: "translateX(-50%)",
         width: 260, height: 260, borderRadius: "50%",
@@ -89,28 +78,21 @@ function SplashScreen() {
         animation: "splashPulse 3.4s ease-in-out infinite 0.6s",
       }} />
 
-      {/* 메인 콘텐츠 */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
-
-        {/* 로고 심볼 */}
         <div style={{
           animation: "splashScale 0.7s cubic-bezier(0.34,1.56,0.64,1) 0.1s both",
           marginBottom: 20,
         }}>
-          {/* 포크+하트 심볼 SVG */}
           <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="36" cy="36" r="36" fill="#C96B52" fillOpacity="0.12" />
             <circle cx="36" cy="36" r="26" fill="#C96B52" fillOpacity="0.18" />
-            {/* 하트 */}
             <path d="M36 48 C36 48 22 38.5 22 29.5 C22 24.8 25.8 21 30.5 21 C33 21 35.2 22.2 36 24 C36.8 22.2 39 21 41.5 21 C46.2 21 50 24.8 50 29.5 C50 38.5 36 48 36 48Z" fill="#C96B52" />
-            {/* 포크 (왼쪽 작은) */}
             <rect x="26" y="23" width="1.5" height="8" rx="0.75" fill="#FAF7F3" opacity="0.7" />
             <rect x="28.5" y="23" width="1.5" height="8" rx="0.75" fill="#FAF7F3" opacity="0.7" />
             <rect x="26.5" y="30" width="3" height="5" rx="1.5" fill="#FAF7F3" opacity="0.7" />
           </svg>
         </div>
 
-        {/* 앱 이름 */}
         <div style={{
           animation: "splashFadeUp 0.6s ease 0.45s both",
           textAlign: "center",
@@ -130,7 +112,6 @@ function SplashScreen() {
           }}>우리의 맛지도</h1>
         </div>
 
-        {/* 슬로건 */}
         <p style={{
           animation: "splashFadeUp 0.6s ease 0.7s both",
           fontSize: 12, color: "#8A8078", letterSpacing: "0.04em",
@@ -138,7 +119,6 @@ function SplashScreen() {
           marginTop: 4,
         }}>함께한 모든 순간을 기억해요</p>
 
-        {/* 로딩 점 3개 */}
         <div style={{
           display: "flex", gap: 6, marginTop: 36,
           animation: "splashFadeUp 0.5s ease 0.9s both",
@@ -153,7 +133,6 @@ function SplashScreen() {
         </div>
       </div>
 
-      {/* 하단 장식 */}
       <div style={{
         position: "absolute", bottom: 48,
         animation: "splashFadeUp 0.6s ease 1.1s both",
@@ -189,12 +168,10 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 약관 페이지는 로그인 상태여도 리다이렉트하지 않음
     const isLegalPage = ["/settings/privacy", "/settings/terms", "/settings/location-terms"]
       .some((p) => pathname.startsWith(p));
 
     if (isPublic && !isLegalPage && myUid && emailVerified) {
-      // ★ 이미 로그인+인증된 상태에서 /login, /signup 등 접근 → 홈으로
       router.replace("/");
     }
   }, [mounted, initialized, myUid, emailVerified, pathname, router]);
@@ -206,12 +183,8 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const isLegalPage = ["/settings/privacy", "/settings/terms", "/settings/location-terms"]
     .some((p) => pathname.startsWith(p));
 
-  // 약관 페이지는 로그인 여부 무관하게 바로 렌더
   if (isLegalPage) return <>{children}</>;
-
-  // ★ 로그인된 상태에서 PUBLIC 페이지 접근 시 로더 표시 (리다이렉트 대기)
   if (isPublic && myUid && emailVerified) return <SplashScreen />;
-
   if (isPublic) return <>{children}</>;
   if (!myUid)   return <SplashScreen />;
 
@@ -290,6 +263,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = setupAuthListener();
+
+    // ★ Google 리다이렉트 결과 처리 — 앱 진입 시 호출해야 ensureUserDoc()이 실행됨
+    import("@/lib/firebase/auth").then(({ handleGoogleRedirectResult }) => {
+      handleGoogleRedirectResult().catch((e: unknown) => {
+        console.error("[Google Redirect 처리 실패]", e);
+      });
+    });
+
     return () => unsubscribe();
   }, []);
 

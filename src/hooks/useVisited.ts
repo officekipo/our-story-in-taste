@@ -7,6 +7,8 @@
 //    3. ★ addVisit(): 기존 문서에 visits 배열 원소 추가 (재방문)
 //    4. ★ coupleId 없을 때 authorUid 기준 fallback 구독
 //       (커플 미연동 or 연동 해제 후 본인 기록 표시)
+//    5. ★ initialized 체크 추가 — Auth 확정 전 구독 시작 방지
+//       (permission-denied 오류 원인 제거)
 // ============================================================
 "use client";
 
@@ -24,11 +26,22 @@ import { useAuthStore } from "@/store/authStore";
 import type { VisitedRecord, VisitedFormData, VisitEntry } from "@/types";
 
 export function useVisited() {
-  const { coupleId, myUid, myName } = useAuthStore();
-  const [records, setRecords]       = useState<VisitedRecord[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const { coupleId, myUid, myName, initialized } = useAuthStore();
+  const [records, setRecords] = useState<VisitedRecord[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // ★ Auth 초기화 완료 전에는 구독 시작하지 않음
+    //   (초기화 전 myUid/coupleId는 초기값이라 신뢰할 수 없음)
+    if (!initialized) return;
+
+    // 로그인 안 된 상태
+    if (!myUid) {
+      setRecords([]);
+      setLoading(false);
+      return;
+    }
+
     // ★ coupleId 있으면 커플 전체 기록, 없으면 본인 기록만
     if (coupleId) {
       const unsub = subscribeVisited(coupleId, (data) => {
@@ -38,17 +51,13 @@ export function useVisited() {
       return () => unsub();
     }
 
-    if (myUid) {
-      // 커플 미연동 or 연동 해제 후 → 본인이 작성한 기록만 표시
-      const unsub = subscribeVisitedByAuthor(myUid, (data) => {
-        setRecords(data);
-        setLoading(false);
-      });
-      return () => unsub();
-    }
-
-    setLoading(false);
-  }, [coupleId, myUid]);
+    // 커플 미연동 or 연동 해제 후 → 본인이 작성한 기록만 표시
+    const unsub = subscribeVisitedByAuthor(myUid, (data) => {
+      setRecords(data);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [initialized, coupleId, myUid]);
 
   // ── 추가 ─────────────────────────────────────────────────
   const add = async (data: VisitedFormData, imgUrls: string[]) => {
@@ -57,7 +66,7 @@ export function useVisited() {
     }
 
     const record: Omit<VisitedRecord, "id" | "createdAt" | "updatedAt"> = {
-      coupleId:    coupleId ?? "",   // ★ 커플 미연동 시 빈 문자열로 저장
+      coupleId:    coupleId ?? "",
       authorUid:   myUid,
       authorName:  myName,
       name:        data.name,

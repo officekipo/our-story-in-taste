@@ -5,6 +5,9 @@
 //      - setupAuthListener에서 coupleId 확인 후 couples 문서 onSnapshot 구독
 //      - 파트너 정보 변경(연동/해제) 시 authStore 자동 업데이트
 //      - coupleId null 변경 시 파트너 정보 즉시 초기화
+//    ★ Google 첫 로그인 타이밍 이슈 수정
+//      - onAuthStateChanged가 ensureUserDoc() 보다 먼저 실행될 수 있음
+//      - userSnap 없을 때 1.5초 대기 후 재시도
 import { create }                          from "zustand";
 import { onAuthStateChanged }              from "firebase/auth";
 import { doc, getDoc, onSnapshot }         from "firebase/firestore";
@@ -60,10 +63,8 @@ export const useAuthStore = create<AuthState>((set) => ({
 }));
 
 // ── 커플 문서 실시간 리스너 ────────────────────────────────
-// 반환값: unsubscribe 함수
 function subscribeCoupleDoc(coupleId: string, myUid: string): () => void {
   return onSnapshot(doc(db, "couples", coupleId), async (snap) => {
-    // 커플 문서가 삭제됨 → 해제 처리
     if (!snap.exists()) {
       useAuthStore.getState().setAuth({
         coupleId:             null,
@@ -77,13 +78,11 @@ function subscribeCoupleDoc(coupleId: string, myUid: string): () => void {
     const coupleData = snap.data();
     const startDate  = coupleData.startDate ?? "";
 
-    // user2Uid가 없으면 파트너 미연동 상태
     const partnerUid = coupleData.user1Uid === myUid
       ? coupleData.user2Uid
       : coupleData.user1Uid;
 
     if (!partnerUid) {
-      // 파트너 미연동 — 파트너 정보 초기화
       useAuthStore.getState().setAuth({
         partnerName:          "",
         partnerProfileImgUrl: null,
@@ -92,7 +91,6 @@ function subscribeCoupleDoc(coupleId: string, myUid: string): () => void {
       return;
     }
 
-    // 파트너 정보 조회
     try {
       const partnerSnap = await getDoc(doc(db, "users", partnerUid));
       if (partnerSnap.exists()) {
@@ -111,10 +109,9 @@ function subscribeCoupleDoc(coupleId: string, myUid: string): () => void {
 
 // ── Firebase Auth 상태 감지 ────────────────────────────────
 export function setupAuthListener(): () => void {
-  let unsubCouple: (() => void) | null = null; // 커플 문서 리스너
+  let unsubCouple: (() => void) | null = null;
 
   const unsubAuth = onAuthStateChanged(auth, async (user) => {
-    // 이전 커플 리스너 해제
     unsubCouple?.();
     unsubCouple = null;
 
@@ -124,8 +121,24 @@ export function setupAuthListener(): () => void {
     }
 
     try {
-      const userSnap = await getDoc(doc(db, "users", user.uid));
-      const userData = userSnap.exists() ? userSnap.data() : {};
+      let userSnap = await getDoc(doc(db, "users", user.uid));
+
+      // ★ Google 첫 로그인 타이밍 이슈:
+      //   handleGoogleRedirectResult()의 ensureUserDoc()보다
+      //   onAuthStateChanged가 먼저 실행될 수 있음 → 1.5초 대기 후 재시도
+      if (!userSnap.exists()) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 1500));
+        userSnap = await getDoc(doc(db, "users", user.uid));
+      }
+
+      // 재시도 후에도 없으면 (ensureUserDoc 실패 등) initialized만 true로 세팅 후 종료
+      if (!userSnap.exists()) {
+        console.warn("setupAuthListener: users 문서 없음 (uid:", user.uid, ")");
+        useAuthStore.getState().setAuth({ initialized: true });
+        return;
+      }
+
+      const userData = userSnap.data();
 
       let partnerName          = "";
       let partnerProfileImgUrl: string | null = null;
@@ -151,7 +164,6 @@ export function setupAuthListener(): () => void {
           }
         }
 
-        // ★ 커플 문서 실시간 구독 시작
         unsubCouple = subscribeCoupleDoc(userData.coupleId, user.uid);
       }
 
@@ -173,7 +185,6 @@ export function setupAuthListener(): () => void {
     }
   });
 
-  // auth + couple 리스너 모두 해제
   return () => {
     unsubAuth();
     unsubCouple?.();
