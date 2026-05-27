@@ -26,12 +26,13 @@ export async function signUp(
   const { user } = await createUserWithEmailAndPassword(auth, email, password);
   await updateProfile(user, { displayName: name });
   await setDoc(doc(db, "users", user.uid), {
-    uid:      user.uid,
+    uid:       user.uid,
     name,
     email,
-    coupleId: null,
-    role:     "user",
-    provider: "email",
+    coupleId:  null,
+    role:      "user",
+    provider:  "email",
+    startDate: "",   // ← 가입 시 미설정. providers.tsx 팝업에서 입력받음
     createdAt: serverTimestamp(),
   });
   return user;
@@ -73,11 +74,12 @@ async function ensureUserDoc(
   if (snap.exists()) return;
   await setDoc(ref, {
     uid:       user.uid,
-    name:      user.displayName ?? "이름없음",
+    name:      user.displayName ?? "",  // ← 구글 이름 저장. 팝업에서 수정 가능
     email:     user.email ?? "",
     coupleId:  null,
     role:      "user",
     provider,
+    startDate: "",                      // ← 가입 시 미설정. providers.tsx 팝업에서 입력받음
     createdAt: serverTimestamp(),
   });
 }

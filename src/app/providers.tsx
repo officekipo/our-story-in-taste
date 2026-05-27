@@ -2,7 +2,7 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState, useEffect }              from "react";
+import { useState, useEffect, useRef }      from "react";
 import { useRouter, usePathname }           from "next/navigation";
 import { setupAuthListener }               from "@/store/authStore";
 import { useAuthStore }                    from "@/store/authStore";
@@ -20,6 +20,248 @@ const PUBLIC_PATHS = [
   "/settings/terms",
   "/settings/location-terms",
 ];
+
+// startDate가 "미설정" 상태로 간주되는 값들
+// ※ 실제 교제 시작일이 null / "" 인 경우만 팝업 표시
+//   사용자가 직접 입력한 날짜(어떤 날짜든)는 유효한 값으로 취급
+const isStartDateUnset = (d: string | null | undefined) =>
+  !d || d.trim() === "";
+
+// ── 프로필 초기 설정 팝업 ──────────────────────────────────
+function ProfileSetupPopup({ onComplete }: { onComplete: () => void }) {
+  const { myUid, myName, setAuth } = useAuthStore();
+
+  const [name, setName]     = useState(myName || "");
+  const [date, setDate]     = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState("");
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // 약간의 딜레이 후 포커스 — 슬라이드업 애니메이션과 겹치지 않도록
+    const t = setTimeout(() => nameRef.current?.focus(), 350);
+    return () => clearTimeout(t);
+  }, []);
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      setError("닉네임을 입력해주세요.");
+      nameRef.current?.focus();
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const { doc, updateDoc, getFirestore } = await import("firebase/firestore");
+      const { getApp } = await import("firebase/app");
+      const db = getFirestore(getApp());
+      // 교제 시작일 미입력 시 오늘 날짜로 저장
+      const finalDate = date.trim() || today;
+      await updateDoc(doc(db, "users", myUid), {
+        name:      name.trim(),
+        startDate: finalDate,
+      });
+      setAuth({ myName: name.trim(), startDate: finalDate });
+      onComplete();
+    } catch (e) {
+      console.error(e);
+      setError("저장 중 오류가 발생했어요. 다시 시도해주세요.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 8888,
+        background: "rgba(26,20,18,0.52)",
+        display: "flex", alignItems: "flex-end", justifyContent: "center",
+        backdropFilter: "blur(4px)",
+        WebkitBackdropFilter: "blur(4px)",
+      }}
+    >
+      <style>{`
+        @keyframes profileSlideUp {
+          from { transform: translateY(100%); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+        @keyframes profileFadeIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+
+      <div
+        style={{
+          width: "100%", maxWidth: 480,
+          background: "#FAF7F3",
+          borderRadius: "24px 24px 0 0",
+          padding: "0 0 env(safe-area-inset-bottom, 0px)",
+          animation: "profileSlideUp 0.32s cubic-bezier(0.32,1,0.4,1) both",
+          overflow: "hidden",
+        }}
+      >
+        {/* 상단 핸들 */}
+        <div style={{ padding: "12px 0 0", display: "flex", justifyContent: "center" }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "#E2DDD8" }} />
+        </div>
+
+        <div style={{ padding: "20px 24px 36px" }}>
+          {/* 아이콘 + 타이틀 */}
+          <div
+            style={{
+              textAlign: "center", marginBottom: 28,
+              animation: "profileFadeIn 0.4s ease 0.15s both",
+            }}
+          >
+            <div style={{
+              width: 60, height: 60, borderRadius: "50%",
+              background: "linear-gradient(135deg, #F2D5CC 0%, #C96B52 100%)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              margin: "0 auto 14px",
+              fontSize: 28,
+              boxShadow: "0 4px 16px rgba(201,107,82,0.25)",
+            }}>🍴</div>
+            <p style={{
+              fontSize: 18, fontWeight: 800, color: "#1A1412",
+              margin: "0 0 8px",
+              fontFamily: "Pretendard, -apple-system, sans-serif",
+              letterSpacing: "-0.02em",
+            }}>프로필을 완성해요</p>
+            <p style={{
+              fontSize: 13, color: "#8A8078",
+              margin: 0, lineHeight: 1.65,
+              fontFamily: "Pretendard, -apple-system, sans-serif",
+            }}>
+              닉네임과 교제 시작일을 설정하면<br />더 즐거운 맛지도가 시작돼요 🗺️
+            </p>
+          </div>
+
+          {/* 닉네임 */}
+          <div
+            style={{
+              marginBottom: 14,
+              animation: "profileFadeIn 0.4s ease 0.25s both",
+            }}
+          >
+            <label style={{
+              display: "block",
+              fontSize: 12, fontWeight: 700, color: "#8A8078",
+              marginBottom: 7, letterSpacing: "0.05em",
+              fontFamily: "Pretendard, -apple-system, sans-serif",
+            }}>
+              닉네임 <span style={{ color: "#C96B52" }}>*</span>
+            </label>
+            <input
+              ref={nameRef}
+              type="text"
+              value={name}
+              onChange={e => { setName(e.target.value); setError(""); }}
+              onKeyDown={e => { if (e.key === "Enter") handleSave(); }}
+              maxLength={20}
+              placeholder="나의 닉네임"
+              style={{
+                width: "100%", padding: "13px 16px",
+                border: "1.5px solid #E2DDD8",
+                borderRadius: 12, background: "#fff",
+                fontSize: 15, color: "#1A1412",
+                fontFamily: "Pretendard, -apple-system, sans-serif",
+                boxSizing: "border-box",
+                outline: "none",
+              }}
+              onFocus={e => { e.currentTarget.style.borderColor = "#C96B52"; }}
+              onBlur={e => { e.currentTarget.style.borderColor = "#E2DDD8"; }}
+            />
+            {myName && (
+              <p style={{
+                fontSize: 11, color: "#C0B8B0", marginTop: 5,
+                fontFamily: "Pretendard, -apple-system, sans-serif",
+              }}>
+                구글 계정 이름이 자동 입력됐어요. 원하시면 수정하세요.
+              </p>
+            )}
+          </div>
+
+          {/* 교제 시작일 */}
+          <div
+            style={{
+              marginBottom: 24,
+              animation: "profileFadeIn 0.4s ease 0.32s both",
+            }}
+          >
+            <label style={{
+              display: "block",
+              fontSize: 12, fontWeight: 700, color: "#8A8078",
+              marginBottom: 7, letterSpacing: "0.05em",
+              fontFamily: "Pretendard, -apple-system, sans-serif",
+            }}>
+              교제 시작일
+              <span style={{
+                fontWeight: 400, color: "#C0B8B0", marginLeft: 6, fontSize: 11,
+              }}>미입력 시 오늘 날짜 · 이후 설정에서 변경 가능</span>
+            </label>
+            <input
+              type="date"
+              value={date}
+              max={today}
+              onChange={e => setDate(e.target.value)}
+              style={{
+                width: "100%", padding: "13px 16px",
+                border: "1.5px solid #E2DDD8",
+                borderRadius: 12, background: "#fff",
+                fontSize: 15, color: date ? "#1A1412" : "#C0B8B0",
+                fontFamily: "Pretendard, -apple-system, sans-serif",
+                boxSizing: "border-box",
+                outline: "none",
+                WebkitAppearance: "none",
+                appearance: "none",
+              }}
+              onFocus={e => { e.currentTarget.style.borderColor = "#C96B52"; }}
+              onBlur={e => { e.currentTarget.style.borderColor = "#E2DDD8"; }}
+            />
+          </div>
+
+          {/* 에러 메시지 */}
+          {error && (
+            <p style={{
+              fontSize: 12, color: "#C96B52",
+              marginBottom: 12, textAlign: "center",
+              fontFamily: "Pretendard, -apple-system, sans-serif",
+              animation: "profileFadeIn 0.2s ease both",
+            }}>
+              {error}
+            </p>
+          )}
+
+          {/* 저장 버튼 */}
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              width: "100%", padding: "15px 0",
+              background: saving
+                ? "#E2DDD8"
+                : "linear-gradient(135deg, #C96B52 0%, #B85D45 100%)",
+              border: "none", borderRadius: 14,
+              color: saving ? "#8A8078" : "#fff",
+              fontSize: 16, fontWeight: 700,
+              cursor: saving ? "not-allowed" : "pointer",
+              fontFamily: "Pretendard, -apple-system, sans-serif",
+              letterSpacing: "-0.01em",
+              boxShadow: saving ? "none" : "0 4px 16px rgba(201,107,82,0.3)",
+              animation: "profileFadeIn 0.4s ease 0.38s both",
+            }}
+          >
+            {saving ? "저장 중..." : "완료 🎉"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function SplashScreen() {
   const [phase, setPhase] = useState<"in" | "hold" | "out">("in");
@@ -154,10 +396,26 @@ function FCMInitializer() {
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
   const pathname = usePathname();
-  const { initialized, myUid, emailVerified } = useAuthStore();
+  const { initialized, myUid, emailVerified, myName, startDate } = useAuthStore();
 
-  const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted]                   = useState(false);
+  const [showProfilePopup, setShowProfilePopup] = useState(false);
+
   useEffect(() => { setMounted(true); }, []);
+
+  // 인증 완료 후 프로필 설정 필요 여부 체크
+  useEffect(() => {
+    if (!mounted || !initialized || !myUid || !emailVerified) return;
+    const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+    if (isPublic) return;
+
+    const needsName      = !myName || myName.trim() === "";
+    const needsStartDate = isStartDateUnset(startDate);
+
+    if (needsName || needsStartDate) {
+      setShowProfilePopup(true);
+    }
+  }, [mounted, initialized, myUid, emailVerified, myName, startDate, pathname]);
 
   useEffect(() => {
     if (!mounted || !initialized) return;
@@ -223,6 +481,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return (
     <>
       {children}
+      {showProfilePopup && (
+        <ProfileSetupPopup onComplete={() => setShowProfilePopup(false)} />
+      )}
       <FCMInitializer />
       <FCMToast />
       <PWAInstallBanner />
@@ -235,7 +496,7 @@ function AnniversaryToast() {
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!startDate) return;
+    if (isStartDateUnset(startDate)) return;
     const anniv = checkAnniversary(startDate);
     if (anniv) {
       const t = setTimeout(() => {
