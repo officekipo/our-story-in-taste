@@ -6,6 +6,8 @@
 //      이유: Cloud Functions가 data-only 방식으로 변경되어
 //            payload.notification이 undefined가 됨
 //            백그라운드 알림은 SW가 data에서 읽어 직접 표시
+//    ★ authDomain — our-story-in-taste-mauve.vercel.app으로 변경
+//      이유: Service Worker는 환경변수 사용 불가, Vercel 도메인으로 고정
 // ============================================================
 
 importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js");
@@ -13,7 +15,7 @@ importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-com
 
 firebase.initializeApp({
   apiKey:            "AIzaSyCHM-xI01YRM0xrbGfXJ6wzTb1p6uggSJA",
-  authDomain:        "our-taste-36646.firebaseapp.com",
+  authDomain:        "our-story-in-taste-mauve.vercel.app",
   projectId:         "our-taste-36646",
   storageBucket:     "our-taste-36646.appspot.com",
   messagingSenderId: "458084666631",

@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter }                   from "next/navigation";
-import { signIn, signInWithGoogle, handleGoogleRedirectResult } from "@/lib/firebase/auth";
+import { signIn, signInWithGoogle }    from "@/lib/firebase/auth";
 import { fetchUser }                   from "@/lib/firebase/auth";
 import { useAuthStore }                from "@/store/authStore";
 import { validateEmail, validatePassword } from "@/lib/utils/validation";
@@ -100,7 +100,6 @@ function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
         </p>
       </div>
 
-      {/* 아이디(이메일) 찾기 안내 */}
       <div style={{ background:"#F5F0EB", borderRadius:12, padding:"12px 14px", display:"flex", gap:10, alignItems:"flex-start" }}>
         <span style={{ fontSize:16, flexShrink:0 }}>💡</span>
         <p style={{ fontSize:12, color:MUTED, lineHeight:1.6 }}>
@@ -168,33 +167,6 @@ export default function LoginPage() {
     return () => unsub();
   }, []);
 
-  useEffect(() => {
-    setLoading(true);
-    handleGoogleRedirectResult()
-      .then(async (user) => {
-        if (!user) return;
-        try {
-          const userDoc = await fetchUser(user.uid);
-          if (!userDoc?.coupleId) {
-            router.push("/couple");
-          }
-        } catch {
-          // fetchUser 실패 시 AuthGuard에 위임
-        }
-      })
-      .catch((e: any) => {
-        const code = e.code ?? "";
-        if (code === "auth/account-exists-with-different-credential") {
-          setApiErr("이미 이메일로 가입된 계정입니다. 이메일 로그인을 사용해주세요.");
-        } else if (code === "auth/unauthorized-domain") {
-          setApiErr("이 도메인에서 Google 로그인이 허용되지 않습니다.");
-        } else if (code) {
-          setApiErr(`Google 로그인에 실패했습니다. (${code})`);
-        }
-      })
-      .finally(() => setLoading(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   const inp = (hasErr: boolean): React.CSSProperties => ({
     width:"100%", padding:"13px 14px", background:WARM,
     border:`1.5px solid ${hasErr?"#EF4444":BORDER}`,
@@ -214,7 +186,6 @@ export default function LoginPage() {
     try {
       if (remember) { localStorage.setItem(STORAGE_KEY, email); }
       else          { localStorage.removeItem(STORAGE_KEY); }
-
       await signIn(email, pw);
       setTimeout(() => setLoading(false), 5000);
     } catch (e: any) {
@@ -230,13 +201,27 @@ export default function LoginPage() {
     }
   };
 
+  // ★ 팝업 방식으로 변경 — redirect 결과 처리 불필요
   const handleGoogle = async () => {
     setApiErr(""); setLoading(true);
     try {
-      await signInWithGoogle();
+      const user = await signInWithGoogle();
+      const userDoc = await fetchUser(user.uid);
+      if (!userDoc?.coupleId) {
+        router.push("/couple");
+      }
+      // coupleId 있으면 setupAuthListener가 자동으로 홈으로 이동 처리
     } catch (e: any) {
-      console.error("[Google Auth] 오류:", e.code, e.message);
-      setApiErr(`Google 로그인을 시작할 수 없습니다. (${e.code ?? e.message})`);
+      const code = e.code ?? "";
+      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+        // 사용자가 팝업을 닫은 경우 — 에러 표시 안 함
+      } else if (code === "auth/account-exists-with-different-credential") {
+        setApiErr("이미 이메일로 가입된 계정입니다. 이메일 로그인을 사용해주세요.");
+      } else if (code === "auth/unauthorized-domain") {
+        setApiErr("이 도메인에서 Google 로그인이 허용되지 않습니다.");
+      } else if (code) {
+        setApiErr(`Google 로그인에 실패했습니다. (${code})`);
+      }
       setLoading(false);
     }
   };
@@ -336,7 +321,6 @@ export default function LoginPage() {
 
       {/* ─── 하단 약관 + 고객센터 ─── */}
       <div style={{ marginTop:8, paddingTop:16, borderTop:`1px solid ${BORDER}`, display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-        {/* 약관 링크 */}
         <div style={{ display:"flex", justifyContent:"center", alignItems:"center", gap:4, flexWrap:"wrap" }}>
           <button onClick={()=>router.push("/settings/privacy")}
             style={{ background:"none", border:"none", color:MUTED, fontSize:11, cursor:"pointer", fontFamily:"inherit", padding:"2px 4px" }}>
@@ -348,7 +332,6 @@ export default function LoginPage() {
             서비스 이용약관
           </button>
         </div>
-        {/* 고객센터 이메일 */}
         {supportEmail ? (
           <p style={{ fontSize:11, color:MUTED, textAlign:"center" }}>
             문제가 있으신가요?{" "}

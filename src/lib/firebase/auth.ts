@@ -6,8 +6,7 @@ import {
   updateProfile,
   onAuthStateChanged,
   GoogleAuthProvider,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -47,27 +46,21 @@ export async function signIn(
   return user;
 }
 
-/* ── Google 로그인 — 리다이렉트 방식 ── */
+/* ── Google 로그인 — 팝업 방식 (Firebase Hosting 불필요) ── */
 const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope("email");
 googleProvider.addScope("profile");
 googleProvider.setCustomParameters({ prompt: "select_account" });
 
-export async function signInWithGoogle(): Promise<void> {
-  await signInWithRedirect(auth, googleProvider);
+export async function signInWithGoogle(): Promise<FirebaseUser> {
+  const result = await signInWithPopup(auth, googleProvider);
+  await ensureUserDoc(result.user, "google");
+  return result.user;
 }
 
+// ★ Redirect 방식 제거 후 호환성 유지용 — 항상 null 반환
 export async function handleGoogleRedirectResult(): Promise<FirebaseUser | null> {
-  try {
-    const result = await getRedirectResult(auth);
-    if (!result) return null;
-    await ensureUserDoc(result.user, "google");
-    return result.user;
-  } catch (e: any) {
-    console.error("[Google Redirect] 에러 코드:", e.code);
-    console.error("[Google Redirect] 에러 메시지:", e.message);
-    throw e;
-  }
+  return null;
 }
 
 /* ── 소셜 로그인 첫 가입 시 Firestore 문서 생성 ── */
@@ -102,18 +95,15 @@ export async function fetchUser(uid: string): Promise<AppUser | null> {
 }
 
 // ★ 특정 유저의 기존 기록(visited/wishlist)에 coupleId 일괄 업데이트
-//   커플 연동 시 coupleId="" 로 저장된 기록을 실제 coupleId로 갱신
 async function backfillCoupleId(uid: string, coupleId: string): Promise<void> {
   const batch = writeBatch(db);
   let   count = 0;
 
-  // visited — coupleId 가 비어있는 본인 기록만 대상
   const visitedSnap = await getDocs(
     query(collection(db, "visited"), where("authorUid", "==", uid), where("coupleId", "==", ""))
   );
   visitedSnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
 
-  // wishlist — coupleId 가 비어있는 본인 기록만 대상
   const wishSnap = await getDocs(
     query(collection(db, "wishlist"), where("addedByUid", "==", uid), where("coupleId", "==", ""))
   );
@@ -156,8 +146,6 @@ export async function createCouple(
     createdAt:  serverTimestamp(),
   });
   await updateDoc(doc(db, "users", myUid), { coupleId });
-
-  // ★ 코드 생성자의 기존 기록(coupleId="")도 갱신
   await backfillCoupleId(myUid, coupleId).catch(() => {});
 
   return { coupleId, inviteCode };
@@ -203,9 +191,6 @@ export async function joinCouple(
   await updateDoc(coupleDoc.ref,           { user2Uid: myUid });
   await updateDoc(doc(db, "users", myUid), { coupleId: newCoupleId });
 
-  // ★ 양쪽 기존 기록(coupleId="") 일괄 업데이트
-  //   - 나(user2): 연동 전 작성한 기록
-  //   - 파트너(user1): 코드 만든 후 연동 대기 중 작성한 기록
   await Promise.all([
     backfillCoupleId(myUid,               newCoupleId).catch(() => {}),
     backfillCoupleId(coupleData.user1Uid, newCoupleId).catch(() => {}),

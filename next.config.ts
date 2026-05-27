@@ -9,8 +9,6 @@ const withPWA = require("next-pwa")({
   skipWaiting: true,
   buildExcludes: [/middleware-manifest\.json$/],
 
-  // ★ 오프라인 fallback 페이지 지정
-  //   네트워크 없을 때 공룡 게임 대신 커스텀 페이지 표시
   fallbackDestination: "/offline",
   fallbacks: {
     document: "/offline",
@@ -62,6 +60,8 @@ const withPWA = require("next-pwa")({
 });
 
 const nextConfig: NextConfig = {
+  // ★ Turbopack: rewrites가 필요한 경우 webpack 모드로 전환
+  //   로컬 개발 시 npm run dev -- --turbo 대신 npm run dev 사용
   turbopack: {},
   compress: true,
   productionBrowserSourceMaps: false,
@@ -73,6 +73,18 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "firebasestorage.googleapis.com" },
       { protocol: "https", hostname: "lh3.googleusercontent.com" },
     ],
+  },
+
+  // ★ Firebase Auth 리다이렉트 핸들러 프록시
+  //   Vercel은 Firebase Hosting이 아니므로 /__/auth/* 경로가 없음
+  //   → firebaseapp.com으로 포워딩해서 Google 로그인 정상 처리
+  async rewrites() {
+    return [
+      {
+        source: "/__/auth/:path*",
+        destination: "https://our-taste-36646.firebaseapp.com/__/auth/:path*",
+      },
+    ];
   },
 
   async headers() {
