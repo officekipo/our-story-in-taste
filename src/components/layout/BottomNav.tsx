@@ -27,7 +27,8 @@ export function BottomNav({ activeTab }: { activeTab: TabId }) {
           <button
             key={id}
             onClick={() => router.push(path)}
-            style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "10px 2px", border: "none", borderTop: `2px solid ${active ? ROSE : "transparent"}`, background: "none", cursor: "pointer", transition: "all 0.2s" }}
+            className="tap"
+            style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "10px 2px", border: "none", borderTop: `2px solid ${active ? ROSE : "transparent"}`, background: "none", cursor: "pointer" }}
           >
             <Icon color={active ? ROSE : MUTED} />
             <span style={{ fontSize: 9, fontWeight: active ? 700 : 500, color: active ? ROSE : MUTED }}>{label}</span>

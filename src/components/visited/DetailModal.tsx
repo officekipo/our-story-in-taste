@@ -1,13 +1,5 @@
 // ============================================================
 //  DetailModal.tsx  적용 경로: src/components/visited/DetailModal.tsx
-//
-//  Fix / Add:
-//    ★ visits 배열이 있으면 방문 히스토리 타임라인 표시
-//    ★ 총 방문 횟수 뱃지 (2번 이상일 때 표시)
-//    기존 수정:
-//      1. "(수정됨)" 표시 — updatedAt > createdAt 60초 이상
-//      2. memo pre-wrap
-//      3. lightbox={true}
 // ============================================================
 "use client";
 
@@ -31,27 +23,24 @@ function wasEdited(r: VisitedRecord): boolean {
   return new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime() > 60_000;
 }
 
-// visits 배열 → 날짜 내림차순 정렬
 function sortedVisits(visits: VisitEntry[]): VisitEntry[] {
   return [...visits].sort((a, b) => b.date.localeCompare(a.date));
 }
 
-// ── 개별 방문 기록 카드 ──────────────────────────────────
 function VisitEntryCard({ entry, index, total }: { entry: VisitEntry; index: number; total: number }) {
-  const [open, setOpen] = useState(index === 0); // 첫 번째만 기본 펼침
+  const [open, setOpen] = useState(index === 0);
 
   return (
     <div style={{ position: "relative", paddingLeft: 24, marginBottom: index < total - 1 ? 0 : 0 }}>
-      {/* 타임라인 세로선 */}
       {index < total - 1 && (
         <div style={{ position: "absolute", left: 7, top: 24, bottom: -12, width: 2, background: ROSE_LT }} />
       )}
-      {/* 타임라인 점 */}
       <div style={{ position: "absolute", left: 0, top: 10, width: 14, height: 14, borderRadius: "50%", background: index === 0 ? ROSE : ROSE_LT, border: `2px solid ${ROSE}`, zIndex: 1 }} />
 
-      {/* 방문 헤더 (항상 표시) */}
+      {/* ★ 토글 헤더에 tap 피드백 */}
       <div
         onClick={() => setOpen(o => !o)}
+        className="tap"
         style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", paddingBottom: 8 }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -62,7 +51,6 @@ function VisitEntryCard({ entry, index, total }: { entry: VisitEntry; index: num
         <span style={{ fontSize: 11, color: MUTED }}>{open ? "▲" : "▼"}</span>
       </div>
 
-      {/* 방문 상세 (접기/펼치기) */}
       {open && (
         <div style={{ marginBottom: 16 }}>
           {entry.imgUrls?.length > 0 && (
@@ -90,17 +78,10 @@ export function DetailModal() {
   const area   = r.district ? `${r.sido} ${r.district}` : r.sido;
   const edited = wasEdited(r);
 
-  // visits 배열: 기존 최초 방문 + 재방문 기록들
-  // Firestore visits 배열 + 최초 방문(본문)을 합산해 타임라인 구성
-  const hasVisits = r.visits && r.visits.length > 0;
-
-  // 총 방문 횟수 = 최초 1 + visits 배열 길이
+  const hasVisits   = r.visits && r.visits.length > 0;
   const totalVisits = 1 + (r.visits?.length ?? 0);
+  const visits      = hasVisits ? sortedVisits(r.visits!) : [];
 
-  // visits를 날짜 내림차순 정렬
-  const visits = hasVisits ? sortedVisits(r.visits!) : [];
-
-  // 최초 방문 VisitEntry 형태로 변환 (타임라인 마지막에 표시)
   const firstEntry: VisitEntry = {
     date:       r.date,
     rating:     r.rating,
@@ -112,12 +93,10 @@ export function DetailModal() {
     createdAt:  r.createdAt,
   };
 
-  // 타임라인 = 재방문(최신순) + 최초 방문 (마지막)
   const timeline: VisitEntry[] = hasVisits ? [...visits, firstEntry] : [];
 
   return (
     <Modal onClose={closeDetail} maxWidth={440} noPadding>
-      {/* 대표 이미지: 가장 최근 방문 이미지 우선 */}
       {(() => {
         const latestImgs = hasVisits && visits[0]?.imgUrls?.length > 0
           ? visits[0].imgUrls
@@ -134,10 +113,8 @@ export function DetailModal() {
       })()}
 
       <div style={{ padding: "18px 20px 20px" }}>
-        {/* 제목 + 수정됨 뱃지 + 방문 횟수 뱃지 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
           <h2 style={{ fontSize: 19, fontWeight: 800, color: INK }}>{r.name}</h2>
-          {/* ★ 재방문 횟수 뱃지 (2번 이상일 때만) */}
           {totalVisits >= 2 && (
             <span style={{ fontSize: 11, fontWeight: 700, color: ROSE, background: ROSE_LT, borderRadius: 20, padding: "3px 10px", flexShrink: 0 }}>
               🔁 {totalVisits}번 방문
@@ -149,10 +126,8 @@ export function DetailModal() {
         </div>
         <p style={{ fontSize: 12, color: MUTED, marginBottom: 14 }}>{area} · {r.cuisine}</p>
 
-        {/* ── 방문 히스토리가 있으면 타임라인, 없으면 기존 UI ── */}
         {hasVisits ? (
           <>
-            {/* 태그 (공통) */}
             {r.tags.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
                 {r.tags.map((t) => (
@@ -160,8 +135,6 @@ export function DetailModal() {
                 ))}
               </div>
             )}
-
-            {/* 방문 타임라인 */}
             <div style={{ background: WARM, borderRadius: 12, padding: "14px 16px", border: `1px solid ${BORDER}`, marginBottom: 14 }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: MUTED, marginBottom: 14 }}>📅 방문 기록</p>
               {timeline.map((entry, i) => (
@@ -171,7 +144,6 @@ export function DetailModal() {
           </>
         ) : (
           <>
-            {/* 기존 단일 방문 UI */}
             <StarRating value={r.rating} size={18} />
             {r.memo && (
               <p style={{ marginTop: 12, fontSize: 14, color: INK, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
@@ -191,8 +163,10 @@ export function DetailModal() {
           </>
         )}
 
+        {/* ★ 닫기 버튼에 tap 피드백 */}
         <button
           onClick={closeDetail}
+          className="tap"
           style={{ width: "100%", marginTop: 4, padding: 13, background: ROSE, border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
         >닫기</button>
       </div>

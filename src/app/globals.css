@@ -40,18 +40,11 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html {
-  height: 100%;
+  height:     100%;
   overflow-x: hidden;
 }
 
 body {
-  /*
-    ★ height:100% → min-height:100% 로 변경
-    - body에 height:100%가 있으면 body 자체가 viewport 높이로 고정됨
-    - 그 결과 자식 내용이 넘쳐도 body가 늘어나지 않아 스크롤 불가
-    - min-height:100%로 바꾸면 body는 내용만큼 늘어날 수 있음
-    - 탭 페이지 높이 고정은 template.tsx의 height:100dvh 가 단독 담당
-  */
   min-height:       100%;
   overflow-x:       hidden;
   font-family:      var(--font-sans);
@@ -104,3 +97,35 @@ select { -webkit-appearance: none; appearance: none; }
 .tab-from-right  { animation: tabFromRight  0.28s cubic-bezier(0.32, 1, 0.4, 1) both; }
 .tab-from-left   { animation: tabFromLeft   0.28s cubic-bezier(0.32, 1, 0.4, 1) both; }
 .page-from-right { animation: pageFromRight 0.25s cubic-bezier(0.25, 1, 0.5, 1) both; }
+
+/* ── 탭 피드백 클래스 ── */
+
+/* 버튼/아이콘: 눌릴 때 살짝 작아지고 손 뗄 때 튀어오름 */
+.tap {
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.tap:active {
+  transform: scale(0.88);
+}
+
+/* 카드: 눌릴 때 미세하게 줄어듦 (튀어오름 없이 자연스럽게) */
+.tap-card {
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s cubic-bezier(0.25, 1, 0.5, 1),
+              box-shadow  0.15s cubic-bezier(0.25, 1, 0.5, 1);
+}
+.tap-card:active {
+  transform:  scale(0.975);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+/* 별점: 탭 시 통통 튀는 느낌 */
+.tap-star {
+  -webkit-tap-highlight-color: transparent;
+  display: inline-block;
+  transition: transform 0.14s cubic-bezier(0.34, 1.8, 0.64, 1);
+}
+.tap-star:active {
+  transform: scale(1.35);
+}

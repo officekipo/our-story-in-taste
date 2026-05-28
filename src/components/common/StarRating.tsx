@@ -13,6 +13,7 @@ export function StarRating({ value, onChange, size = 16 }: StarRatingProps) {
         <span
           key={star}
           onClick={() => onChange?.(star)}
+          className={onChange ? "tap-star" : undefined}
           style={{ fontSize: size, color: star <= value ? "#E8A020" : "#E2DDD8", cursor: onChange ? "pointer" : "default", lineHeight: 1 }}
         >★</span>
       ))}
