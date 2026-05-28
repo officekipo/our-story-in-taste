@@ -22,10 +22,20 @@ const PUBLIC_PATHS = [
 ];
 
 // startDate가 "미설정" 상태로 간주되는 값들
-// ※ 실제 교제 시작일이 null / "" 인 경우만 팝업 표시
-//   사용자가 직접 입력한 날짜(어떤 날짜든)는 유효한 값으로 취급
 const isStartDateUnset = (d: string | null | undefined) =>
   !d || d.trim() === "";
+
+// ★ 프로필 팝업 완료 후 재노출 방지용 sessionStorage 키
+//   - sessionStorage: 탭 닫으면 초기화 (앱 재시작 시 재확인)
+//   - 저장된 uid와 현재 uid가 일치할 때만 억제 (다른 계정 로그인 시 다시 노출)
+const PROFILE_DONE_KEY = "ourtaste_profile_done";
+
+function getProfileDoneUid(): string | null {
+  try { return sessionStorage.getItem(PROFILE_DONE_KEY); } catch { return null; }
+}
+function setProfileDoneUid(uid: string): void {
+  try { sessionStorage.setItem(PROFILE_DONE_KEY, uid); } catch {}
+}
 
 // ── 프로필 초기 설정 팝업 ──────────────────────────────────
 function ProfileSetupPopup({ onComplete }: { onComplete: () => void }) {
@@ -38,7 +48,6 @@ function ProfileSetupPopup({ onComplete }: { onComplete: () => void }) {
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // 약간의 딜레이 후 포커스 — 슬라이드업 애니메이션과 겹치지 않도록
     const t = setTimeout(() => nameRef.current?.focus(), 350);
     return () => clearTimeout(t);
   }, []);
@@ -57,13 +66,19 @@ function ProfileSetupPopup({ onComplete }: { onComplete: () => void }) {
       const { doc, updateDoc, getFirestore } = await import("firebase/firestore");
       const { getApp } = await import("firebase/app");
       const db = getFirestore(getApp());
-      // 교제 시작일 미입력 시 오늘 날짜로 저장
       const finalDate = date.trim() || today;
       await updateDoc(doc(db, "users", myUid), {
         name:      name.trim(),
         startDate: finalDate,
       });
+
+      // ★ store 즉시 반영
       setAuth({ myName: name.trim(), startDate: finalDate });
+
+      // ★ 팝업 완료 플래그를 sessionStorage에 저장
+      //   → AuthGuard의 useEffect가 재실행되더라도 팝업이 다시 열리지 않음
+      setProfileDoneUid(myUid);
+
       onComplete();
     } catch (e) {
       console.error(e);
@@ -403,17 +418,28 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { setMounted(true); }, []);
 
-  // 인증 완료 후 프로필 설정 필요 여부 체크
+  // ★ 프로필 팝업 표시 여부 결정
   useEffect(() => {
     if (!mounted || !initialized || !myUid || !emailVerified) return;
     const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
     if (isPublic) return;
+
+    // ★ 이미 이 세션에서 완료한 계정이면 팝업 억제
+    //   - 팝업 저장 완료 시 setProfileDoneUid(myUid) 호출됨
+    //   - onAuthStateChanged 재실행으로 store가 일시적으로 빈 값이 되더라도
+    //     sessionStorage 플래그가 있으면 팝업을 열지 않음
+    if (getProfileDoneUid() === myUid) return;
 
     const needsName      = !myName || myName.trim() === "";
     const needsStartDate = isStartDateUnset(startDate);
 
     if (needsName || needsStartDate) {
       setShowProfilePopup(true);
+    } else {
+      // 값이 채워진 계정은 팝업 불필요 → 플래그 선제 저장
+      // (설정 페이지에서 이미 값을 입력한 기존 유저 등)
+      setProfileDoneUid(myUid);
+      setShowProfilePopup(false);
     }
   }, [mounted, initialized, myUid, emailVerified, myName, startDate, pathname]);
 
@@ -437,7 +463,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   if (!mounted)     return <SplashScreen />;
   if (!initialized) return <SplashScreen />;
 
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  const isPublic    = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
   const isLegalPage = ["/settings/privacy", "/settings/terms", "/settings/location-terms"]
     .some((p) => pathname.startsWith(p));
 
@@ -525,7 +551,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubscribe = setupAuthListener();
 
-    // ★ Google 리다이렉트 결과 처리 — 앱 진입 시 호출해야 ensureUserDoc()이 실행됨
     import("@/lib/firebase/auth").then(({ handleGoogleRedirectResult }) => {
       handleGoogleRedirectResult().catch((e: unknown) => {
         console.error("[Google Redirect 처리 실패]", e);

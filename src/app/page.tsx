@@ -267,8 +267,10 @@ export default function HomePage() {
 
       <button
         onClick={openAddModal}
-        style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: ROSE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(201,107,82,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, fontSize: 28 }}
-      >+</button>
+        style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: ROSE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(201,107,82,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}
+      >
+        <span style={{ height: "100%", fontSize: 28, lineHeight: "46px" }}>+</span>
+      </button>
 
       {/* existingRecords, onAddVisit prop */}
       <AddEditModal

@@ -191,7 +191,7 @@ export default function CommunityPage() {
         </div>
 
         {/* 필터 바 */}
-        <div style={{ display: "flex", gap: 6, padding: "0 16px 12px", overflowX: "auto", scrollbarWidth: "none" }}>
+        <div style={{ display: "flex", gap: 6, padding: "1px 16px 12px", overflowX: "auto", scrollbarWidth: "none" }}>
           <button onClick={() => setSortBy("recent")} style={sortBy === "recent" ? chipActive : chipInactive}>최신순</button>
           <button onClick={() => setSortBy("likes")}  style={sortBy === "likes"  ? chipActive : chipInactive}>❤️ 인기순</button>
 

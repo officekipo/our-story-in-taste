@@ -1,8 +1,4 @@
 // src/components/layout/AppShell.tsx
-//
-//  수정사항:
-//    ★ KakaoAdFit 제거 — 인피드 방식으로 전환으로 불필요
-//    ★ paddingBottom 원복 80
 "use client";
 
 import { useStats }  from "@/hooks/useStats";
@@ -23,11 +19,14 @@ export function AppShell({ children, activeTab, headerProps, noPad }: AppShellPr
     <div style={{
       display:       "flex",
       flexDirection: "column",
-      height:        "100dvh",
+      flex:          1,
+      minHeight:     0,
       maxWidth:      480,
+      width:         "100%",
       margin:        "0 auto",
-      background:    "var(--bg)",
+      background:    "var(--color-bg)", // ★ --bg → --color-bg (CSS 변수명 수정)
       overflow:      "hidden",
+      position:      "relative",
     }}>
       <Header activeTab={activeTab} {...(headerProps ?? {})} />
 
@@ -35,9 +34,11 @@ export function AppShell({ children, activeTab, headerProps, noPad }: AppShellPr
         flex:          1,
         minHeight:     0,
         overflowY:     noPad ? "hidden" : "auto",
+        overflowX:     "hidden",
         paddingBottom: noPad ? 0 : 80,
         display:       noPad ? "flex" : "block",
         flexDirection: noPad ? "column" : undefined,
+        WebkitOverflowScrolling: "touch" as any,
       }}>
         {children}
       </main>

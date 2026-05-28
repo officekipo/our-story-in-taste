@@ -296,8 +296,11 @@ export default function WishlistPage() {
       </div>
 
       {/* FAB */}
-      <button onClick={() => { setEditingWish(null); setWishModal(true); }}
-        style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: SAGE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(107,158,126,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, fontSize: 28 }}>+</button>
+      <button
+        onClick={() => { setEditingWish(null); setWishModal(true); }}
+        style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: SAGE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(107,158,126,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
+        <span style={{ height: "100%", fontSize: 28, lineHeight: "46px" }}>+</span>
+      </button>
 
       {/* 다녀왔어요 바텀시트 */}
       {visitTarget && (

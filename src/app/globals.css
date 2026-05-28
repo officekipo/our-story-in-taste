@@ -1,14 +1,8 @@
 /* src/app/globals.css */
-/* Pretendard 웹폰트 */
 @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
-
-/* Tailwind v4 방식 */
 @import "tailwindcss";
 
-
-/* ── Tailwind v4: 커스텀 토큰을 CSS 변수로 등록 ── */
 @theme {
-  /* 색상 */
   --color-rose:       #C96B52;
   --color-rose-light: #F2D5CC;
   --color-rose-dark:  #8C4A38;
@@ -31,56 +25,50 @@
 
   --color-tag-bg:     #F0ECE8;
   --color-tag-text:   #8A6A5A;
-
   --color-border:     #EBE5DF;
 
-  /* 폰트 */
-  --font-sans: "Pretendard", -apple-system, sans-serif;
+  --font-sans:    "Pretendard", -apple-system, sans-serif;
+  --max-w-app:    480px;
+  --radius-card:  16px;
 
-  /* 최대 너비 */
-  --max-w-app: 480px;
-
-  /* 모서리 */
-  --radius-card: 16px;
-
-  /* 애니메이션 */
   --animate-fade-up:  fadeUp  0.30s ease both;
   --animate-fade-in:  fadeIn  0.20s ease both;
   --animate-slide-up: slideUp 0.28s cubic-bezier(0.32,1,0.4,1) both;
   --animate-scale-in: scaleIn 0.18s ease both;
 }
 
-/* ── 기본 스타일 ── */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  height: 100%;
+  overflow-x: hidden;
 }
 
 body {
-  font-family: var(--font-sans);
+  /*
+    ★ height:100% → min-height:100% 로 변경
+    - body에 height:100%가 있으면 body 자체가 viewport 높이로 고정됨
+    - 그 결과 자식 내용이 넘쳐도 body가 늘어나지 않아 스크롤 불가
+    - min-height:100%로 바꾸면 body는 내용만큼 늘어날 수 있음
+    - 탭 페이지 높이 고정은 template.tsx의 height:100dvh 가 단독 담당
+  */
+  min-height:       100%;
+  overflow-x:       hidden;
+  font-family:      var(--font-sans);
   background-color: var(--color-bg);
-  color: var(--color-ink);
+  color:            var(--color-ink);
 }
 
-/* 스크롤바 숨김 (모바일 앱처럼) */
 ::-webkit-scrollbar { width: 0; height: 0; }
 
-/* 포커스 시 테두리 색 통일 */
-input:focus,
-textarea:focus,
-select:focus {
-  outline: none;
+input:focus, textarea:focus, select:focus {
+  outline:      none;
   border-color: var(--color-rose) !important;
 }
 
-/* select 기본 화살표 제거 (커스텀 ▾ 사용) */
-select {
-  -webkit-appearance: none;
-  appearance: none;
-}
+select { -webkit-appearance: none; appearance: none; }
 
-/* ── 애니메이션 키프레임 ── */
+/* ── 기존 애니메이션 키프레임 ── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -97,3 +85,22 @@ select {
   from { opacity: 0; transform: scale(0.96); }
   to   { opacity: 1; transform: scale(1); }
 }
+
+/* ── 페이지 전환 키프레임 ── */
+@keyframes tabFromRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes tabFromLeft {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes pageFromRight {
+  from { transform: translateX(40%); opacity: 0; }
+  to   { transform: translateX(0);   opacity: 1; }
+}
+
+/* ── 페이지 전환 클래스 ── */
+.tab-from-right  { animation: tabFromRight  0.28s cubic-bezier(0.32, 1, 0.4, 1) both; }
+.tab-from-left   { animation: tabFromLeft   0.28s cubic-bezier(0.32, 1, 0.4, 1) both; }
+.page-from-right { animation: pageFromRight 0.25s cubic-bezier(0.25, 1, 0.5, 1) both; }

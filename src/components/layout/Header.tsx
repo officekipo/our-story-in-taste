@@ -151,7 +151,7 @@ export function Header({
           <span style={{ fontSize: 13, fontWeight: 600, color: INK }}>{myName || ""}</span>
           <span style={{ fontSize: 12 }}>❤️</span>
           <span style={{ fontSize: 13, fontWeight: 600, color: INK }}>{partnerName || ""}</span>
-          <div style={{ marginLeft: 4, background: "#F2D5CC", borderRadius: 20, padding: "3px 9px" }}>
+          <div style={{ marginLeft: 4, background: "#F2D5CC", borderRadius: 20, padding: "0px 9px 3px" }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: ROSE }}>💑 D+{dday}</span>
           </div>
         </div>
