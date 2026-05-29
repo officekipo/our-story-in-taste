@@ -1,7 +1,8 @@
 // src/components/common/Modal.tsx
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface ModalProps {
   onClose:      () => void;
@@ -20,10 +21,13 @@ export function Modal({
   bottomSheet = false,
 }: ModalProps) {
 
+  // ── Portal 마운트 대상 (SSR 안전) ────────────────────────
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   // ── 닫힘 애니메이션 상태 ──────────────────────────────
   const [closing, setClosing] = useState(false);
 
-  // 닫기: 애니메이션 재생 → 완료 후 onClose 호출
   const handleClose = useCallback(() => {
     if (closing) return;
     setClosing(true);
@@ -39,9 +43,9 @@ export function Modal({
   const startY       = useRef(0);
   const startX       = useRef(0);
   const everDragged  = useRef(false);
-  const [dragY,     setDragY]    = useState(0);
-  const [snap,      setSnap]     = useState(false);
-  const [useTf,     setUseTf]    = useState(false);
+  const [dragY,  setDragY]  = useState(0);
+  const [snap,   setSnap]   = useState(false);
+  const [useTf,  setUseTf]  = useState(false);
 
   const onTouchStart = (e: React.TouchEvent) => {
     startY.current = e.touches[0].clientY;
@@ -73,7 +77,6 @@ export function Modal({
 
   const onTouchEnd = () => {
     if (dragY > 100) {
-      // 임계값 초과 → 닫힘 애니메이션 없이 바로 (드래그 자체가 애니메이션)
       onClose();
       setDragY(0);
     } else if (dragY > 0) {
@@ -86,38 +89,34 @@ export function Modal({
      바텀시트 모드
   ───────────────────────────────────────────────────────── */
   if (bottomSheet) {
-    // 닫힘 중: 오버레이 투명도 0으로
     const overlayAlpha = closing
       ? 0
       : Math.max(0, 0.55 - dragY / 500).toFixed(2);
 
-    // 시트 애니메이션 결정
-    let sheetAnimation = "none";
-    let sheetTransform = `translateY(${dragY}px)`;
+    let sheetAnimation  = "none";
+    let sheetTransform  = `translateY(${dragY}px)`;
     let sheetTransition = snap ? "transform 0.32s cubic-bezier(0.32,1,0.4,1)" : "none";
 
     if (closing) {
-      // 닫힘: slideDown
       sheetAnimation  = "slideDown 0.24s cubic-bezier(0.4,0,1,1) both";
       sheetTransform  = "none";
       sheetTransition = "none";
     } else if (!useTf) {
-      // 최초 진입: slideUp
       sheetAnimation = "slideUp 0.28s cubic-bezier(0.32,1,0.4,1) both";
     }
 
-    return (
+    const content = (
       <div
         onClick={handleClose}
         style={{
-          position:   "fixed",
-          inset:      0,
-          background: `rgba(0,0,0,${overlayAlpha})`,
-          zIndex:     750,
-          display:    "flex",
-          alignItems: "flex-end",
+          position:       "fixed",
+          inset:          0,
+          background:     `rgba(0,0,0,${overlayAlpha})`,
+          zIndex:         9999,
+          display:        "flex",
+          alignItems:     "flex-end",
           justifyContent: "center",
-          transition: closing ? "background 0.22s ease" : "none",
+          transition:     closing ? "background 0.22s ease" : "none",
         }}
       >
         <div
@@ -160,9 +159,7 @@ export function Modal({
             <div
               style={{
                 width: 36, height: 4, borderRadius: 2,
-                background: noPadding
-                  ? "rgba(255,255,255,0.65)"
-                  : "#E2DDD8",
+                background: noPadding ? "rgba(255,255,255,0.65)" : "#E2DDD8",
               }}
             />
           </div>
@@ -182,19 +179,22 @@ export function Modal({
         </div>
       </div>
     );
+
+    if (!mounted) return null;
+    return createPortal(content, document.body);
   }
 
   /* ─────────────────────────────────────────────────────────
      중앙 모달
   ───────────────────────────────────────────────────────── */
-  return (
+  const content = (
     <div
       onClick={handleClose}
       style={{
         position:       "fixed",
         inset:          0,
         background:     closing ? "rgba(0,0,0,0)" : "rgba(0,0,0,0.55)",
-        zIndex:         750,
+        zIndex:         9999,
         display:        "flex",
         alignItems:     "center",
         justifyContent: "center",
@@ -205,25 +205,27 @@ export function Modal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width:      "100%",
+          width:        "100%",
           maxWidth,
-          maxHeight:  "calc(100dvh - 40px)",
-          background: "#fff",
+          maxHeight:    "calc(100dvh - 40px)",
+          background:   "#fff",
           borderRadius: 20,
-          boxShadow:  "0 8px 40px rgba(0,0,0,0.18)",
-          overflowY:  "auto",
-          overflowX:  "hidden",
-          // 진입: scaleIn / 닫힘: scaleOut
-          animation:  closing
+          boxShadow:    "0 8px 40px rgba(0,0,0,0.18)",
+          overflowY:    "auto",
+          overflowX:    "hidden",
+          animation:    closing
             ? "scaleOut 0.16s ease both"
             : "scaleIn 0.18s ease both",
-          padding:    noPadding ? 0 : "24px 24px 28px",
+          padding:      noPadding ? 0 : "24px 24px 28px",
         }}
       >
         {children}
       </div>
     </div>
   );
+
+  if (!mounted) return null;
+  return createPortal(content, document.body);
 }
 
 export function ModalHeader({ title, onClose }: { title: string; onClose: () => void }) {
