@@ -91,7 +91,7 @@ export function WishModal({ onClose, onSave, editRecord }: WishModalProps) {
   const isEdit = !!editRecord;
 
   return (
-    <Modal onClose={onClose} maxWidth={400}>
+    <Modal onClose={onClose} maxWidth={440} bottomSheet>
       <ModalHeader title={isEdit ? "가고 싶은 곳 수정" : "가고 싶은 곳 추가"} onClose={onClose} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -170,7 +170,7 @@ export function WishModal({ onClose, onSave, editRecord }: WishModalProps) {
 
         {/* 버튼 */}
         <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: 13, background: WARM, border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>취소</button>
+          <button onClick={onClose} className="tap" style={{ flex: 1, padding: 13, background: WARM, border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>취소</button>
           <button
             onClick={() => {
               if (!name.trim()) return;
@@ -181,6 +181,7 @@ export function WishModal({ onClose, onSave, editRecord }: WishModalProps) {
               });
               onClose();
             }}
+            className="tap"
             style={{ flex: 2, padding: 13, background: SAGE, border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
           >{isEdit ? "수정 완료" : "저장"}</button>
         </div>

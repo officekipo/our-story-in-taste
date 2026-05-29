@@ -299,7 +299,7 @@ export default function CouplePage() {
             max={new Date().toISOString().slice(0,10)}
             style={{ ...inp, marginBottom:16, border:`1.5px solid ${status==="empty"?RED:BORDER}` }}
           />
-          <button onClick={handleCreate} disabled={isLoading}
+          <button onClick={handleCreate} className="tap" disabled={isLoading}
             style={{ width:"100%", padding:13, background:isLoading?"#C0B8B0":ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:isLoading?"default":"pointer", fontFamily:"inherit" }}>
             {isLoading ? "생성 중…" : "✨ 초대 코드 만들기"}
           </button>
@@ -323,7 +323,7 @@ export default function CouplePage() {
             )}
           </div>
           <p style={{ fontSize:11, color:MUTED, marginBottom:16, textAlign:"center" }}>형식: TASTE-XXXXXX (대문자+숫자 6자리)</p>
-          <button onClick={handleJoin} disabled={isLoading}
+          <button onClick={handleJoin} className="tap" disabled={isLoading}
             style={{ width:"100%", padding:13, background:isLoading?"#C0B8B0":ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:isLoading?"default":"pointer", fontFamily:"inherit" }}>
             {isLoading ? "연동 중…" : "💑 커플 연동하기"}
           </button>

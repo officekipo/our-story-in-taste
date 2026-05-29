@@ -95,8 +95,9 @@ export function DetailModal() {
 
   const timeline: VisitEntry[] = hasVisits ? [...visits, firstEntry] : [];
 
+  // ★ bottomSheet 추가 — 하단에서 올라오며 스와이프 닫기 지원
   return (
-    <Modal onClose={closeDetail} maxWidth={440} noPadding>
+    <Modal onClose={closeDetail} maxWidth={440} noPadding bottomSheet>
       {(() => {
         const latestImgs = hasVisits && visits[0]?.imgUrls?.length > 0
           ? visits[0].imgUrls

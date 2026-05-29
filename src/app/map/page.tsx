@@ -76,6 +76,7 @@ export default function MapPage() {
                 <button
                   key={tab.key}
                   onClick={() => setFilter(tab.key)}
+                  className="tap" 
                   style={{
                     padding:      "6px 14px",
                     borderRadius: 20,

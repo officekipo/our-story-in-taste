@@ -135,6 +135,7 @@ export function Header({
           <button
             onClick={() => router.push("/settings")}
             aria-label="설정"
+            className="tap"
             style={{ width: 36, height: 36, borderRadius: "50%", background: ROSE, border: "2.5px solid #F2D5CC", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, boxShadow: "0 2px 8px rgba(201,107,82,0.3)" }}
           >
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
@@ -162,6 +163,7 @@ export function Header({
               const active = viewMode === v;
               return (
                 <button key={v} onClick={() => onViewMode(v)}
+                  className="tap"
                   style={{ width: 32, height: 26, borderRadius: 7, border: "none", background: active ? "#fff" : "transparent", boxShadow: active ? "0 1px 4px rgba(0,0,0,0.1)" : "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {v === "list" ? (
                     <svg width="13" height="11" viewBox="0 0 14 12" fill="none">
@@ -223,11 +225,12 @@ export function Header({
             </div>
 
             {/* 타임라인 */}
-            <button onClick={onTimeline} style={timeline ? chipActive : chipInactive}>📅 타임라인</button>
+            <button onClick={onTimeline} className="tap" style={timeline ? chipActive : chipInactive}>📅 타임라인</button>
 
             {/* 검색 */}
             <button
               onClick={onToggleSearch}
+              className="tap"
               style={{ ...(showSearch ? { ...chipActive, background: "#F2D5CC", color: ROSE, outline: `1px solid ${ROSE}` } : chipInactive), marginLeft: "auto" }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ verticalAlign: "middle" }}>
@@ -256,6 +259,7 @@ export function Header({
                 <button
                   onClick={() => setShowCalendar(v => !v)}
                   aria-label="날짜 기간 검색"
+                  className="tap"
                   style={{
                     position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
                     background: hasDateFilter || showCalendar ? "#F2D5CC" : "none",
@@ -285,6 +289,7 @@ export function Header({
                     <span style={{ fontSize: 11, fontWeight: 600, color: ROSE }}>{dateChipText}</span>
                     <button
                       onClick={() => onFilterDateRange?.("", "")}
+                      className="tap"
                       style={{ background: "none", border: "none", cursor: "pointer", padding: "0 2px", color: ROSE, fontSize: 16, lineHeight: 1, display: "flex", alignItems: "center" }}
                       aria-label="기간 필터 해제"
                     >×</button>

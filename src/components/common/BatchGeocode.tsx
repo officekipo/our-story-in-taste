@@ -80,6 +80,7 @@ export function BatchGeocode() {
 
       <button
         onClick={run}
+        className="tap" 
         disabled={running}
         style={{ padding: "12px 20px", background: running ? "#C0B8B0" : ROSE, border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: running ? "default" : "pointer", fontFamily: "inherit" }}
       >

@@ -5,6 +5,8 @@
 //    ★ 새 글 저장 시 같은 이름 + 유사 좌표(또는 이름만) 가게 감지
 //      → "재방문으로 덧붙이기 / 새 기록으로 추가" 선택 팝업
 //    ★ 재방문 선택 시 onAddVisit(existingId, entryData) 호출
+//    ★ 메인 폼 모달을 bottomSheet로 전환 — 스와이프 닫기 지원
+//       (dupTarget 확인 팝업은 작은 중앙 다이얼로그로 유지)
 //    기존 수정:
 //      useEffect로 모달 열릴 때마다 폼 초기화
 // ============================================================
@@ -242,7 +244,7 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
     doSave(coords.lat, coords.lng);
   };
 
-  // ── 재방문 팝업 ───────────────────────────────────────
+  // ── 재방문 팝업 — 작은 중앙 다이얼로그 유지 ──────────────
   if (dupTarget) {
     const visitCount = (dupTarget.visits?.length ?? 0) + 1; // 기존 visits + 이번까지
     return (
@@ -268,18 +270,21 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <button
               onClick={handleMerge}
+              className="tap"
               style={{ width: "100%", padding: "14px 0", background: ROSE, border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
             >
               🔁 재방문으로 덧붙이기
             </button>
             <button
               onClick={handleForceNew}
+              className="tap"
               style={{ width: "100%", padding: "14px 0", background: WARM, border: `1.5px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
             >
               ✚ 새 기록으로 추가하기
             </button>
             <button
               onClick={() => setDupTarget(null)}
+              className="tap"
               style={{ background: "none", border: "none", color: "#C0B8B0", fontSize: 13, cursor: "pointer", fontFamily: "inherit", marginTop: 2 }}
             >
               돌아가기
@@ -290,15 +295,16 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
     );
   }
 
-  // ── 메인 폼 ───────────────────────────────────────────
+  // ── 메인 폼 — ★ bottomSheet 적용 ──────────────────────
   return (
-    <Modal onClose={() => { setShowCal(false); closeModal(); }} maxWidth={440}>
+    <Modal onClose={() => { setShowCal(false); closeModal(); }} maxWidth={440} bottomSheet>
       {/* 헤더 */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <p style={{ fontSize: 16, fontWeight: 700, color: INK }}>
           {isEdit ? "맛집 기록 수정" : "새로운 맛집 기록하기"}
         </p>
         <button onClick={closeModal}
+          className="tap"
           style={{ width: 28, height: 28, borderRadius: "50%", background: "#F5F0EB", border: "none", cursor: "pointer", fontSize: 14, color: MUTED }}>✕</button>
       </div>
 
@@ -312,6 +318,7 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
               <div key={i} style={{ position: "relative", width: 80, height: 80 }}>
                 <img src={url} style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 10 }} alt="" />
                 <button onClick={() => setImgUrls(p => p.filter((_, j) => j !== i))}
+                  className="tap"
                   style={{ position: "absolute", top: -4, right: -4, width: 20, height: 20, borderRadius: "50%", background: "#EF4444", border: "none", color: "#fff", fontSize: 11, cursor: "pointer" }}>×</button>
               </div>
             ))}
@@ -416,6 +423,7 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
               const on = tags.includes(t);
               return (
                 <button key={t} onClick={() => toggleTag(t)}
+                  className="tap"
                   style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${on ? ROSE : BORDER}`, background: on ? ROSE_LT : WARM, color: on ? ROSE : MUTED, fontSize: 12, fontWeight: on ? 600 : 400, cursor: "pointer", fontFamily: "inherit" }}>
                   #{t}
                 </button>
@@ -428,10 +436,12 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
         <div>
           <p style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 8 }}>재방문 의향</p>
           <button onClick={() => setRevisit(true)}
+            className="tap"
             style={{ width: "100%", padding: 13, marginBottom: 8, borderRadius: 12, border: `1.5px solid ${revisit === true ? ROSE : BORDER}`, background: revisit === true ? "#FDE8E5" : WARM, color: revisit === true ? ROSE : MUTED, fontSize: 14, fontWeight: revisit === true ? 700 : 400, cursor: "pointer", fontFamily: "inherit" }}>
             💝 또 가고 싶어요!
           </button>
           <button onClick={() => setRevisit(false)}
+            className="tap"
             style={{ width: "100%", padding: 13, borderRadius: 12, border: `1.5px solid ${revisit === false ? "#C0B8B0" : BORDER}`, background: revisit === false ? CREAM : WARM, color: MUTED, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
             😌 한 번이면 충분해요
           </button>
@@ -453,10 +463,12 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
               <p style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 8 }}>닉네임 공개 여부</p>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => setHideAuthor(false)}
+                  className="tap"
                   style={{ flex: 1, padding: "9px 6px", borderRadius: 10, border: `1.5px solid ${!hideAuthor ? ROSE : BORDER}`, background: !hideAuthor ? ROSE_LT : "#fff", color: !hideAuthor ? ROSE : MUTED, fontSize: 12, fontWeight: !hideAuthor ? 700 : 400, cursor: "pointer", fontFamily: "inherit" }}>
                   👤 {myName}(으)로 공개
                 </button>
                 <button onClick={() => setHideAuthor(true)}
+                  className="tap"
                   style={{ flex: 1, padding: "9px 6px", borderRadius: 10, border: `1.5px solid ${hideAuthor ? ROSE : BORDER}`, background: hideAuthor ? ROSE_LT : "#fff", color: hideAuthor ? ROSE : MUTED, fontSize: 12, fontWeight: hideAuthor ? 700 : 400, cursor: "pointer", fontFamily: "inherit" }}>
                   🙈 익명으로 공유
                 </button>
@@ -470,6 +482,7 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
 
         {/* 저장 */}
         <button onClick={handleSave}
+          className="tap"
           style={{ width: "100%", padding: 15, background: name && cuisine ? ROSE : "#C0B8B0", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: name && cuisine ? "pointer" : "default", fontFamily: "inherit" }}>
           {isEdit ? "수정 완료" : "기록 저장하기"}
         </button>

@@ -54,6 +54,7 @@ export function ReportModal({ onClose, onReport }: ReportModalProps) {
               <div
                 key={r}
                 onClick={() => setReason(r)}
+                className="tap" 
                 style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", background: reason === r ? "#F2D5CC" : WARM, border: `1px solid ${reason === r ? ROSE : BORDER}`, borderRadius: 12, cursor: "pointer" }}
               >
                 <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${reason === r ? ROSE : "#C0B8B0"}`, background: reason === r ? ROSE : "transparent", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -66,12 +67,14 @@ export function ReportModal({ onClose, onReport }: ReportModalProps) {
           <textarea
             value={detail} onChange={(e) => setDetail(e.target.value)}
             placeholder="추가 설명 (선택)" rows={2}
+            className="tap" 
             style={{ width: "100%", padding: "11px 13px", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 10, color: INK, fontSize: 13, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box", marginBottom: 14 }}
           />
           <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={onClose} style={{ flex: 1, padding: 13, background: WARM, border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>취소</button>
+            <button onClick={onClose} className="tap" style={{ flex: 1, padding: 13, background: WARM, border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>취소</button>
             <button
               onClick={handleSubmit}
+              className="tap" 
               disabled={!reason || submitting}
               style={{ flex: 2, padding: 13, background: reason && !submitting ? "#EF4444" : "#C0B8B0", border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: reason && !submitting ? "pointer" : "default", fontFamily: "inherit" }}
             >

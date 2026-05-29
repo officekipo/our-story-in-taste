@@ -72,11 +72,12 @@ function CreateTab({
         style={{ ...inp, marginBottom: 8 }}
       />
       {createErr && <p style={{ fontSize: 12, color: RED, marginBottom: 8 }}>❌ {createErr}</p>}
-      <button onClick={handleCreate} disabled={creating}
+      <button onClick={handleCreate} className="tap" disabled={creating}
         style={{ width: "100%", padding: 13, background: creating ? "#C0B8B0" : ROSE, border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: creating ? "default" : "pointer", fontFamily: "inherit", marginBottom: 10 }}>
         {creating ? "생성 중…" : "✨ 초대 코드 만들기"}
       </button>
       <button onClick={onSwitchToEnter}
+        className="tap" 
         style={{ width: "100%", padding: 12, background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
         파트너 코드 입력하기
       </button>
@@ -181,11 +182,12 @@ function EnterCodeTab({
           {joinMsg}
         </p>
       )}
-      <button onClick={handleJoin} disabled={joinStatus === "loading"}
+      <button onClick={handleJoin} className="tap" disabled={joinStatus === "loading"}
         style={{ width: "100%", padding: 13, background: joinStatus === "loading" ? "#C0B8B0" : ROSE, border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: joinStatus === "loading" ? "default" : "pointer", fontFamily: "inherit", marginBottom: 10 }}>
         {joinStatus === "loading" ? "연동 중…" : "💑 커플 연동하기"}
       </button>
       <button onClick={onBack}
+        className="tap" 
         style={{ width: "100%", padding: 12, background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
         ← 뒤로
       </button>
@@ -223,16 +225,53 @@ function DisconnectConfirm({
 }: {
   onConfirm: () => void; onClose: () => void; loading: boolean;
 }) {
+  const [closing, setClosing] = useState(false);
+
+  const handleClose = () => {
+    if (closing || loading) return;
+    setClosing(true);
+    setTimeout(() => {
+      setClosing(false);
+      onClose();
+    }, 160);
+  };
+
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div style={{ width: "100%", maxWidth: 300, background: "#fff", borderRadius: 20, padding: 24, textAlign: "center" }}>
+    <div
+      onClick={handleClose}
+      style={{
+        position:       "fixed",
+        inset:          0,
+        background:     closing ? "rgba(0,0,0,0)" : "rgba(0,0,0,0.6)",
+        zIndex:         900,
+        display:        "flex",
+        alignItems:     "center",
+        justifyContent: "center",
+        padding:        24,
+        transition:     closing ? "background 0.14s ease" : "none",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width:        "100%",
+          maxWidth:     300,
+          background:   "#fff",
+          borderRadius: 20,
+          padding:      24,
+          textAlign:    "center",
+          animation:    closing
+            ? "scaleOut 0.16s ease both"
+            : "scaleIn 0.18s ease both",
+        }}
+      >
         <div style={{ fontSize: 40, marginBottom: 12 }}>💔</div>
         <p style={{ fontSize: 16, fontWeight: 700, color: INK, marginBottom: 8 }}>연동을 해제할까요?</p>
         <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.6, marginBottom: 20 }}>
           기록 데이터는 유지되지만<br />서로의 기록을 볼 수 없게 됩니다.
         </p>
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={onClose} disabled={loading}
+          <button onClick={handleClose} disabled={loading}
             style={{ flex: 1, padding: 12, background: WARM, border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
             취소
           </button>

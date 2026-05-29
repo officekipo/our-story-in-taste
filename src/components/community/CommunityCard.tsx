@@ -78,7 +78,7 @@ export function CommunityCard({ record, isLiked, isWished, isOwnPost, isEdited, 
             onClick={onLike}
             style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", color: isLiked ? ROSE : MUTED, fontSize: 13, fontWeight: isLiked ? 600 : 400 }}
           >
-            <span style={{ fontSize: 16 }}>{isLiked ? "❤️" : "🤍"}</span>
+            <span className="tap" style={{ fontSize: 16 }}>{isLiked ? "❤️" : "🤍"}</span>
             {record.likes}
           </button>
 
@@ -86,11 +86,12 @@ export function CommunityCard({ record, isLiked, isWished, isOwnPost, isEdited, 
             {/* 자신 글에는 신고/위시 숨김 */}
             {!isOwnPost && (
               <>
-                <button onClick={onReport} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
+                <button onClick={onReport} className="tap" style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
                   <FlagIcon color="#C0B8B0" size={16} />
                 </button>
                 <button
                   onClick={onWish}
+                  className="tap" 
                   style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", background: isWished ? SAGE_LT : SAGE, border: "none", borderRadius: 20, color: isWished ? SAGE_DK : "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s" }}
                 >
                   {isWished ? "위시 완료" : "위시 추가"}
