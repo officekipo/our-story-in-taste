@@ -252,7 +252,14 @@ export default function WishlistPage() {
   );
 
   return (
-    <AppShell activeTab="wishlist">
+    <AppShell activeTab="wishlist" fab={
+      <button
+        onClick={() => { setEditingWish(null); setWishModal(true); }}
+        className="tap"
+        style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: SAGE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(107,158,126,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
+        <span style={{ fontSize: 28, lineHeight: "48px" }}>+</span>
+      </button>
+    }>
       <div style={{ padding: "20px 20px 12px" }}>
         <h2 style={{ fontSize: 20, fontWeight: 800, color: INK, marginBottom: 4 }}>가고 싶은 맛집</h2>
         <p style={{ fontSize: 13, color: MUTED }}>함께 가보고 싶은 곳 {records.length}개</p>
@@ -298,14 +305,6 @@ export default function WishlistPage() {
           </div>
         )}
       </div>
-
-      {/* FAB */}
-      <button
-        onClick={() => { setEditingWish(null); setWishModal(true); }}
-        className="tap"
-        style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: SAGE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(107,158,126,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
-        <span className="tap" style={{ height: "100%", fontSize: 28, lineHeight: "48px" }}>+</span>
-      </button>
 
       {/* 다녀왔어요 바텀시트 */}
       {visitTarget && (

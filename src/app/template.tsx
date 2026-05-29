@@ -1,8 +1,8 @@
 // src/app/template.tsx
 "use client";
 
-import { usePathname }                              from "next/navigation";
-import { useRef, useLayoutEffect, useState, useCallback } from "react";
+import { usePathname }                                     from "next/navigation";
+import { useRef, useLayoutEffect, useState, useCallback, createContext, useContext } from "react";
 
 const TAB_ORDER: Record<string, number> = {
   "/":          0,
@@ -13,6 +13,19 @@ const TAB_ORDER: Record<string, number> = {
 };
 
 const SESSION_KEY = "ourtaste_prev_tab";
+
+// ── AppShell의 main이 읽어가는 Context ────────────────────
+export const TabAnimContext = createContext<{
+  animClass:       string;
+  onAnimationEnd:  () => void;
+}>({
+  animClass:      "",
+  onAnimationEnd: () => {},
+});
+
+export function useTabAnim() {
+  return useContext(TabAnimContext);
+}
 
 export default function Template({ children }: { children: React.ReactNode }) {
   const pathname  = usePathname();
@@ -45,31 +58,31 @@ export default function Template({ children }: { children: React.ReactNode }) {
     sessionStorage.setItem(SESSION_KEY, String(curTab));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ★ 애니메이션 종료 후 클래스 제거
-  // transform이 남아있으면 자식의 position:fixed가 viewport 기준이 아닌
-  // 이 div를 containing block으로 삼아 팝업 위치가 어긋남
   const handleAnimationEnd = useCallback(() => {
     setAnimClass("");
   }, []);
 
+  // ── 탭 페이지: 애니메이션을 Context로 내려보냄
+  //    template div 자체는 애니메이션 없이 고정 컨테이너 역할만
   if (isTabPage) {
     return (
-      <div
-        className={animClass}
-        onAnimationEnd={handleAnimationEnd}
-        style={{
-          width:         "100%",
-          height:        "100dvh",
-          display:       "flex",
-          flexDirection: "column",
-          overflow:      "hidden",
-        }}
-      >
-        {children}
-      </div>
+      <TabAnimContext.Provider value={{ animClass, onAnimationEnd: handleAnimationEnd }}>
+        <div
+          style={{
+            width:         "100%",
+            height:        "100dvh",
+            display:       "flex",
+            flexDirection: "column",
+            overflow:      "hidden",
+          }}
+        >
+          {children}
+        </div>
+      </TabAnimContext.Provider>
     );
   }
 
+  // ── 서브 페이지: 기존과 동일하게 전체 슬라이드
   return (
     <div
       className={animClass}

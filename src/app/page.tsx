@@ -176,6 +176,15 @@ export default function HomePage() {
   return (
     <AppShell
       activeTab="visited"
+      fab={
+        <button
+          onClick={openAddModal}
+          className="tap"
+          style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: ROSE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(201,107,82,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}
+        >
+          <span style={{ fontSize: 28, lineHeight: "48px" }}>+</span>
+        </button>
+      }
       headerProps={{
         viewMode,        onViewMode:          setViewMode,
         filterSido,      onFilterSido:        setFilterSido,
@@ -264,14 +273,6 @@ export default function HomePage() {
           </div>
         )}
       </div>
-
-      <button
-        onClick={openAddModal}
-        className="tap"
-        style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: ROSE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(201,107,82,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}
-      >
-        <span className="tap" style={{ height: "100%", fontSize: 28, lineHeight: "48px" }}>+</span>
-      </button>
 
       {/* existingRecords, onAddVisit prop */}
       <AddEditModal

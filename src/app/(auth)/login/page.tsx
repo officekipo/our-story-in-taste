@@ -292,7 +292,7 @@ export default function LoginPage() {
         </div>
       )}
 
-      <button onClick={handleLogin} disabled={loading}
+      <button onClick={handleLogin} className="tap" disabled={loading}
         style={{ width:"100%", padding:14, background:loading?"#C0B8B0":ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:15, fontWeight:700, cursor:loading?"default":"pointer", fontFamily:"inherit" }}>
         {loading?"로그인 중…":"로그인"}
       </button>
@@ -303,7 +303,7 @@ export default function LoginPage() {
         <div style={{ flex:1, height:1, background:BORDER }} />
       </div>
 
-      <button onClick={handleGoogle} disabled={loading}
+      <button onClick={handleGoogle} className="tap" disabled={loading}
         style={{ width:"100%", padding:13, background:"#fff", border:`1.5px solid ${BORDER}`, borderRadius:12, color:INK, fontSize:14, fontWeight:600, cursor:loading?"default":"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8, opacity:loading?0.7:1 }}>
         <svg width="18" height="18" viewBox="0 0 48 48">
           <path fill="#EA4335" d="M24 9.5c3.5 0 6.4 1.2 8.7 3.2l6.5-6.5C35.2 2.7 30 .5 24 .5 14.8.5 7 6.2 3.5 14.1l7.6 5.9C13 14.2 18.1 9.5 24 9.5z"/>

@@ -148,7 +148,7 @@ export function Header({
 
       {/* ── 2행 ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: isVisited ? 10 : 12, borderBottom: isVisited ? `1px solid ${BORDER}` : "none" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, height: 35}}>
           <span style={{ fontSize: 13, fontWeight: 600, color: INK }}>{myName || ""}</span>
           <span style={{ fontSize: 12 }}>❤️</span>
           <span style={{ fontSize: 13, fontWeight: 600, color: INK }}>{partnerName || ""}</span>
