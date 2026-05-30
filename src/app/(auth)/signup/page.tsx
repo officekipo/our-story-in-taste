@@ -207,13 +207,23 @@ export default function SignupPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* 닉네임 */}
+      {/* 닉네임 — ★ maxLength 20자, 한도 통일 */}
       <div>
         <p style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6 }}>닉네임</p>
-        <input value={name} onChange={e => { setName(e.target.value); setErrors(p => ({ ...p, name: "" })); }}
-          placeholder="2~10자 (한글/영문/숫자)" maxLength={10} style={inp(!!errors.name)} />
+        <input
+          value={name}
+          onChange={e => { setName(e.target.value); setErrors(p => ({ ...p, name: "" })); }}
+          placeholder="2~20자 (한글/영문/숫자)"
+          maxLength={20}
+          style={inp(!!errors.name)}
+        />
         <FieldError msg={errors.name} />
-        {!errors.name && name && <p style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>앱 내에서 사용할 이름이에요</p>}
+        {!errors.name && name && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+            <p style={{ fontSize: 11, color: MUTED }}>앱 내에서 사용할 이름이에요</p>
+            <p style={{ fontSize: 11, color: name.length >= 18 ? ROSE : MUTED }}>{name.length}/20</p>
+          </div>
+        )}
       </div>
 
       {/* 이메일 */}

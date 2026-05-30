@@ -15,7 +15,7 @@ const PUBLIC_PATHS = [
   "/onboarding",
   "/login",
   "/signup",
-  "/couple",
+
   "/settings/privacy",
   "/settings/terms",
   "/settings/location-terms",

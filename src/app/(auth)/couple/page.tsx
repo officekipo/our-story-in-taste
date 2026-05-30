@@ -1,5 +1,9 @@
 // ============================================================
 //  couple/page.tsx  적용 경로: src/app/(auth)/couple/page.tsx
+//
+//  수정사항:
+//    ★ 파트너 이름 말줄임 — 파트너 정보 카드 및 팝업에서
+//      10자 초과 시 "…" 처리 (긴 구글 계정 이름 레이아웃 방지)
 // ============================================================
 "use client";
 
@@ -17,6 +21,11 @@ const MUTED   = "#8A8078";
 const BORDER  = "#E2DDD8";
 const WARM    = "#FAF7F3";
 const RED     = "#EF4444";
+
+// ★ 이름 말줄임 헬퍼
+function tn(name: string, max = 10): string {
+  return name.length > max ? name.slice(0, max) + "…" : name;
+}
 
 type Mode   = "create" | "join";
 type Status = "idle" | "empty" | "invalid" | "error" | "success" | "loading";
@@ -39,6 +48,8 @@ function StatusToast({ status, msg }: { status: Status; msg: string }) {
 }
 
 function CoupleSuccessPopup({ partnerName, onStart }: { partnerName?: string; onStart: () => void }) {
+  // ★ 팝업에서도 파트너 이름 말줄임 적용
+  const displayName = partnerName ? tn(partnerName, 12) : null;
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"fadeIn 0.2s ease" }}>
       <div style={{ width:"100%", maxWidth:320, background:"#fff", borderRadius:24, padding:"32px 24px", textAlign:"center", animation:"scaleIn 0.25s ease" }}>
@@ -48,8 +59,8 @@ function CoupleSuccessPopup({ partnerName, onStart }: { partnerName?: string; on
         </div>
         <p style={{ fontSize:22, fontWeight:800, color:INK, marginBottom:8 }}>연동 완료!</p>
         <p style={{ fontSize:14, color:MUTED, lineHeight:1.7, marginBottom:24 }}>
-          {partnerName
-            ? <><strong style={{ color:ROSE }}>{partnerName}</strong>님과 연동됐어요.<br/>이제 함께 맛집을 기록해보세요 🍽️</>
+          {displayName
+            ? <><strong style={{ color:ROSE }}>{displayName}</strong>님과 연동됐어요.<br/>이제 함께 맛집을 기록해보세요 🍽️</>
             : <>파트너와 연동됐어요.<br/>이제 함께 맛집을 기록해보세요 🍽️</>}
         </p>
         <button onClick={onStart} style={{ width:"100%", padding:"14px 0", background:ROSE, border:"none", borderRadius:14, color:"#fff", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
@@ -92,13 +103,15 @@ function CodeCreatedPopup({ inviteCode, onClose, onCopy }: { inviteCode:string; 
 function DisconnectConfirmPopup({ partnerName, onConfirm, onClose, loading }: {
   partnerName?:string; onConfirm:()=>void; onClose:()=>void; loading:boolean;
 }) {
+  // ★ 팝업에서도 파트너 이름 말줄임
+  const displayName = partnerName ? tn(partnerName, 12) : null;
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
       <div onClick={e=>e.stopPropagation()} style={{ width:"100%", maxWidth:320, background:"#fff", borderRadius:24, padding:"28px 24px", textAlign:"center", animation:"scaleIn 0.2s ease" }}>
         <div style={{ fontSize:44, marginBottom:12 }}>💔</div>
         <p style={{ fontSize:18, fontWeight:800, color:INK, marginBottom:8 }}>커플 연동을 해제할까요?</p>
         <p style={{ fontSize:13, color:MUTED, lineHeight:1.7, marginBottom:6 }}>
-          {partnerName ? <><strong style={{ color:ROSE }}>{partnerName}</strong>님과의 연동이 해제됩니다.</> : "파트너와의 연동이 해제됩니다."}
+          {displayName ? <><strong style={{ color:ROSE }}>{displayName}</strong>님과의 연동이 해제됩니다.</> : "파트너와의 연동이 해제됩니다."}
         </p>
         <p style={{ fontSize:12, color:RED, marginBottom:24, lineHeight:1.6 }}>
           ⚠️ 기록 데이터는 유지되지만<br/>서로의 기록을 볼 수 없게 됩니다.
@@ -211,7 +224,6 @@ export default function CouplePage() {
 
   const isLoading = status === "loading";
 
-  // ★ store 초기화 전 — 로딩 표시 (기존 커플 계정 깜빡임 방지 핵심)
   if (!initialized) {
     return (
       <div style={{ textAlign:"center", padding:"40px 0" }}>
@@ -225,6 +237,8 @@ export default function CouplePage() {
   // ★ 이미 연동된 상태 — 파트너 정보 + 해제 버튼
   if (coupleId) {
     const dday = startDate ? calcDDay(startDate) : null;
+    // ★ 파트너 카드 이름 말줄임 (아바타 이니셜도 동일하게)
+    const displayPartnerName = partnerName ? tn(partnerName, 12) : "파트너";
     return (
       <div>
         <h2 style={{ fontSize:20, fontWeight:700, color:INK, marginBottom:6 }}>커플 연동</h2>
@@ -237,9 +251,10 @@ export default function CouplePage() {
               ? <img src={partnerProfileImgUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
               : (partnerName ? partnerName[0] : "?")}
           </div>
-          <div style={{ flex:1 }}>
-            <p style={{ fontSize:15, fontWeight:700, color:INK, marginBottom:2 }}>
-              {partnerName || "파트너"}
+          <div style={{ flex:1, minWidth:0 }}>
+            {/* ★ overflow ellipsis + JS truncate 이중 적용 */}
+            <p style={{ fontSize:15, fontWeight:700, color:INK, marginBottom:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+              {displayPartnerName}
             </p>
             <p style={{ fontSize:12, color:MUTED }}>연동된 파트너</p>
             {dday !== null && (

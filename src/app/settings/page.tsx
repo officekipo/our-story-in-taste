@@ -6,6 +6,8 @@ import { useRouter }                   from "next/navigation";
 import { useAuthStore }                from "@/store/authStore";
 import { calcDDay }                    from "@/lib/utils/date";
 import { uploadImage }                 from "@/lib/firebase/storage";
+import { ref as storageRef, deleteObject } from "firebase/storage";
+import { storage }                    from "@/lib/firebase/config";
 import { signOut }                     from "firebase/auth";
 import { auth }                        from "@/lib/firebase/config";
 import { doc, updateDoc, onSnapshot }  from "firebase/firestore";
@@ -322,10 +324,12 @@ function ConfirmPopup({ emoji, title, desc, sub, confirmLabel, danger=false, onC
 
 function ProfilePhotoRow() {
   const { myUid, myName, profileImgUrl, setProfileImgUrl } = useAuthStore();
-  const inputRef   = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [pct,       setPct]       = useState(0);
-  const [errMsg,    setErrMsg]    = useState("");
+  const inputRef    = useRef<HTMLInputElement>(null);
+  const [uploading,  setUploading]  = useState(false);
+  const [deleting,   setDeleting]   = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [pct,        setPct]        = useState(0);
+  const [errMsg,     setErrMsg]     = useState("");
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -342,10 +346,27 @@ function ProfilePhotoRow() {
     } finally { setUploading(false); setPct(0); }
   };
 
+  const handleDelete = async () => {
+    if (!myUid) return;
+    setConfirmDel(false); setErrMsg(""); setDeleting(true);
+    try {
+      // Storage 파일 삭제 (없어도 무시)
+      const path = `users/${myUid}/profile.jpg`;
+      await deleteObject(storageRef(storage, path)).catch(() => {});
+      // Firestore 필드 초기화
+      await updateDoc(doc(db, "users", myUid), { profileImgUrl: "" });
+      setProfileImgUrl("");
+    } catch (err: any) {
+      setErrMsg("사진 삭제에 실패했어요. 다시 시도해주세요.");
+    } finally { setDeleting(false); }
+  };
+
+  const busy = uploading || deleting;
+
   return (
     <>
-      <button onClick={()=>!uploading&&inputRef.current?.click()}
-        style={{ width:"100%", display:"flex", alignItems:"center", gap:14, padding:"13px 20px", background:"#fff", border:"none", borderBottom:`1px solid ${BORDER}`, cursor:"pointer", fontFamily:"inherit", textAlign:"left" }}>
+      <div style={{ width:"100%", display:"flex", alignItems:"center", gap:14, padding:"13px 20px", background:"#fff", borderBottom:`1px solid ${BORDER}` }}>
+        {/* 썸네일 */}
         <div style={{ position:"relative", flexShrink:0 }}>
           <div style={{ width:36, height:36, borderRadius:"50%", background:ROSE, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:16, fontWeight:700 }}>
             {profileImgUrl ? <img src={profileImgUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : myName[0]}
@@ -354,17 +375,42 @@ function ProfilePhotoRow() {
             <svg width="9" height="9" viewBox="0 0 24 24" fill="none"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke={MUTED} strokeWidth="2.5" strokeLinejoin="round"/><circle cx="12" cy="13" r="4" stroke={MUTED} strokeWidth="2.5"/></svg>
           </div>
         </div>
-        <div style={{ flex:1 }}>
-          <p style={{ fontSize:14, fontWeight:500, color:INK }}>프로필 사진 변경</p>
-          <p style={{ fontSize:12, color:MUTED, marginTop:2 }}>{uploading ? `업로드 중 ${pct}%…` : "탭하여 사진 선택"}</p>
+
+        {/* 텍스트 */}
+        <div style={{ flex:1, minWidth:0 }}>
+          <p style={{ fontSize:14, fontWeight:500, color:INK }}>프로필 사진</p>
+          <p style={{ fontSize:12, color:MUTED, marginTop:2 }}>
+            {uploading ? `업로드 중 ${pct}%…` : deleting ? "삭제 중…" : profileImgUrl ? "사진이 등록되어 있어요" : "탭하여 사진 선택"}
+          </p>
         </div>
-        {!uploading && <span style={{ fontSize:18, color:"#C0B8B0" }}>›</span>}
+
+        {/* 우측 버튼들 */}
+        {!busy && (
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+            {profileImgUrl && (
+              <button onClick={()=>setConfirmDel(true)} className="tap"
+                style={{ padding:"6px 12px", background:"#FFF0F0", border:`1px solid rgba(239,68,68,0.25)`, borderRadius:8, fontSize:12, fontWeight:600, color:RED, cursor:"pointer", fontFamily:"inherit" }}>
+                삭제
+              </button>
+            )}
+            <button onClick={()=>!busy&&inputRef.current?.click()} className="tap"
+              style={{ padding:"6px 12px", background:ROSE, border:"none", borderRadius:8, fontSize:12, fontWeight:600, color:"#fff", cursor:"pointer", fontFamily:"inherit" }}>
+              {profileImgUrl ? "변경" : "등록"}
+            </button>
+          </div>
+        )}
+
         <input ref={inputRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleFile} />
-      </button>
+      </div>
+
       {errMsg && (
         <div style={{ margin:"0 16px 8px", padding:"10px 14px", background:"#FFF0F0", borderRadius:10, border:"1px solid rgba(239,68,68,0.2)" }}>
           <p style={{ fontSize:12, color:RED }}>⚠️ {errMsg}</p>
         </div>
+      )}
+
+      {confirmDel && (
+        <ConfirmPopup emoji="🗑️" title="프로필 사진을 삭제할까요?" desc="삭제 후에는 기본 아바타로 표시됩니다." confirmLabel="삭제" danger onConfirm={handleDelete} onClose={()=>setConfirmDel(false)} />
       )}
     </>
   );
@@ -372,7 +418,7 @@ function ProfilePhotoRow() {
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { myName, partnerName, startDate, coupleId, role, profileImgUrl, partnerProfileImgUrl,
+  const { myUid, myName, partnerName, startDate, coupleId, role, profileImgUrl, partnerProfileImgUrl,
           setAuth, setStartDate: setAuthStartDate, reset } = useAuthStore();
 
   const dday = calcDDay(startDate || "2023-01-01");
@@ -381,7 +427,13 @@ export default function SettingsPage() {
   const [notifPermission, setNotifPermission] = useState<"granted"|"denied"|"default"|"unsupported">("default");
   const [appConfig, setAppConfig] = useState<AppConfig>({ appVersion:"1.0.0", supportEmail:"", notice:"" });
 
-  const setMyName    = (v: string) => setAuth({ myName: v });
+  const setMyName = async (v: string) => {
+    setAuth({ myName: v });
+    if (myUid) {
+      try { await updateDoc(doc(db, "users", myUid), { name: v }); }
+      catch (e) { console.error("닉네임 저장 실패:", e); }
+    }
+  };
   const setStartDate = (v: string) => { setAuth({ startDate: v }); setAuthStartDate(v); };
   const close = () => setModal(null);
 
@@ -489,11 +541,13 @@ export default function SettingsPage() {
             <div style={{ width:64, height:64, borderRadius:"50%", background:ROSE, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:26, fontWeight:800 }}>
               {profileImgUrl ? <img src={profileImgUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : myName[0]}
             </div>
-            <div style={{ position:"absolute", bottom:-4, right:-8, width:30, height:30, borderRadius:"50%", background:SAGE, border:"2px solid #fff", overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:12, fontWeight:700 }}>
-              {partnerProfileImgUrl
-                ? <img src={partnerProfileImgUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                : (partnerName ? partnerName[0] : "?")}
-            </div>
+            {coupleId && partnerName && (
+              <div style={{ position:"absolute", bottom:-4, right:-8, width:30, height:30, borderRadius:"50%", background:SAGE, border:"2px solid #fff", overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:12, fontWeight:700 }}>
+                {partnerProfileImgUrl
+                  ? <img src={partnerProfileImgUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                  : partnerName[0]}
+              </div>
+            )}
           </div>
           <div style={{ flex:1 }}>
             <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>

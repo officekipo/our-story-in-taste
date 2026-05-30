@@ -10,12 +10,19 @@ import {
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
-  doc, setDoc, getDoc, updateDoc,
+  doc, setDoc, getDoc, getDocFromServer, updateDoc,
   collection, query, where, getDocs, writeBatch,
   serverTimestamp, deleteDoc,
 } from "firebase/firestore";
 import { auth, db } from "./config";
 import type { AppUser, CoupleDoc } from "@/types";
+
+// ★ 닉네임 DB 저장 한도: 20자
+//   구글 계정 displayName이 길 경우 자동 truncate
+const MAX_NAME_LENGTH = 20;
+function truncateName(name: string): string {
+  return name.length > MAX_NAME_LENGTH ? name.slice(0, MAX_NAME_LENGTH) : name;
+}
 
 /* ── 이메일 회원가입 ── */
 export async function signUp(
@@ -23,16 +30,17 @@ export async function signUp(
   password: string,
   name: string,
 ): Promise<FirebaseUser> {
+  const trimmed = truncateName(name.trim());
   const { user } = await createUserWithEmailAndPassword(auth, email, password);
-  await updateProfile(user, { displayName: name });
+  await updateProfile(user, { displayName: trimmed });
   await setDoc(doc(db, "users", user.uid), {
     uid:       user.uid,
-    name,
+    name:      trimmed,
     email,
     coupleId:  null,
     role:      "user",
     provider:  "email",
-    startDate: "",   // ← 가입 시 미설정. providers.tsx 팝업에서 입력받음
+    startDate: "",
     createdAt: serverTimestamp(),
   });
   return user;
@@ -72,14 +80,19 @@ async function ensureUserDoc(
   const ref  = doc(db, "users", user.uid);
   const snap = await getDoc(ref);
   if (snap.exists()) return;
+
+  // ★ 구글 계정 displayName이 20자 초과하면 자동 truncate 후 저장
+  const rawName    = user.displayName ?? "";
+  const name       = truncateName(rawName);
+
   await setDoc(ref, {
     uid:       user.uid,
-    name:      user.displayName ?? "",  // ← 구글 이름 저장. 팝업에서 수정 가능
+    name,
     email:     user.email ?? "",
     coupleId:  null,
     role:      "user",
     provider,
-    startDate: "",                      // ← 가입 시 미설정. providers.tsx 팝업에서 입력받음
+    startDate: "",
     createdAt: serverTimestamp(),
   });
 }
@@ -119,13 +132,16 @@ export async function createCouple(
   myUid: string,
   startDate: string,
 ): Promise<{ coupleId: string; inviteCode: string }> {
-  const mySnap = await getDoc(doc(db, "users", myUid));
+  const mySnap = await getDocFromServer(doc(db, "users", myUid));
   if (mySnap.exists()) {
     const existing = mySnap.data().coupleId;
     if (existing) {
-      const existingCouple = await getDoc(doc(db, "couples", existing));
+      const existingCouple = await getDocFromServer(doc(db, "couples", existing));
       if (existingCouple.exists()) {
-        throw new Error("이미 커플 연동이 되어 있어요. 먼저 연동을 해제해주세요.");
+        const cd = existingCouple.data() as CoupleDoc;
+        if (cd.user1Uid === myUid || cd.user2Uid === myUid) {
+          throw new Error("이미 커플 연동이 되어 있어요. 먼저 연동을 해제해주세요.");
+        }
       }
       await updateDoc(doc(db, "users", myUid), { coupleId: null });
     }
@@ -158,13 +174,16 @@ export async function joinCouple(
   inviteCode: string,
   myUid: string,
 ): Promise<string> {
-  const mySnap = await getDoc(doc(db, "users", myUid));
+  const mySnap = await getDocFromServer(doc(db, "users", myUid));
   if (mySnap.exists()) {
     const existing = mySnap.data().coupleId;
     if (existing) {
-      const existingCouple = await getDoc(doc(db, "couples", existing));
+      const existingCouple = await getDocFromServer(doc(db, "couples", existing));
       if (existingCouple.exists()) {
-        throw new Error("이미 커플 연동이 되어 있어요. 먼저 연동을 해제해주세요.");
+        const cd = existingCouple.data() as CoupleDoc;
+        if (cd.user1Uid === myUid || cd.user2Uid === myUid) {
+          throw new Error("이미 커플 연동이 되어 있어요. 먼저 연동을 해제해주세요.");
+        }
       }
       await updateDoc(doc(db, "users", myUid), { coupleId: null });
     }
@@ -179,16 +198,21 @@ export async function joinCouple(
   if (snap.empty)
     throw new Error("유효하지 않은 초대 코드입니다. 다시 확인해주세요.");
 
-  const coupleDoc  = snap.docs[0];
-  const coupleData = coupleDoc.data() as CoupleDoc;
-
-  if (coupleData.user2Uid)
-    throw new Error("이미 사용된 초대 코드예요. 파트너에게 새 코드를 요청해주세요.");
+  const coupleDoc   = snap.docs[0];
+  const coupleData  = coupleDoc.data() as CoupleDoc;
+  const newCoupleId = coupleDoc.id;
 
   if (coupleData.user1Uid === myUid)
     throw new Error("본인이 만든 코드는 사용할 수 없습니다.");
 
-  const newCoupleId = coupleDoc.id;
+  if (coupleData.user2Uid) {
+    const u2Snap     = await getDocFromServer(doc(db, "users", coupleData.user2Uid));
+    const u2CoupleId = u2Snap.exists() ? (u2Snap.data().coupleId ?? null) : null;
+    if (u2CoupleId === newCoupleId) {
+      throw new Error("이미 사용된 초대 코드예요. 파트너에게 새 코드를 요청해주세요.");
+    }
+    await updateDoc(coupleDoc.ref, { user2Uid: null });
+  }
 
   await updateDoc(coupleDoc.ref,           { user2Uid: myUid });
   await updateDoc(doc(db, "users", myUid), { coupleId: newCoupleId });
@@ -206,22 +230,51 @@ export async function disconnectCouple(
   myUid: string,
   coupleId: string,
 ): Promise<void> {
-  const coupleSnap = await getDoc(doc(db, "couples", coupleId));
-  if (!coupleSnap.exists()) {
-    await updateDoc(doc(db, "users", myUid), { coupleId: null });
-    return;
+  const myUserSnap = await getDocFromServer(doc(db, "users", myUid));
+  const myActualCoupleId: string | null = myUserSnap.exists()
+    ? (myUserSnap.data().coupleId ?? null)
+    : coupleId;
+
+  const idsToTry = Array.from(new Set([myActualCoupleId, coupleId].filter(Boolean))) as string[];
+
+  let partnerUid: string | null = null;
+  const deletedCoupleIds: string[] = [];
+
+  for (const cid of idsToTry) {
+    const snap = await getDocFromServer(doc(db, "couples", cid));
+    if (!snap.exists()) continue;
+    const data = snap.data() as CoupleDoc;
+    if (data.user1Uid === myUid || data.user2Uid === myUid) {
+      const partner = data.user1Uid === myUid ? data.user2Uid : data.user1Uid;
+      if (partner) partnerUid = partner;
+      deletedCoupleIds.push(cid);
+    }
   }
 
-  const coupleData = coupleSnap.data() as CoupleDoc;
-  const partnerUid = coupleData.user1Uid === myUid
-    ? coupleData.user2Uid
-    : coupleData.user1Uid;
-
-  await updateDoc(doc(db, "users", myUid), { coupleId: null });
+  let partnerActualCoupleId: string | null = null;
   if (partnerUid) {
-    await updateDoc(doc(db, "users", partnerUid), { coupleId: null });
+    const partnerSnap = await getDocFromServer(doc(db, "users", partnerUid));
+    if (partnerSnap.exists()) {
+      partnerActualCoupleId = partnerSnap.data().coupleId ?? null;
+      if (partnerActualCoupleId && !deletedCoupleIds.includes(partnerActualCoupleId)) {
+        const partnerCoupleSnap = await getDocFromServer(doc(db, "couples", partnerActualCoupleId));
+        if (partnerCoupleSnap.exists()) {
+          deletedCoupleIds.push(partnerActualCoupleId);
+        }
+      }
+    }
   }
-  await deleteDoc(doc(db, "couples", coupleId));
+
+  const userBatch = writeBatch(db);
+  userBatch.update(doc(db, "users", myUid), { coupleId: null });
+  if (partnerUid) {
+    userBatch.update(doc(db, "users", partnerUid), { coupleId: null });
+  }
+  await userBatch.commit();
+
+  await Promise.allSettled(
+    deletedCoupleIds.map((cid) => deleteDoc(doc(db, "couples", cid)))
+  );
 }
 
 /* ── 커플 정보 조회 ── */

@@ -87,7 +87,7 @@ interface AddEditModalProps {
 
 export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEditModalProps) {
   const { addModalOpen, editTarget, closeModal } = useUIStore();
-  const { coupleId, myName }                     = useAuthStore();
+  const { coupleId, myUid, myName }               = useAuthStore();
 
   // ── 폼 상태 ──────────────────────────────────────────────
   const [name,       setName]       = useState("");
@@ -153,11 +153,13 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
         reader.readAsDataURL(f);
       });
     } else {
-      if (!coupleId) return;
+      // ★ 커플 미연동 시 myUid fallback 사용 (Storage 규칙: 인증된 유저 허용)
+      const storageId = coupleId || myUid;
+      if (!storageId) return;
       setUploading(true);
       try {
         const { uploadImages } = await import("@/lib/firebase/storage");
-        const urls = await uploadImages(coupleId, files, pct => setUploadPct(pct));
+        const urls = await uploadImages(storageId, files, pct => setUploadPct(pct));
         setImgUrls(prev => [...prev, ...urls].slice(0, 5));
       } catch {
         alert("이미지 업로드에 실패했습니다. 다시 시도해주세요.");

@@ -20,7 +20,7 @@ const MUTED = "#8A8078";
 export function BottomNav({ activeTab }: { activeTab: TabId }) {
   const router = useRouter();
   return (
-    <nav style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: "#fff", borderTop: "1px solid #E2DDD8", display: "flex", zIndex: 50 }}>
+    <nav style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: "#fff", borderTop: "1px solid #E2DDD8", display: "flex", zIndex: 50, paddingBottom: "env(safe-area-inset-bottom)" }}>
       {TABS.map(({ id, label, path, Icon }) => {
         const active = activeTab === id;
         return (
@@ -28,10 +28,10 @@ export function BottomNav({ activeTab }: { activeTab: TabId }) {
             key={id}
             onClick={() => router.push(path)}
             className="tap"
-            style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "10px 2px", border: "none", borderTop: `2px solid ${active ? ROSE : "transparent"}`, background: "none", cursor: "pointer" }}
+            style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "16px 2px", border: "none", borderTop: `2px solid ${active ? ROSE : "transparent"}`, background: "none", cursor: "pointer" }}
           >
             <Icon color={active ? ROSE : MUTED} />
-            <span style={{ fontSize: 9, fontWeight: active ? 700 : 500, color: active ? ROSE : MUTED }}>{label}</span>
+            <span style={{ fontSize: 11, fontWeight: active ? 700 : 500, color: active ? ROSE : MUTED }}>{label}</span>
           </button>
         );
       })}

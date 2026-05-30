@@ -23,15 +23,18 @@ interface UIState {
   clearToast: ()            => void;
 
   // 삭제 확인 다이얼로그
-  // ★ imgUrls 추가 — Storage 이미지 정리에 사용
   confirmTarget: {
     id:      string;
     type:    "visited" | "wish" | "comm";
     msg:     string;
-    imgUrls: string[];   // ★ 추가
+    imgUrls: string[];
   } | null;
   openConfirm:  (id: string, type: "visited" | "wish" | "comm", msg: string, imgUrls?: string[]) => void;
   closeConfirm: () => void;
+
+  // ★ 커플 온보딩 배너 — 세션 동안 닫기
+  coupleOnboardingDismissed: boolean;
+  dismissCoupleOnboarding:   () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -50,8 +53,11 @@ export const useUIStore = create<UIState>((set) => ({
   clearToast: ()         => set({ toastMsg: null }),
 
   confirmTarget: null,
-  // ★ imgUrls 기본값 [] — 기존 호출부(visited, comm) 변경 없이 호환
   openConfirm:  (id, type, msg, imgUrls = []) =>
     set({ confirmTarget: { id, type, msg, imgUrls } }),
   closeConfirm: () => set({ confirmTarget: null }),
+
+  // ★ 커플 온보딩 배너
+  coupleOnboardingDismissed: false,
+  dismissCoupleOnboarding:   () => set({ coupleOnboardingDismissed: true }),
 }));
