@@ -37,7 +37,7 @@ interface CommunityCardProps {
 export function CommunityCard({ record, isLiked, isWished, isOwnPost, isEdited, onLike, onWish, onReport }: CommunityCardProps) {
   return (
     <div style={{ background: "#fff", borderRadius: 16, marginBottom: 16, overflow: "hidden", boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}>
-      <ImageSlider images={record.imgUrls} emoji={record.emoji} height={200} rounded={false} lightbox={true} />
+      <ImageSlider images={record.imgUrls} thumbnails={(record as any).thumbUrls?.length ? (record as any).thumbUrls : undefined} emoji={record.emoji} height={200} rounded={false} lightbox={true} />
 
       <div style={{ padding: 16 }}>
         {/* 식당명 + 수정됨 뱃지 */}

@@ -95,10 +95,77 @@ export async function uploadImage(
 }
 
 // ──────────────────────────────────────────────────────────
-// 여러 이미지 업로드
-//   AddEditModal 호출: uploadImages(coupleId, files, onProgress)
-//   folder 는 내부적으로 "visited" 기본값 사용
-//   WishModal 에서도 동일 시그니처로 호출 가능
+// Blob 직접 업로드 (내부 공통 함수)
+// ──────────────────────────────────────────────────────────
+async function uploadBlob(
+  blob: Blob,
+  storagePath: string,
+  onProgress?: (pct: number) => void
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const storageReference = ref(storage, storagePath);
+    const task = uploadBytesResumable(storageReference, blob, { contentType: "image/jpeg" });
+    task.on(
+      "state_changed",
+      (snap) => {
+        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+        onProgress?.(pct);
+      },
+      reject,
+      async () => resolve(await getDownloadURL(task.snapshot.ref))
+    );
+  });
+}
+
+// ──────────────────────────────────────────────────────────
+// 여러 이미지 업로드 + 썸네일 동시 생성
+//   full  : 1280px, quality 0.75  → lightbox / 상세 뷰용
+//   thumb :  400px, quality 0.70  → 카드 목록 썸네일용 (~5~10× 작음)
+//
+//   반환: { imgUrls, thumbUrls }
+//   Firestore에 두 배열 모두 저장 → 카드는 thumbUrls 사용
+// ──────────────────────────────────────────────────────────
+export async function uploadImagesWithThumbs(
+  coupleId: string,
+  files: File[],
+  onProgress?: (pct: number) => void,
+  folder: "visited" | "wishlist" = "visited"
+): Promise<{ imgUrls: string[]; thumbUrls: string[] }> {
+  const total = files.length;
+  let completed = 0;
+
+  const results = await Promise.all(
+    files.map(async (file) => {
+      const id       = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const fullPath  = `couples/${coupleId}/${folder}/${id}.jpg`;
+      const thumbPath = `couples/${coupleId}/${folder}/thumb_${id}.jpg`;
+
+      // 두 사이즈 압축을 병렬로 실행
+      const [fullBlob, thumbBlob] = await Promise.all([
+        compressImage(file, 1280, 0.75),
+        compressImage(file,  400, 0.70),
+      ]);
+
+      // 두 파일 업로드를 병렬로 실행
+      const [imgUrl, thumbUrl] = await Promise.all([
+        uploadBlob(fullBlob,  fullPath),
+        uploadBlob(thumbBlob, thumbPath),
+      ]);
+
+      completed++;
+      onProgress?.(Math.round((completed / total) * 100));
+      return { imgUrl, thumbUrl };
+    })
+  );
+
+  return {
+    imgUrls:   results.map((r) => r.imgUrl),
+    thumbUrls: results.map((r) => r.thumbUrl),
+  };
+}
+
+// ──────────────────────────────────────────────────────────
+// 기존 uploadImages — 하위호환 유지 (thumbUrls 불필요한 경우)
 // ──────────────────────────────────────────────────────────
 export async function uploadImages(
   coupleId: string,
@@ -106,27 +173,8 @@ export async function uploadImages(
   onProgress?: (pct: number) => void,
   folder: "visited" | "wishlist" = "visited"
 ): Promise<string[]> {
-  const total = files.length;
-  let completedCount = 0;
-
-  const uploads = files.map(async (file) => {
-    const filename = `${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-    const path = `couples/${coupleId}/${folder}/${filename}`;
-
-    const url = await uploadImage(file, path, (pct) => {
-      // 전체 진행률 = 완료된 파일 + 현재 파일 진행률 / 총 파일 수
-      const overall = Math.round(
-        ((completedCount + pct / 100) / total) * 100
-      );
-      onProgress?.(overall);
-    });
-
-    completedCount++;
-    onProgress?.(Math.round((completedCount / total) * 100));
-    return url;
-  });
-
-  return Promise.all(uploads);
+  const { imgUrls } = await uploadImagesWithThumbs(coupleId, files, onProgress, folder);
+  return imgUrls;
 }
 
 // ──────────────────────────────────────────────────────────

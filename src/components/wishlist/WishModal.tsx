@@ -28,6 +28,7 @@ interface WishModalProps {
   onSave:      (data: {
     name: string; sido: string; district: string;
     cuisine: string; note: string; imgUrls: string[];
+    thumbUrls: string[];
     lat?: number; lng?: number;
   }) => void;
   editRecord?: WishRecord;   // 수정 모드: 기존 데이터 pre-fill
@@ -43,6 +44,7 @@ export function WishModal({ onClose, onSave, editRecord }: WishModalProps) {
   const [cuisine,    setCuisine]    = useState(editRecord?.cuisine  ?? "");
   const [note,       setNote]       = useState(editRecord?.note     ?? "");
   const [imgUrls,    setImgUrls]    = useState<string[]>(editRecord?.imgUrls ?? []);
+  const [thumbUrls,  setThumbUrls]  = useState<string[]>((editRecord as any)?.thumbUrls ?? []);
   const [lat,        setLat]        = useState<number | undefined>(editRecord?.lat);
   const [lng,        setLng]        = useState<number | undefined>(editRecord?.lng);
   const [uploading,  setUploading]  = useState(false);
@@ -77,9 +79,11 @@ export function WishModal({ onClose, onSave, editRecord }: WishModalProps) {
 
     setUploading(true);
     try {
-      const { uploadImages } = await import("@/lib/firebase/storage");
-      const urls = await uploadImages(coupleId, files, (pct) => setUploadPct(pct));
-      setImgUrls((prev) => [...prev, ...urls].slice(0, 5));
+      const { uploadImagesWithThumbs } = await import("@/lib/firebase/storage");
+      const { imgUrls: newImgUrls, thumbUrls: newThumbUrls } =
+        await uploadImagesWithThumbs(coupleId, files, (pct) => setUploadPct(pct), "wishlist");
+      setImgUrls((prev) => [...prev, ...newImgUrls].slice(0, 5));
+      setThumbUrls((prev) => [...prev, ...newThumbUrls].slice(0, 5));
     } catch {
       alert("이미지 업로드에 실패했습니다. 다시 시도해주세요.");
     } finally {
@@ -176,6 +180,7 @@ export function WishModal({ onClose, onSave, editRecord }: WishModalProps) {
               if (!name.trim()) return;
               onSave({
                 name, sido, district, cuisine, note, imgUrls,
+                thumbUrls,
                 ...(lat != null && { lat }),
                 ...(lng != null && { lng }),
               });

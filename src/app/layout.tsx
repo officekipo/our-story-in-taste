@@ -2,6 +2,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
+import { Analytics } from "@vercel/analytics/next"
 
 const APP_URL = "https://our-story-in-taste-mauve.vercel.app";
 
@@ -50,6 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div id="app-root" style={{ width: "100%" }}>
           <Providers>{children}</Providers>
         </div>
+        <Analytics />
       </body>
     </html>
   );

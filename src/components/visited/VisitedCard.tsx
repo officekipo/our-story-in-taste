@@ -90,7 +90,7 @@ export function VisitedCard({ record, onDelete }: VisitedCardProps) {
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <div style={{ width: 16, height: 16, borderRadius: "50%", background: authorColor, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   {authorImg
-                    ? <img src={authorImg} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ? <img src={authorImg} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     : <span style={{ fontSize: 8, color: "#fff", fontWeight: 700 }}>{(record.authorName || "?")[0]}</span>}
                 </div>
                 <span style={{ fontSize: 11, color: MUTED }}>{record.authorName}</span>
@@ -109,6 +109,7 @@ export function VisitedCard({ record, onDelete }: VisitedCardProps) {
         <div onClick={() => openDetail(record)} style={{ cursor: "pointer" }}>
           <ImageSlider
             images={displayImgs}
+            thumbnails={(record as any).thumbUrls?.length ? (record as any).thumbUrls : undefined}
             emoji={record.emoji}
             height={hasImages ? 220 : 90}
             rounded={false}

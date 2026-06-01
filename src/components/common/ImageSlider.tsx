@@ -17,14 +17,15 @@ import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 
 interface ImageSliderProps {
-  images:    string[];
-  emoji?:    string;
-  height?:   number;
-  rounded?:  boolean;
-  lightbox?: boolean;   // ★ true 이면 이미지 클릭 시 전체화면 뷰어
+  images:      string[];
+  thumbnails?: string[];   // ★ 카드 슬라이더용 썸네일 (없으면 images 그대로 사용)
+  emoji?:      string;
+  height?:     number;
+  rounded?:    boolean;
+  lightbox?:   boolean;
 }
 
-export function ImageSlider({ images, emoji = "🍽️", height = 220, rounded = true, lightbox = false }: ImageSliderProps) {
+export function ImageSlider({ images, thumbnails, emoji = "🍽️", height = 220, rounded = true, lightbox = false }: ImageSliderProps) {
   const [idx,         setIdx]         = useState(0);
   const [animating,   setAnimating]   = useState(false);
   const [slideDir,    setSlideDir]    = useState<"left" | "right" | null>(null);
@@ -38,6 +39,9 @@ export function ImageSlider({ images, emoji = "🍽️", height = 220, rounded =
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // 카드 슬라이더: 썸네일 우선 / lightbox: 항상 원본
+  const displayImages = thumbnails && thumbnails.length === images.length ? thumbnails : images;
 
   const borderRadius = rounded ? "12px" : "0";
 
@@ -195,8 +199,9 @@ export function ImageSlider({ images, emoji = "🍽️", height = 220, rounded =
           <>
             <img
               key={`cur-${idx}`}
-              src={images[idx]}
+              src={displayImages[idx]}
               alt=""
+              loading="eager"
               style={{
                 position: "absolute", inset: 0,
                 width: "100%", height: "100%", objectFit: "cover",
@@ -211,8 +216,9 @@ export function ImageSlider({ images, emoji = "🍽️", height = 220, rounded =
             {animating && (
               <img
                 key={`next-${nextIdx}`}
-                src={images[nextIdx]}
+                src={displayImages[nextIdx]}
                 alt=""
+                loading="lazy"
                 style={{
                   position: "absolute", inset: 0,
                   width: "100%", height: "100%", objectFit: "cover",

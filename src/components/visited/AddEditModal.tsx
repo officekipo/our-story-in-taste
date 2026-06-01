@@ -102,6 +102,7 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
   const [share,      setShare]      = useState(false);
   const [hideAuthor, setHideAuthor] = useState(false);
   const [imgUrls,    setImgUrls]    = useState<string[]>([]);
+  const [thumbUrls,  setThumbUrls]  = useState<string[]>([]);
   const [lat,        setLat]        = useState<number | undefined>(undefined);
   const [lng,        setLng]        = useState<number | undefined>(undefined);
   const [showCal,    setShowCal]    = useState(false);
@@ -127,6 +128,7 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
     setShare     (editTarget?.shareToComm ?? false);
     setHideAuthor(editTarget?.hideAuthor  ?? false);
     setImgUrls   (editTarget?.imgUrls     ?? []);
+    setThumbUrls ((editTarget as any)?.thumbUrls ?? []);
     setLat       (editTarget?.lat);
     setLng       (editTarget?.lng);
     setShowCal   (false);
@@ -158,9 +160,11 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
       if (!storageId) return;
       setUploading(true);
       try {
-        const { uploadImages } = await import("@/lib/firebase/storage");
-        const urls = await uploadImages(storageId, files, pct => setUploadPct(pct));
-        setImgUrls(prev => [...prev, ...urls].slice(0, 5));
+        const { uploadImagesWithThumbs } = await import("@/lib/firebase/storage");
+        const { imgUrls: newImgUrls, thumbUrls: newThumbUrls } =
+          await uploadImagesWithThumbs(storageId, files, pct => setUploadPct(pct));
+        setImgUrls(prev => [...prev, ...newImgUrls].slice(0, 5));
+        setThumbUrls(prev => [...prev, ...newThumbUrls].slice(0, 5));
       } catch {
         alert("이미지 업로드에 실패했습니다. 다시 시도해주세요.");
       } finally {
@@ -219,6 +223,7 @@ export function AddEditModal({ onSave, onAddVisit, existingRecords = [] }: AddEd
       name, sido, district, cuisine, rating, date, memo,
       tags, revisit, imgUrls, emoji: "🍽️",
       shareToComm: share, hideAuthor,
+      ...(thumbUrls.length > 0 && { thumbUrls }),
       ...(finalLat != null && { lat: finalLat }),
       ...(finalLng != null && { lng: finalLng }),
     };

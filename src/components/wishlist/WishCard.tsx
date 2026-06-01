@@ -63,6 +63,7 @@ export function WishCard({ record, index, onVisited, onEdit }: WishCardProps) {
 
       <ImageSlider
         images={record.imgUrls ?? []}
+        thumbnails={(record as any).thumbUrls?.length ? (record as any).thumbUrls : undefined}
         emoji={record.emoji}
         height={hasImages ? 160 : 90}
         rounded={false}
