@@ -110,7 +110,7 @@ function EditDatePopup({ current, onSave, onClose }: { current:string; onSave:(v
       <p style={{ fontSize:16, fontWeight:700, color:INK, marginBottom:4 }}>교제 시작일 변경</p>
       <p style={{ fontSize:12, color:MUTED, marginBottom:16 }}>D-Day 계산 기준일이 바뀝니다</p>
       <input type="date" value={val} onChange={(e)=>setVal(e.target.value)} max={new Date().toISOString().slice(0,10)}
-        style={{ width:"100%", padding:"12px 14px", background:WARM, border:`1px solid ${BORDER}`, borderRadius:10, fontSize:14, color:INK, fontFamily:"inherit", outline:"none", boxSizing:"border-box", marginBottom:16 }} />
+        style={{ width:"100%", minWidth:0, padding:"12px 14px", background:WARM, border:`1px solid ${BORDER}`, borderRadius:10, fontSize:16, color:INK, fontFamily:"inherit", outline:"none", boxSizing:"border-box", marginBottom:16, WebkitAppearance:"none", appearance:"none" }} />
       <div style={{ display:"flex", gap:10 }}>
         <button onClick={onClose} className="tap" style={{ flex:1, padding:12, background:WARM, border:`1px solid ${BORDER}`, borderRadius:12, color:MUTED, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>취소</button>
         <button onClick={()=>{ if(val){onSave(val);onClose();} }} className="tap" style={{ flex:2, padding:12, background:ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>저장</button>
@@ -520,8 +520,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <div style={{ minHeight:"100vh", background:"#F5F0EB", maxWidth:480, margin:"0 auto", fontFamily:"inherit", paddingBottom:40 }}>
-      <div style={{ background:"#fff", borderBottom:`1px solid ${BORDER}`, padding:"14px 20px", display:"flex", alignItems:"center", gap:12, position:"sticky", top:0, zIndex:20 }}>
+    <div style={{ minHeight:"100vh", background:"#F5F0EB", maxWidth:480, margin:"0 auto", fontFamily:"inherit", paddingBottom:40, paddingTop:54 }}>
+      <div style={{ background:"#fff", borderBottom:`1px solid ${BORDER}`, padding:"14px 20px", display:"flex", alignItems:"center", gap:12, position:"fixed", top:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:480, zIndex:20 }}>
         <button onClick={()=>router.back()} style={{ background:"none", border:"none", cursor:"pointer", fontSize:24, color:MUTED, lineHeight:1, padding:"0 4px 0 0" }}>‹</button>
         <p style={{ fontSize:17, fontWeight:700, color:INK }}>설정</p>
       </div>
