@@ -13,6 +13,34 @@
 importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js");
 
+// ── 오프라인 fallback (공룡 게임 방지) ───────────────────
+// next-pwa의 sw.js와 별개로, 이 SW도 navigate 요청을 가로채야 함
+const OFFLINE_URL  = "/offline";
+const OFFLINE_CACHE = "offline-v1";
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(OFFLINE_CACHE).then((cache) => cache.add(OFFLINE_URL))
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener("fetch", (event) => {
+  // navigate 요청(페이지 이동)만 처리 — API/이미지 등은 건드리지 않음
+  if (event.request.mode !== "navigate") return;
+  event.respondWith(
+    fetch(event.request).catch(() =>
+      caches.match(OFFLINE_URL).then(
+        (res) => res ?? new Response("오프라인 상태입니다.", { headers: { "Content-Type": "text/html; charset=utf-8" } })
+      )
+    )
+  );
+});
+
 firebase.initializeApp({
   apiKey:            "AIzaSyCHM-xI01YRM0xrbGfXJ6wzTb1p6uggSJA",
   authDomain:        "our-story-in-taste-mauve.vercel.app",

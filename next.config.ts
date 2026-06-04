@@ -7,6 +7,9 @@ const withPWA = require("next-pwa")({
   disable:     process.env.NODE_ENV === "development",
   register:    true,
   skipWaiting: true,
+  // sw.js와 firebase-messaging-sw.js 두 SW가 공존하므로
+  // sw.js는 next-pwa가 생성, firebase-messaging-sw.js는 별도 등록
+  sw:          "sw.js",
   buildExcludes: [/middleware-manifest\.json$/],
 
   fallbackDestination: "/offline",
