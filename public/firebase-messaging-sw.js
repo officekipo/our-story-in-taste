@@ -1,21 +1,10 @@
 // ============================================================
 //  firebase-messaging-sw.js  적용 경로: public/firebase-messaging-sw.js
-//
-//  Fix:
-//    ★ onBackgroundMessage — payload.data에서 title/body 읽도록 변경
-//      이유: Cloud Functions가 data-only 방식으로 변경되어
-//            payload.notification이 undefined가 됨
-//            백그라운드 알림은 SW가 data에서 읽어 직접 표시
-//    ★ authDomain — our-story-in-taste-mauve.vercel.app으로 변경
-//      이유: Service Worker는 환경변수 사용 불가, Vercel 도메인으로 고정
 // ============================================================
 
-importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js");
-
-// ── 오프라인 fallback (공룡 게임 방지) ───────────────────
-// next-pwa의 sw.js와 별개로, 이 SW도 navigate 요청을 가로채야 함
-const OFFLINE_URL  = "/offline";
+// ── 오프라인 fallback ─────────────────────────────────────
+// ★ Firebase importScripts보다 먼저 등록해야 충돌 없음
+const OFFLINE_URL   = "/offline";
 const OFFLINE_CACHE = "offline-v1";
 
 self.addEventListener("install", (event) => {
@@ -30,7 +19,6 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  // navigate 요청(페이지 이동)만 처리 — API/이미지 등은 건드리지 않음
   if (event.request.mode !== "navigate") return;
   event.respondWith(
     fetch(event.request).catch(() =>
@@ -40,6 +28,10 @@ self.addEventListener("fetch", (event) => {
     )
   );
 });
+
+// ── Firebase SDK (fetch 핸들러 등록 후에 로드) ────────────
+importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js");
 
 firebase.initializeApp({
   apiKey:            "AIzaSyCHM-xI01YRM0xrbGfXJ6wzTb1p6uggSJA",
@@ -53,21 +45,16 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 // ── 백그라운드 푸시 수신 핸들러 ──────────────────────────
-// ★ data-only 방식으로 변경: payload.data에서 title/body 읽기
-//   (payload.notification은 data-only 메시지에서 undefined)
 messaging.onBackgroundMessage((payload) => {
-  // console.log("[firebase-messaging-sw.js] 백그라운드 메시지 수신:", payload);
-
-  // ★ data 필드에서 title/body 읽기 (notification 필드 폴백 유지)
   const title = payload.data?.title
     ?? payload.notification?.title
     ?? "우리의 맛지도";
 
-  const body  = payload.data?.body
+  const body = payload.data?.body
     ?? payload.notification?.body
     ?? "새로운 알림이 있어요 🍽️";
 
-  const icon  = payload.data?.icon
+  const icon = payload.data?.icon
     ?? payload.notification?.icon
     ?? "/icon-192.png";
 
@@ -75,7 +62,7 @@ messaging.onBackgroundMessage((payload) => {
     body,
     icon,
     badge: "/icon-72.png",
-    data:  payload.data,    // notificationclick에서 url 등 접근용
+    data:  payload.data,
   });
 });
 
