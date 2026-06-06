@@ -548,6 +548,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
     }),
   );
 
+  // ★ 오프라인 fallback용 SW 수동 등록
+  //   firebase-messaging-sw.js는 FCM 전용이므로 별도 sw.js로 오프라인 처리
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js", { scope: "/" })
+        .catch((e) => console.error("[SW 등록 실패]", e));
+    }
+  }, []);
+
   useEffect(() => {
     const unsubscribe = setupAuthListener();
 

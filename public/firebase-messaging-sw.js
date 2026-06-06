@@ -1,35 +1,8 @@
 // ============================================================
 //  firebase-messaging-sw.js  적용 경로: public/firebase-messaging-sw.js
+//  FCM 전용 — 오프라인 처리는 sw.js에서 담당
 // ============================================================
 
-// ── 오프라인 fallback ─────────────────────────────────────
-// ★ Firebase importScripts보다 먼저 등록해야 충돌 없음
-const OFFLINE_URL   = "/offline";
-const OFFLINE_CACHE = "offline-v1";
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(OFFLINE_CACHE).then((cache) => cache.add(OFFLINE_URL))
-  );
-  self.skipWaiting();
-});
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
-});
-
-self.addEventListener("fetch", (event) => {
-  if (event.request.mode !== "navigate") return;
-  event.respondWith(
-    fetch(event.request).catch(() =>
-      caches.match(OFFLINE_URL).then(
-        (res) => res ?? new Response("오프라인 상태입니다.", { headers: { "Content-Type": "text/html; charset=utf-8" } })
-      )
-    )
-  );
-});
-
-// ── Firebase SDK (fetch 핸들러 등록 후에 로드) ────────────
 importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js");
 
