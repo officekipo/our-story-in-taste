@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>오프라인 — 우리의 맛지도</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <style>
+    @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100dvh;
+      background: #F5F0EB;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0 28px;
+      font-family: "Pretendard", -apple-system, sans-serif;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* 배경 장식 */
+    .bg-circle-1 {
+      position: absolute; top: -80px; right: -80px;
+      width: 260px; height: 260px; border-radius: 50%;
+      background: #F2D5CC; opacity: 0.3; pointer-events: none;
+    }
+    .bg-circle-2 {
+      position: absolute; bottom: -60px; left: -60px;
+      width: 200px; height: 200px; border-radius: 50%;
+      background: #F0EBE3; pointer-events: none;
+    }
+
+    /* 로고 */
+    .logo {
+      margin-bottom: 40px;
+      display: flex; align-items: center; gap: 8px;
+      position: relative; z-index: 1;
+    }
+    .logo span {
+      font-size: 15px; font-weight: 700;
+      color: #C96B52; letter-spacing: -0.3px;
+    }
+
+    /* 일러스트 영역 */
+    .illust-wrap {
+      position: relative; width: 160px; height: 160px;
+      margin-bottom: 36px; z-index: 1;
+    }
+    .ripple {
+      position: absolute; border-radius: 50%;
+      border: 1.5px solid #C96B52; opacity: 0;
+      animation: rippleOut 2.4s ease-out infinite;
+    }
+    .ripple-1 { inset: 0; }
+    .ripple-2 { inset: -18px; border-width: 1px; animation-delay: 0.5s; }
+    .ripple-3 { inset: -36px; border-width: 1px; animation-delay: 1s; }
+    .illust-circle {
+      position: absolute; inset: 0; border-radius: 50%;
+      background: #FAF7F3; border: 1.5px solid #E2DDD8;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 6px;
+    }
+    .illust-circle span {
+      font-size: 11px; color: #8A8078;
+      font-weight: 600; letter-spacing: 0.5px;
+    }
+
+    /* 텍스트 */
+    h1 {
+      font-size: 20px; font-weight: 800; color: #1A1412;
+      margin-bottom: 10px; letter-spacing: -0.5px;
+      line-height: 1.3; text-align: center;
+      position: relative; z-index: 1;
+    }
+    .desc {
+      font-size: 13.5px; color: #8A8078; line-height: 1.8;
+      margin-bottom: 32px; max-width: 260px; text-align: center;
+      position: relative; z-index: 1;
+    }
+
+    /* 상태 카드 */
+    .status-card {
+      background: #FAF7F3; border: 1px solid #E2DDD8;
+      border-radius: 16px; padding: 14px 22px;
+      margin-bottom: 28px;
+      display: flex; align-items: center; gap: 12;
+      min-width: 200px; position: relative; z-index: 1;
+    }
+    .status-icon {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: #F0EBE3; display: flex;
+      align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #F59E0B;
+      animation: breathe 1.4s ease-in-out infinite;
+    }
+    .status-label { font-size: 12px; color: #8A8078; margin-bottom: 2px; }
+    .status-text  { font-size: 13px; font-weight: 700; color: #1A1412; }
+
+    /* 버튼 */
+    button {
+      padding: 14px 36px; background: #C96B52;
+      border: none; border-radius: 14px; color: #fff;
+      font-size: 15px; font-weight: 700; cursor: pointer;
+      font-family: inherit; letter-spacing: -0.2px;
+      transition: background 0.2s, transform 0.15s;
+      position: relative; z-index: 1;
+    }
+    button:hover { background: #8C4A38; transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+
+    .footer-text {
+      margin-top: 20px; font-size: 12px;
+      color: #E2DDD8; text-align: center;
+      position: relative; z-index: 1;
+    }
+
+    @keyframes rippleOut {
+      0%   { opacity: 0.6; transform: scale(0.95); }
+      100% { opacity: 0;   transform: scale(1.15); }
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1);    opacity: 1; }
+      50%       { transform: scale(0.75); opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-circle-1"></div>
+  <div class="bg-circle-2"></div>
+
+  <!-- 로고 -->
+  <div class="logo">
+    <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
+      <rect x="9.5"  y="8.5"  width="2"  height="6.5" rx="1" fill="#C96B52"/>
+      <rect x="13"   y="8.5"  width="2"  height="6.5" rx="1" fill="#C96B52"/>
+      <rect x="16.5" y="8.5"  width="2"  height="6.5" rx="1" fill="#C96B52"/>
+      <rect x="9.5"  y="15"   width="9"  height="1.8" rx="0.9" fill="#C96B52"/>
+      <rect x="13"   y="16.5" width="2"  height="14"  rx="1" fill="#C96B52"/>
+      <path d="M27.5 20.5C27.5 20.5 22 16.5 22 13.2C22 11.3 23.6 10 25.4 10C26.5 10 27.5 10.9 27.5 10.9C27.5 10.9 28.5 10 29.6 10C31.4 10 33 11.3 33 13.2C33 16.5 27.5 20.5 27.5 20.5Z" fill="#C96B52"/>
+    </svg>
+    <span>우리의 맛지도</span>
+  </div>
+
+  <!-- 일러스트 -->
+  <div class="illust-wrap">
+    <div class="ripple ripple-1"></div>
+    <div class="ripple ripple-2"></div>
+    <div class="ripple ripple-3"></div>
+    <div class="illust-circle">
+      <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+        <path d="M8 22C13.6 16.4 21.4 13 26 13C30.6 13 38.4 16.4 44 22" stroke="#E2DDD8" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M13 27.5C17.2 23.3 21.8 21 26 21C30.2 21 34.8 23.3 39 27.5" stroke="#E2DDD8" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M18.5 33C20.8 30.7 23.4 29.5 26 29.5C28.6 29.5 31.2 30.7 33.5 33" stroke="#E2DDD8" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="26" cy="39" r="2.5" fill="#E2DDD8"/>
+        <line x1="10" y1="10" x2="42" y2="42" stroke="#C96B52" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+      <span>OFFLINE</span>
+    </div>
+  </div>
+
+  <h1>인터넷 연결이 끊겼어요</h1>
+  <p class="desc">
+    맛있는 순간들이 기다리고 있어요 🍽️<br>
+    네트워크를 확인하고 다시 접속해주세요
+  </p>
+
+  <!-- 상태 카드 -->
+  <div class="status-card">
+    <div class="status-icon">
+      <div class="dot"></div>
+    </div>
+    <div>
+      <p class="status-label">연결 상태</p>
+      <p class="status-text" id="statusText">재연결 대기 중 ◦◦◦</p>
+    </div>
+  </div>
+
+  <button onclick="window.location.reload()">다시 시도하기</button>
+
+  <p class="footer-text">온라인 복구 시 자동으로 연결됩니다</p>
+
+  <script>
+    // 점 애니메이션
+    const dots = ["◦◦◦", "•◦◦", "••◦", "•••"];
+    let i = 0;
+    setInterval(() => {
+      i = (i + 1) % 4;
+      document.getElementById("statusText").textContent = "재연결 대기 중 " + dots[i];
+    }, 500);
+
+    // 온라인 복구 시 자동 새로고침
+    window.addEventListener("online", () => window.location.reload());
+  </script>
+</body>
+</html>
