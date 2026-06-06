@@ -342,7 +342,7 @@ export default function OnboardingPage() {
           onClick={goNext}
           style={{ width: "100%", padding: "16px", background: slide.accentColor, border: "none", borderRadius: 18, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 8px 28px ${slide.accentColor}55`, transition: "all 0.2s", letterSpacing: 0.3 }}
           onTouchStart={(e) => { e.stopPropagation(); (e.currentTarget as HTMLButtonElement).style.transform = "scale(0.97)"; }}
-          onTouchEnd={(e) => { e.stopPropagation(); (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; goNext(); }}
+          onTouchEnd={(e) => { e.stopPropagation(); (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
         >
           {isLast ? "지금 시작하기 🎉" : "다음 →"}
         </button>

@@ -415,12 +415,27 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   const [mounted, setMounted]                   = useState(false);
   const [showProfilePopup, setShowProfilePopup] = useState(false);
+  // ★ Firestore 데이터 도착 대기 플래그
+  //   myUid 세팅 후 myName/startDate가 실제로 채워질 때까지 대기
+  //   사양 낮은 기기에서 팝업이 잠깐 보였다 사라지는 현상 방지
+  const [profileReady, setProfileReady]         = useState(false);
+  const profileReadyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
+  // ★ myUid 확정 후 Firestore 데이터 도착 대기
+  useEffect(() => {
+    if (!myUid) { setProfileReady(false); return; }
+    // 이미 데이터가 있으면 즉시 ready
+    if (myName && myName.trim() !== "") { setProfileReady(true); return; }
+    // 없으면 800ms 대기 후 ready (Firestore 응답 대기)
+    profileReadyTimer.current = setTimeout(() => setProfileReady(true), 800);
+    return () => { if (profileReadyTimer.current) clearTimeout(profileReadyTimer.current); };
+  }, [myUid, myName]);
+
   // ★ 프로필 팝업 표시 여부 결정
   useEffect(() => {
-    if (!mounted || !initialized || !myUid || !emailVerified) return;
+    if (!mounted || !initialized || !myUid || !emailVerified || !profileReady) return;
     const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
     if (isPublic) return;
 
@@ -441,7 +456,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       setProfileDoneUid(myUid);
       setShowProfilePopup(false);
     }
-  }, [mounted, initialized, myUid, emailVerified, myName, startDate, pathname]);
+  }, [mounted, initialized, myUid, emailVerified, profileReady, myName, startDate, pathname]);
 
   useEffect(() => {
     if (!mounted || !initialized) return;
@@ -547,16 +562,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
       defaultOptions: { queries: { staleTime: 60 * 1000, retry: 1 } },
     }),
   );
-
-  // ★ 오프라인 fallback용 SW 수동 등록
-  //   firebase-messaging-sw.js는 FCM 전용이므로 별도 sw.js로 오프라인 처리
-  useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker
-        .register("/sw.js", { scope: "/" })
-        .catch((e) => console.error("[SW 등록 실패]", e));
-    }
-  }, []);
 
   useEffect(() => {
     const unsubscribe = setupAuthListener();
