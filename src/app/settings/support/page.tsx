@@ -8,18 +8,83 @@ import { auth }                        from "@/lib/firebase/config";
 import {
   collection, query, orderBy, onSnapshot,
   addDoc, doc, onSnapshot as docSnap,
+  getDocs, where,
 } from "firebase/firestore";
+import * as XLSX from "xlsx";
 import { db } from "@/lib/firebase/config";
 
 const ROSE    = "#C96B52";
 const ROSE_LT = "#F2D5CC";
+const SAGE    = "#6B9E7E";
+const SAGE_LT = "#C8DED1";
 const INK     = "#1A1412";
 const MUTED   = "#8A8078";
 const BORDER  = "#E2DDD8";
 const WARM    = "#FAF7F3";
 const CREAM   = "#F0EBE3";
+const BG      = "#F5F0EB";
 
 interface FAQItem { id: string; question: string; answer: string; order: number; category: string; }
+
+/* ── 데이터 내보내기 ── */
+type ExportFormat = "csv" | "json" | "xlsx";
+type ExportScope  = "both" | "visited" | "wishlist";
+type ExportState  = "idle" | "loading" | "done" | "error";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toStr(val: any): string {
+  if (val == null) return "";
+  if (typeof val === "string")  return val;
+  if (typeof val === "number")  return String(val);
+  if (Array.isArray(val))       return val.join(", ");
+  if (val?.toDate)              return val.toDate().toISOString().slice(0, 10);
+  return JSON.stringify(val);
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function flattenVisited(item: any) {
+  return {
+    id: toStr(item.id), 식당명: toStr(item.name), 시도: toStr(item.sido),
+    구: toStr(item.district), 음식종류: toStr(item.cuisine), 별점: toStr(item.rating),
+    방문일: toStr(item.date), 메모: toStr(item.memo), 태그: toStr(item.tags),
+    이모지: toStr(item.emoji), 이미지수: Array.isArray(item.imgUrls) ? item.imgUrls.length : 0,
+    위도: toStr(item.lat), 경도: toStr(item.lng),
+    커뮤니티공유: item.shareToComm ? "Y" : "N", 작성자공개: item.hideAuthor ? "N" : "Y",
+    작성자UID: toStr(item.authorUid), 등록일: toStr(item.createdAt), 수정일: toStr(item.updatedAt),
+  };
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function flattenWishlist(item: any) {
+  return {
+    id: toStr(item.id), 식당명: toStr(item.name), 시도: toStr(item.sido),
+    구: toStr(item.district), 음식종류: toStr(item.cuisine), 메모: toStr(item.note),
+    이모지: toStr(item.emoji), 이미지수: Array.isArray(item.imgUrls) ? item.imgUrls.length : 0,
+    위도: toStr(item.lat), 경도: toStr(item.lng),
+    추가일: toStr(item.addedDate), 추가한UID: toStr(item.addedByUid), 등록일: toStr(item.createdAt),
+  };
+}
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function exportCsv(rows: any[], filename: string) {
+  if (!rows.length) return;
+  const headers = Object.keys(rows[0]);
+  const lines = [headers.join(","), ...rows.map((r) => headers.map((h) => `"${String(r[h] ?? "").replace(/"/g, '""')}"`).join(","))];
+  downloadBlob(new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" }), filename);
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function exportJson(data: any, filename: string) {
+  downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), filename);
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function exportXlsx(sheets: { name: string; rows: any[] }[], filename: string) {
+  const wb = XLSX.utils.book_new();
+  sheets.forEach(({ name, rows }) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{}]), name));
+  XLSX.writeFile(wb, filename);
+}
 
 /* ── FAQ 카테고리 (admin/page.tsx 와 동일하게 유지) ── */
 const FAQ_CATEGORIES = ["커플 연동", "맛집 기록", "위시리스트", "지도·통계", "커뮤니티", "알림", "앱·계정"];
@@ -54,6 +119,13 @@ export default function SupportPage() {
   const [sent,      setSent]      = useState(false);
   const [toast,     setToast]     = useState<string | null>(null);
 
+  /* 데이터 내보내기 상태 */
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("csv");
+  const [exportScope,  setExportScope]  = useState<ExportScope>("both");
+  const [exportState,  setExportState]  = useState<ExportState>("idle");
+  const [exportCounts, setExportCounts] = useState<{ visited: number; wishlist: number } | null>(null);
+  const [exportError,  setExportError]  = useState("");
+
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
   useEffect(() => {
@@ -81,6 +153,62 @@ export default function SupportPage() {
     const currentEmail = auth.currentUser?.email ?? "";
     if (currentEmail) setEmail(currentEmail);
   }, [myUid]);
+
+  const handleExport = async () => {
+    if (!myUid) return;
+    setExportState("loading"); setExportError(""); setExportCounts(null);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const storeState = useAuthStore.getState() as any;
+      const cid: string = storeState?.userDoc?.coupleId ?? storeState?.coupleId ?? "";
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const prefix = `맛지도_${today}`;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let visitedRows: any[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let wishlistRows: any[] = [];
+
+      if (exportScope === "visited" || exportScope === "both") {
+        const q = cid
+          ? query(collection(db, "visited"), where("coupleId", "==", cid), orderBy("createdAt", "desc"))
+          : query(collection(db, "visited"), where("authorUid", "==", myUid), orderBy("createdAt", "desc"));
+        visitedRows = (await getDocs(q)).docs.map((d) => flattenVisited({ id: d.id, ...d.data() }));
+      }
+      if (exportScope === "wishlist" || exportScope === "both") {
+        const q = cid
+          ? query(collection(db, "wishlist"), where("coupleId", "==", cid), orderBy("createdAt", "desc"))
+          : query(collection(db, "wishlist"), where("addedByUid", "==", myUid), orderBy("createdAt", "desc"));
+        wishlistRows = (await getDocs(q)).docs.map((d) => flattenWishlist({ id: d.id, ...d.data() }));
+      }
+
+      if (!visitedRows.length && !wishlistRows.length) {
+        setExportError("내보낼 데이터가 없어요."); setExportState("error"); return;
+      }
+      setExportCounts({ visited: visitedRows.length, wishlist: wishlistRows.length });
+
+      if (exportFormat === "csv") {
+        if (visitedRows.length)  exportCsv(visitedRows,  `${prefix}_다녀온곳.csv`);
+        if (wishlistRows.length) exportCsv(wishlistRows, `${prefix}_위시리스트.csv`);
+      } else if (exportFormat === "json") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data: Record<string, any> = {};
+        if (exportScope === "visited"  || exportScope === "both") data.visited   = visitedRows;
+        if (exportScope === "wishlist" || exportScope === "both") data.wishlist  = wishlistRows;
+        exportJson(data, `${prefix}.json`);
+      } else {
+        const sheets = [];
+        if (visitedRows.length)  sheets.push({ name: "다녀온 곳",   rows: visitedRows });
+        if (wishlistRows.length) sheets.push({ name: "위시리스트", rows: wishlistRows });
+        exportXlsx(sheets, `${prefix}.xlsx`);
+      }
+      setExportState("done");
+    } catch (e) {
+      console.error(e);
+      setExportError("데이터를 불러오는 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.");
+      setExportState("error");
+    }
+  };
 
   const handleSend = async () => {
     if (!name.trim())    { showToast("이름을 입력해주세요"); return; }
@@ -143,26 +271,101 @@ export default function SupportPage() {
         <p style={{ fontSize: 13, fontWeight: 600, color: INK }}>v{appVersion}</p>
       </div>
 
-      {/* 데이터 내보내기 안내 */}
+      {/* 데이터 내보내기 */}
       <div style={{ margin: "20px 16px 0" }}>
         <p style={{ fontSize: 13, fontWeight: 700, color: MUTED, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>데이터 내보내기</p>
-        <div style={{ background: "#fff", borderRadius: 16, padding: "18px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.05)" }}>
-          <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: "#F0EBE3", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>📤</div>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 700, color: INK, marginBottom: 4 }}>내 기록 내보내기</p>
-              <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.6 }}>방문 기록·위시리스트를 파일로 받고 싶으시면 아래 1:1 문의를 이용해주세요. 문의 유형에서 <strong style={{ color: INK }}>"데이터 내보내기 요청"</strong>을 선택하시면 빠르게 처리해드려요.</p>
+        <div style={{ background: WARM, borderRadius: 16, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+
+          {/* 헤더 */}
+          <div style={{ padding: "16px 16px 0" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 18 }}>📤</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>내 기록 다운로드</span>
+            </div>
+            <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, paddingLeft: 26 }}>방문 기록·위시리스트를 CSV·엑셀·JSON으로 직접 받을 수 있어요.</p>
+          </div>
+
+          <div style={{ height: 1, background: BORDER, margin: "14px 0 0" }} />
+
+          {/* 범위 선택 */}
+          <div style={{ padding: "14px 16px 0" }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 8 }}>내보낼 범위</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              {(["both", "visited", "wishlist"] as ExportScope[]).map((s) => {
+                const active = exportScope === s;
+                const label  = s === "both" ? "전체" : s === "visited" ? "다녀온 곳" : "위시리스트";
+                return (
+                  <button key={s} onClick={() => setExportScope(s)} style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: `1.5px solid ${active ? ROSE : BORDER}`, background: active ? ROSE_LT : BG, color: active ? ROSE : MUTED, fontSize: 13, fontWeight: active ? 700 : 500, cursor: "pointer", fontFamily: "inherit" }}>
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           </div>
-          <div style={{ background: "#F5F0EB", borderRadius: 10, padding: "10px 14px" }}>
-            <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
-              📋 제공 형식: CSV (Excel 호환)<br />
-              ⏱️ 처리 기간: 영업일 기준 3일 이내<br />
-              📧 답변 이메일로 파일 전달
-            </p>
+
+          {/* 형식 선택 */}
+          <div style={{ padding: "14px 16px 0" }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 8 }}>파일 형식</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {([
+                { f: "csv"  as ExportFormat, label: "CSV",   desc: "엑셀·구글시트에서 바로 열기", icon: "📄" },
+                { f: "xlsx" as ExportFormat, label: "엑셀",  desc: "서식이 포함된 스프레드시트",   icon: "📊" },
+                { f: "json" as ExportFormat, label: "JSON",  desc: "개발자용 원시 데이터",         icon: "🗂" },
+              ]).map(({ f, label, desc, icon }) => {
+                const active = exportFormat === f;
+                return (
+                  <button key={f} onClick={() => setExportFormat(f)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 12, border: `1.5px solid ${active ? ROSE : BORDER}`, background: active ? ROSE_LT : BG, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                    <span style={{ fontSize: 20, lineHeight: 1 }}>{icon}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: active ? 700 : 600, color: active ? ROSE : INK }}>{label}</div>
+                      <div style={{ fontSize: 12, color: MUTED, marginTop: 1 }}>{desc}</div>
+                    </div>
+                    <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${active ? ROSE : BORDER}`, background: active ? ROSE : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      {active && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 다운로드 버튼 */}
+          <div style={{ padding: "16px" }}>
+            <button onClick={handleExport} disabled={exportState === "loading"} style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: exportState === "loading" ? BORDER : ROSE, color: exportState === "loading" ? MUTED : "#fff", fontSize: 15, fontWeight: 700, cursor: exportState === "loading" ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontFamily: "inherit" }}>
+              {exportState === "loading" ? (
+                <>
+                  <span style={{ display: "inline-block", width: 16, height: 16, border: `2px solid ${MUTED}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                  불러오는 중…
+                </>
+              ) : "📥 지금 다운로드"}
+            </button>
+
+            {exportState === "done" && exportCounts && (
+              <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, background: SAGE_LT, display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <span style={{ fontSize: 16, marginTop: 1 }}>✅</span>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: SAGE, marginBottom: 2 }}>다운로드 완료!</p>
+                  <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.5 }}>다녀온 곳 {exportCounts.visited}개 · 위시리스트 {exportCounts.wishlist}개가 저장됐어요. 파일을 찾을 수 없다면 브라우저의 다운로드 폴더를 확인해 주세요.</p>
+                </div>
+              </div>
+            )}
+            {exportState === "error" && (
+              <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, background: "#FFF0EE", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <span style={{ fontSize: 16, marginTop: 1 }}>⚠️</span>
+                <p style={{ fontSize: 13, color: ROSE, lineHeight: 1.5 }}>{exportError}</p>
+              </div>
+            )}
+          </div>
+
+          {/* 안내 문구 */}
+          <div style={{ padding: "0 16px 16px" }}>
+            <div style={{ padding: "10px 12px", borderRadius: 10, background: CREAM }}>
+              <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.7 }}>💡 <strong style={{ color: INK }}>CSV / 엑셀</strong>은 구글 시트·Microsoft Excel에서 바로 열 수 있어요. 이미지는 파일에 포함되지 않으며 이미지 <strong style={{ color: INK }}>개수</strong>만 표시돼요.</p>
+            </div>
           </div>
         </div>
       </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       {/* FAQ */}
       <div style={{ margin: "20px 16px 0" }}>
