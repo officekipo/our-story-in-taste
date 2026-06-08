@@ -102,7 +102,7 @@ function Toast({ msg }: { msg: string }) {
 
 export default function SupportPage() {
   const router             = useRouter();
-  const { myName, myUid }  = useAuthStore();
+  const { myName, myUid, coupleId } = useAuthStore();
 
   const [faqs,         setFaqs]         = useState<FAQItem[]>([]);
   const [supportEmail, setSupportEmail] = useState("");
@@ -158,9 +158,7 @@ export default function SupportPage() {
     if (!myUid) return;
     setExportState("loading"); setExportError(""); setExportCounts(null);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const storeState = useAuthStore.getState() as any;
-      const cid: string = storeState?.userDoc?.coupleId ?? storeState?.coupleId ?? "";
+      const cid: string = coupleId ?? "";
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
       const prefix = `맛지도_${today}`;
 
