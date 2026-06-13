@@ -1,9 +1,9 @@
 // src/components/layout/Header.tsx
 //
 // 변경사항:
-//   ★ 필터 바를 Header에서 완전히 제거 → AppShell의 filterBar slot으로 분리
-//   ★ 헤더 높이 항상 동일 → 탭 이동 시 닉네임 덜컥임 완전 해결
-//   ★ 다녀온 곳 탭 + scrolled 시 헤더 우측에 플로팅 돋보기 버튼 표시
+//   ★ 헤더 우측에 벨 아이콘 추가 (설정 버튼 왼쪽)
+//   ★ unreadCount > 0 이면 빨간 dot 뱃지 표시
+//   ★ onBell prop으로 NotificationDrawer 열기 연결
 "use client";
 
 import { useRouter }     from "next/navigation";
@@ -31,6 +31,9 @@ interface HeaderProps {
   onViewMode?:     (v: "list" | "gallery") => void;
   showSearch?:     boolean;
   onToggleSearch?: () => void;
+  /* ── 알림 센터 ── */
+  unreadCount?:    number;
+  onBell?:         () => void;
 }
 
 export function Header({
@@ -43,6 +46,8 @@ export function Header({
   onViewMode,
   showSearch   = false,
   onToggleSearch,
+  unreadCount  = 0,
+  onBell,
 }: HeaderProps) {
   const router = useRouter();
   const { myName, partnerName, startDate } = useAuthStore();
@@ -58,7 +63,7 @@ export function Header({
   return (
     <header style={{ background: "#fff", borderBottom: `1px solid ${BORDER}`, padding: "0 16px", position: "sticky", top: 0, zIndex: 20, flexShrink: 0 }}>
 
-      {/* ── 1행: 로고 + 통계 + 설정 ── */}
+      {/* ── 1행: 로고 + 통계 + 벨 + 설정 ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 8, paddingBottom: 7 }}>
 
         <div onClick={() => router.push("/")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
@@ -82,6 +87,7 @@ export function Header({
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          {/* 통계 칩 */}
           <div style={{ display: "flex", alignItems: "center", background: "#FAF7F3", borderRadius: 20, border: `1px solid ${BORDER}`, padding: "4px 9px", gap: 9 }}>
             {[
               { v: _visitedCount, l: "방문" },
@@ -94,6 +100,25 @@ export function Header({
               </div>
             ))}
           </div>
+
+          {/* ── 벨 아이콘 ── */}
+          <button
+            onClick={onBell}
+            className="tap"
+            aria-label="알림"
+            style={{ position: "relative", width: 36, height: 36, borderRadius: "50%", background: "#FAF7F3", border: `1px solid ${BORDER}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke={unreadCount > 0 ? ROSE : MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke={unreadCount > 0 ? ROSE : MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {/* 읽지 않은 알림 dot 뱃지 */}
+            {unreadCount > 0 && (
+              <span style={{ position: "absolute", top: 6, right: 6, width: 8, height: 8, borderRadius: "50%", background: ROSE, border: "1.5px solid #fff", display: "block" }} />
+            )}
+          </button>
+
+          {/* 설정 버튼 */}
           <button onClick={() => router.push("/settings")} className="tap" style={{ width: 36, height: 36, borderRadius: "50%", background: ROSE, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
               <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="#fff" strokeWidth="2"/>
@@ -103,8 +128,7 @@ export function Header({
         </div>
       </div>
 
-      {/* ── 2행: 닉네임 + D-day + 뷰 토글 + 플로팅 돋보기 ──
-          paddingBottom 항상 9 고정 → 탭 이동 시 높이 절대 변하지 않음 */}
+      {/* ── 2행: 닉네임 + D-day + 뷰 토글 + 플로팅 돋보기 ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 9 }}>
 
         {/* 좌측: 닉네임 + D-day */}

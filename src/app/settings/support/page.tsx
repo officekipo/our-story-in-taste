@@ -332,7 +332,7 @@ export default function SupportPage() {
       {notice ? (
         <div style={{ margin: "12px 16px 0", padding: "12px 16px", background: "#FFF8E7", borderRadius: 12, border: "1px solid #F5E0A0", display: "flex", alignItems: "flex-start", gap: 10 }}>
           <span style={{ fontSize: 16, flexShrink: 0 }}>📢</span>
-          <p style={{ fontSize: 13, color: "#7A5C00", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{notice}</p>
+          <p style={{ fontSize: 13, color: "#7A5C00", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{notice}</p>
         </div>
       ) : null}
 

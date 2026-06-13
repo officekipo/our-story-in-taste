@@ -1,16 +1,28 @@
 // ============================================================
-//  functions/index.ts
+//  functions/index.ts  v2
 //
-//  Fix:
-//    ★ sendPush() — notification 필드 제거, data-only 방식으로 변경
+//  변경사항:
+//    ★ sendPush() — expireAt 필드 추가 (Firestore TTL 자동 삭제용, 90일)
+//    ★ cleanupNotifications — 매일 01:00 KST 스케줄러
+//                             createdAt 90일 초과 문서 500개씩 일괄 삭제
 //
-//  변경 이유:
-//    FCM 웹 스펙상 notification 필드가 있으면 브라우저가 OS 레벨에서
-//    직접 처리해 앱 포그라운드 상태에서도 onMessage()가 호출되지 않음
+//  notifications 컬렉션 구조:
+//    uid:       string
+//    type:      "visited" | "wishlist" | "anniversary"
+//    title:     string
+//    body:      string
+//    read:      boolean
+//    data?:     Record<string, string>
+//    createdAt: string         ISO string
+//    expireAt:  Timestamp      ★ TTL 정책용 — 90일 후 Firestore 자동 삭제
 //
-//  data-only 방식 동작:
-//    포그라운드 → Firebase 클라이언트 SDK onMessage() → FCMToast 표시
-//    백그라운드 → SW onBackgroundMessage() → data에서 title/body 읽어 네이티브 알림 표시
+//  Firestore TTL 정책 설정 (한 번만):
+//    Firebase Console → Firestore → TTL 정책 탭
+//    → 컬렉션: notifications / 필드: expireAt → 저장
+//    (TTL + 스케줄러 이중 적용 → 누락 없음)
+//
+//  announcements 컬렉션 구조 (admin 페이지에서 관리):
+//    title, body, type, pinned, visible, startAt?, endAt?, imgUrls[], createdAt
 // ============================================================
 
 import * as admin from "firebase-admin";
@@ -22,51 +34,66 @@ admin.initializeApp();
 const db        = admin.firestore();
 const messaging = admin.messaging();
 
-/* ─── 기념일 마일스톤 (일수) ─────────────────────────────── */
+/* ─── 상수 ───────────────────────────────────────────────── */
+const RETENTION_DAYS = 90;                                      // 알림 보관 기간
+const MS_PER_DAY     = 1000 * 60 * 60 * 24;
+const BATCH_SIZE     = 500;                                     // Firestore 배치 최대
+
 const MILESTONES = [
   50, 100, 200, 300,
   365,
   400, 500, 600, 700,
   730,
   800, 900, 1000,
-  1095,
-  1460,
-  1825,
+  1095, 1460, 1825,
 ];
 
-/* ─── 헬퍼: FCM 발송 (data-only) ────────────────────────────
- *  ★ notification / webpush.notification 필드 제거
- *    → 포그라운드: onMessage() 정상 호출 보장
- *    → 백그라운드: SW onBackgroundMessage()가 data에서 읽어 알림 표시
+/* ─── 헬퍼: FCM 발송 + notifications 저장 ───────────────────
+ *  ★ expireAt 추가 — Firestore TTL 정책이 자동 삭제에 사용
  * ─────────────────────────────────────────────────────────── */
 async function sendPush(
-  token: string,
-  title: string,
-  body:  string,
-  data?: Record<string, string>,
+  token:        string,
+  recipientUid: string,
+  title:        string,
+  body:         string,
+  data?:        Record<string, string>,
 ) {
+  /* 1. FCM 발송 (data-only) */
   try {
     await messaging.send({
       token,
-      // ★ notification 필드 완전 제거 — data-only 방식
-      data: {
-        title,   // SW / FCMToast 양쪽에서 읽음
-        body,    // SW / FCMToast 양쪽에서 읽음
-        icon: "/icon-192.png",
-        ...data,
-      },
-      webpush: {
-        // ★ webpush.notification 제거
-        fcmOptions: { link: "/" },
-      },
+      data: { title, body, icon: "/icon-192.png", ...data },
+      webpush: { fcmOptions: { link: "/" } },
     });
   } catch (err) {
     console.warn("[FCM] 발송 실패:", err);
   }
+
+  /* 2. notifications 저장 */
+  try {
+    const now      = new Date();
+    const expireAt = new Date(now.getTime() + RETENTION_DAYS * MS_PER_DAY);
+
+    await db.collection("notifications").add({
+      uid:       recipientUid,
+      type:      data?.type ?? "visited",
+      title,
+      body,
+      read:      false,
+      data:      data ?? {},
+      createdAt: now.toISOString(),
+      expireAt:  admin.firestore.Timestamp.fromDate(expireAt), // ★ TTL용
+    });
+  } catch (err) {
+    console.warn("[Notifications] 저장 실패:", err);
+  }
 }
 
-/* ─── 헬퍼: 파트너 fcmToken 조회 ────────────────────────── */
-async function getPartnerToken(coupleId: string, myUid: string): Promise<string | null> {
+/* ─── 헬퍼: 파트너 uid + fcmToken 조회 ──────────────────── */
+async function getPartnerInfo(
+  coupleId: string,
+  myUid:    string,
+): Promise<{ uid: string; token: string } | null> {
   const coupleSnap = await db.doc(`couples/${coupleId}`).get();
   if (!coupleSnap.exists) return null;
 
@@ -75,7 +102,10 @@ async function getPartnerToken(coupleId: string, myUid: string): Promise<string 
   if (!partnerUid) return null;
 
   const partnerSnap = await db.doc(`users/${partnerUid}`).get();
-  return partnerSnap.data()?.fcmToken ?? null;
+  const token       = partnerSnap.data()?.fcmToken;
+  if (!token) return null;
+
+  return { uid: partnerUid, token };
 }
 
 /* ─── A. 다녀온 곳 등록 알림 ─────────────────────────────── */
@@ -84,18 +114,14 @@ export const onVisitedCreated = onDocumentCreated(
   async (event) => {
     const data = event.data?.data();
     if (!data) return;
-
     const { coupleId, authorUid, authorName, name } = data;
     if (!coupleId || !authorUid) return;
-
-    const token = await getPartnerToken(coupleId, authorUid);
-    if (!token) return;
-
-    const displayName = authorName || "파트너";
+    const partner = await getPartnerInfo(coupleId, authorUid);
+    if (!partner) return;
     await sendPush(
-      token,
+      partner.token, partner.uid,
       "새로운 맛지도 기록 🍽️",
-      `${displayName}이(가) "${name}"을 다녀온 곳에 추가했어요!`,
+      `${authorName || "파트너"}이(가) "${name}"을 다녀온 곳에 추가했어요!`,
       { type: "visited", name: String(name) },
     );
   },
@@ -107,18 +133,14 @@ export const onWishlistCreated = onDocumentCreated(
   async (event) => {
     const data = event.data?.data();
     if (!data) return;
-
     const { coupleId, addedByUid, addedByName, name } = data;
     if (!coupleId || !addedByUid) return;
-
-    const token = await getPartnerToken(coupleId, addedByUid);
-    if (!token) return;
-
-    const displayName = addedByName || "파트너";
+    const partner = await getPartnerInfo(coupleId, addedByUid);
+    if (!partner) return;
     await sendPush(
-      token,
+      partner.token, partner.uid,
       "위시리스트 추가 ⭐",
-      `${displayName}이(가) "${name}"을 가고싶어 목록에 추가했어요!`,
+      `${addedByName || "파트너"}이(가) "${name}"을 가고싶어 목록에 추가했어요!`,
       { type: "wishlist", name: String(name) },
     );
   },
@@ -140,32 +162,62 @@ export const checkAnniversaries = onSchedule(
       const start = new Date(startDate);
       start.setHours(0, 0, 0, 0);
       const diffDays = Math.round(
-        (today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+        (today.getTime() - start.getTime()) / MS_PER_DAY,
       );
-
       if (!MILESTONES.includes(diffDays)) continue;
 
-      let label: string;
-      if (diffDays % 365 === 0) {
-        label = `${diffDays / 365}주년`;
-      } else {
-        label = `${diffDays}일`;
-      }
-
+      const label = diffDays % 365 === 0 ? `${diffDays / 365}주년` : `${diffDays}일`;
       const title = `🎉 ${label} 기념일이에요!`;
       const body  = `함께한 지 ${label}! 오늘도 행복한 하루 보내요 💕`;
 
       for (const uid of [user1Uid, user2Uid]) {
         const userSnap = await db.doc(`users/${uid}`).get();
         const token    = userSnap.data()?.fcmToken;
-        if (token) {
-          await sendPush(token, title, body, {
-            type: "anniversary",
-            days:  String(diffDays),
-            label,
-          });
-        }
+        if (token) await sendPush(token, uid, title, body, { type: "anniversary", days: String(diffDays), label });
       }
     }
+  },
+);
+
+/* ─── D. 알림 정리 스케줄러 — 매일 01:00 KST ★ 신규 ────────
+ *  TTL 정책의 보완재:
+ *    Firestore TTL은 보통 24~72시간 내 삭제하지만 보장 없음
+ *    → 스케줄러로 90일 초과 문서를 확실하게 제거
+ *
+ *  처리 방식:
+ *    createdAt < (오늘 - 90일) 인 문서 조회 → 500개씩 배치 삭제
+ *    한 번에 최대 2,000개 삭제 (4배치) — 대용량 시 다음 날 이어서 처리
+ * ─────────────────────────────────────────────────────────── */
+export const cleanupNotifications = onSchedule(
+  { schedule: "0 1 * * *", timeZone: "Asia/Seoul" },
+  async () => {
+    const cutoff = new Date(Date.now() - RETENTION_DAYS * MS_PER_DAY);
+    const cutoffIso = cutoff.toISOString();
+
+    console.log(`[Cleanup] ${cutoffIso} 이전 알림 삭제 시작`);
+
+    let totalDeleted = 0;
+    const MAX_BATCHES = 4; // 1회 실행당 최대 2,000개
+
+    for (let i = 0; i < MAX_BATCHES; i++) {
+      const snap = await db
+        .collection("notifications")
+        .where("createdAt", "<", cutoffIso)
+        .limit(BATCH_SIZE)
+        .get();
+
+      if (snap.empty) break;
+
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+
+      totalDeleted += snap.docs.length;
+      console.log(`[Cleanup] 배치 ${i + 1}: ${snap.docs.length}건 삭제`);
+
+      if (snap.docs.length < BATCH_SIZE) break; // 마지막 배치
+    }
+
+    console.log(`[Cleanup] 완료 — 총 ${totalDeleted}건 삭제`);
   },
 );

@@ -1,21 +1,19 @@
 // src/components/layout/AppShell.tsx
-//
-// 변경사항:
-//   ★ filterBar?: React.ReactNode prop 추가
-//     → Header와 <main> 사이에 렌더링
-//     → page.tsx에서 필터 바 JSX를 여기로 넘김
-//     → 필터 바가 헤더 높이에 영향을 주지 않아 탭 이동 시 덜컥임 없음
 "use client";
 
-import { useState, useCallback } from "react";
-import { useStats }   from "@/hooks/useStats";
-import { Header }     from "./Header";
-import { BottomNav }  from "./BottomNav";
-import { useTabAnim } from "@/app/template";
+import { useState, useCallback, useEffect } from "react";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { db }           from "@/lib/firebase/config";
+import { useStats }     from "@/hooks/useStats";
+import { useAuthStore } from "@/store/authStore";
+import { Header }       from "./Header";
+import { BottomNav }    from "./BottomNav";
+import { useTabAnim }   from "@/app/template";
+import { NotificationDrawer, type NotifBadges } from "@/components/common/NotificationDrawer";
 
 interface AppShellProps {
   children:          React.ReactNode;
-  activeTab:         "visited" | "wishlist" | "map" | "stats" | "community";
+  activeTab:         "visited"|"wishlist"|"map"|"stats"|"community";
   headerProps?:      Record<string, any>;
   filterBar?:        React.ReactNode;
   noPad?:            boolean;
@@ -27,8 +25,9 @@ export function AppShell({ children, activeTab, headerProps, filterBar, noPad, f
   useStats();
 
   const { animClass, onAnimationEnd } = useTabAnim();
+  const { myUid } = useAuthStore();
 
-  // main 스크롤 감지 → Header(scrolled) + page.tsx(onScrolledChange) 양쪽에 전달
+  /* ── 스크롤 감지 ── */
   const [scrolled, setScrolled] = useState(false);
   const handleScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
     const next = (e.currentTarget as HTMLElement).scrollTop > 40;
@@ -36,27 +35,57 @@ export function AppShell({ children, activeTab, headerProps, filterBar, noPad, f
     onScrolledChange?.(next);
   }, [onScrolledChange]);
 
+  /* ── 알림 센터 상태 ── */
+  const [bellOpen, setBellOpen] = useState(false);
+
+  /* ── 활동 알림 unread (Firestore 실시간) ── */
+  const [activityUnread, setActivityUnread] = useState(0);
+
+  useEffect(() => {
+    if (!myUid) return;
+    const q = query(collection(db,"notifications"), where("uid","==",myUid), where("read","==",false));
+    const unsub = onSnapshot(q, (snap) => setActivityUnread(snap.size));
+    return unsub;
+  }, [myUid]);
+
+  /* ── 공지·이벤트 뱃지 (NotificationDrawer → 콜백) ── */
+  const [annBadges, setAnnBadges] = useState<NotifBadges>({ activity:false, notice:false, event:false });
+  const handleBadges = useCallback((b: NotifBadges) => setAnnBadges(b), []);
+
+  /* 헤더 벨 dot: 활동 알림 unread OR 공지/이벤트 미확인 */
+  const totalUnread = activityUnread + (annBadges.notice?1:0) + (annBadges.event?1:0);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, maxWidth: 480, width: "100%", margin: "0 auto", background: "var(--color-bg)", overflow: "hidden", position: "relative" }}>
+    <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, maxWidth:480, width:"100%", margin:"0 auto", background:"var(--color-bg)", overflow:"hidden", position:"relative" }}>
 
-      {/* 헤더 — 항상 동일한 높이, 필터 바 미포함 */}
-      <Header activeTab={activeTab} scrolled={scrolled} {...(headerProps ?? {})} />
+      <Header
+        activeTab={activeTab}
+        scrolled={scrolled}
+        unreadCount={totalUnread}
+        onBell={() => setBellOpen(true)}
+        {...(headerProps ?? {})}
+      />
 
-      {/* 필터 바 slot — Header와 main 사이 (다녀온 곳 탭에서만 page.tsx가 채움) */}
       {filterBar}
 
       <main
         className={animClass}
         onAnimationEnd={onAnimationEnd}
         onScroll={handleScroll}
-        style={{ flex: 1, minHeight: 0, overflowY: noPad ? "hidden" : "auto", overflowX: "hidden", paddingBottom: noPad ? 0 : 80, display: noPad ? "flex" : "block", flexDirection: noPad ? "column" : undefined, WebkitOverflowScrolling: "touch" as any }}
+        style={{ flex:1, minHeight:0, overflowY:noPad?"hidden":"auto", overflowX:"hidden", paddingBottom:noPad?0:80, display:noPad?"flex":"block", flexDirection:noPad?"column":undefined, WebkitOverflowScrolling:"touch" as any }}
       >
         {children}
       </main>
 
       {fab}
 
-      <BottomNav activeTab={activeTab} />
+      <BottomNav activeTab={activeTab}/>
+
+      <NotificationDrawer
+        open={bellOpen}
+        onClose={() => setBellOpen(false)}
+        onBadges={handleBadges}
+      />
     </div>
   );
 }
