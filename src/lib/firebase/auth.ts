@@ -110,19 +110,34 @@ export async function fetchUser(uid: string): Promise<AppUser | null> {
 }
 
 // ★ 특정 유저의 기존 기록(visited/wishlist)에 coupleId 일괄 업데이트
+// coupleId가 "" (빈 문자열) 또는 null인 기록 모두 처리
 async function backfillCoupleId(uid: string, coupleId: string): Promise<void> {
   const batch = writeBatch(db);
   let   count = 0;
 
-  const visitedSnap = await getDocs(
+  // visited — coupleId: "" 인 기록
+  const visitedEmptySnap = await getDocs(
     query(collection(db, "visited"), where("authorUid", "==", uid), where("coupleId", "==", ""))
   );
-  visitedSnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
+  visitedEmptySnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
 
-  const wishSnap = await getDocs(
+  // visited — coupleId: null 인 기록
+  const visitedNullSnap = await getDocs(
+    query(collection(db, "visited"), where("authorUid", "==", uid), where("coupleId", "==", null))
+  );
+  visitedNullSnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
+
+  // wishlist — coupleId: "" 인 기록
+  const wishEmptySnap = await getDocs(
     query(collection(db, "wishlist"), where("addedByUid", "==", uid), where("coupleId", "==", ""))
   );
-  wishSnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
+  wishEmptySnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
+
+  // wishlist — coupleId: null 인 기록
+  const wishNullSnap = await getDocs(
+    query(collection(db, "wishlist"), where("addedByUid", "==", uid), where("coupleId", "==", null))
+  );
+  wishNullSnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
 
   if (count > 0) await batch.commit();
 }

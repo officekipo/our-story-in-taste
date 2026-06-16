@@ -25,18 +25,6 @@ const PUBLIC_PATHS = [
 const isStartDateUnset = (d: string | null | undefined) =>
   !d || d.trim() === "";
 
-// ★ 프로필 팝업 완료 후 재노출 방지용 sessionStorage 키
-//   - sessionStorage: 탭 닫으면 초기화 (앱 재시작 시 재확인)
-//   - 저장된 uid와 현재 uid가 일치할 때만 억제 (다른 계정 로그인 시 다시 노출)
-const PROFILE_DONE_KEY = "ourtaste_profile_done";
-
-function getProfileDoneUid(): string | null {
-  try { return sessionStorage.getItem(PROFILE_DONE_KEY); } catch { return null; }
-}
-function setProfileDoneUid(uid: string): void {
-  try { sessionStorage.setItem(PROFILE_DONE_KEY, uid); } catch {}
-}
-
 // ── 프로필 초기 설정 팝업 ──────────────────────────────────
 function ProfileSetupPopup({ onComplete }: { onComplete: () => void }) {
   const { myUid, myName, setAuth } = useAuthStore();
@@ -67,17 +55,19 @@ function ProfileSetupPopup({ onComplete }: { onComplete: () => void }) {
       const { getApp } = await import("firebase/app");
       const db = getFirestore(getApp());
       const finalDate = date.trim() || today;
+
+      // ★ profileCompleted: true 를 함께 저장
+      //   → Firestore users 문서에 플래그 기록
+      //   → authStore onSnapshot이 자동으로 profileCompleted: true 로 업데이트
+      //   → PWA 재실행·기기 교체에도 팝업 재노출 없음
       await updateDoc(doc(db, "users", myUid), {
-        name:      name.trim(),
-        startDate: finalDate,
+        name:             name.trim(),
+        startDate:        finalDate,
+        profileCompleted: true,
       });
 
-      // ★ store 즉시 반영
-      setAuth({ myName: name.trim(), startDate: finalDate });
-
-      // ★ 팝업 완료 플래그를 sessionStorage에 저장
-      //   → AuthGuard의 useEffect가 재실행되더라도 팝업이 다시 열리지 않음
-      setProfileDoneUid(myUid);
+      // ★ store 즉시 반영 (onSnapshot 도착 전 UI 즉시 닫기)
+      setAuth({ myName: name.trim(), startDate: finalDate, profileCompleted: true });
 
       onComplete();
     } catch (e) {
@@ -411,7 +401,7 @@ function FCMInitializer() {
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
   const pathname = usePathname();
-  const { initialized, myUid, emailVerified, myName, startDate } = useAuthStore();
+  const { initialized, myUid, emailVerified, myName, startDate, profileCompleted } = useAuthStore();
 
   const [mounted, setMounted]                   = useState(false);
   const [showProfilePopup, setShowProfilePopup] = useState(false);
@@ -439,11 +429,13 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
     if (isPublic) return;
 
-    // ★ 이미 이 세션에서 완료한 계정이면 팝업 억제
-    //   - 팝업 저장 완료 시 setProfileDoneUid(myUid) 호출됨
-    //   - onAuthStateChanged 재실행으로 store가 일시적으로 빈 값이 되더라도
-    //     sessionStorage 플래그가 있으면 팝업을 열지 않음
-    if (getProfileDoneUid() === myUid) return;
+    // ★ Firestore profileCompleted: true 이면 팝업 억제
+    //   - PWA 재실행, 기기 교체, 브라우저 캐시 삭제에도 유지됨
+    //   - authStore가 users 문서를 실시간 구독하므로 별도 읽기 없음
+    if (profileCompleted) {
+      setShowProfilePopup(false);
+      return;
+    }
 
     const needsName      = !myName || myName.trim() === "";
     const needsStartDate = isStartDateUnset(startDate);
@@ -451,12 +443,18 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     if (needsName || needsStartDate) {
       setShowProfilePopup(true);
     } else {
-      // 값이 채워진 계정은 팝업 불필요 → 플래그 선제 저장
-      // (설정 페이지에서 이미 값을 입력한 기존 유저 등)
-      setProfileDoneUid(myUid);
+      // 닉네임·시작일이 이미 채워진 기존 유저
+      // → Firestore에 profileCompleted: true 선제 저장 (다음 재실행부터 팝업 없음)
+      import("firebase/firestore").then(({ doc: fsDoc, updateDoc, getFirestore }) => {
+        import("firebase/app").then(({ getApp }) => {
+          updateDoc(fsDoc(getFirestore(getApp()), "users", myUid), {
+            profileCompleted: true,
+          }).catch(() => {});
+        });
+      });
       setShowProfilePopup(false);
     }
-  }, [mounted, initialized, myUid, emailVerified, profileReady, myName, startDate, pathname]);
+  }, [mounted, initialized, myUid, emailVerified, profileReady, profileCompleted, myName, startDate, pathname]);
 
   useEffect(() => {
     if (!mounted || !initialized) return;

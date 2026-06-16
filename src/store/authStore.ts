@@ -10,6 +10,9 @@
 //      - userSnap 없을 때 1.5초 대기 후 재시도
 //    ★ 닉네임 20자 truncate
 //      - 구글 displayName이 20자 초과 시 앞 20자만 저장
+//    ★ profileCompleted Firestore 필드 추가
+//      - sessionStorage 대신 Firestore users 문서의 profileCompleted 필드로 팝업 억제
+//      - PWA 재실행·기기 교체에도 팝업 재노출 없음
 import { create }                          from "zustand";
 import { onAuthStateChanged }              from "firebase/auth";
 import { doc, getDoc, onSnapshot }         from "firebase/firestore";
@@ -27,6 +30,8 @@ interface AuthState {
   profileImgUrl:        string | null;
   fcmToken:             string | null;
   emailVerified:        boolean;
+  // ★ 프로필 완성 여부 (Firestore users 문서의 profileCompleted 필드)
+  profileCompleted:     boolean;
 
   setAuth:                 (data: Partial<Omit<AuthState, "setAuth" | "setProfileImgUrl" | "setPartnerProfileImgUrl" | "setCoupleId" | "setStartDate" | "setFcmToken" | "setEmailVerified" | "reset">>) => void;
   setProfileImgUrl:        (url: string) => void;
@@ -50,6 +55,7 @@ const initialState = {
   profileImgUrl:        null,
   fcmToken:             null,
   emailVerified:        false,
+  profileCompleted:     false,
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -170,13 +176,16 @@ export function setupAuthListener(): () => void {
       const myName  = truncateName(rawName);
 
       useAuthStore.getState().setAuth({
-        myUid:         user.uid,
+        myUid:            user.uid,
         myName,
-        coupleId:      newCoupleId,
-        role:          userData.role          ?? "user",
-        profileImgUrl: userData.profileImgUrl ?? user.photoURL ?? null,
-        initialized:   true,
-        emailVerified: user.emailVerified,
+        coupleId:         newCoupleId,
+        role:             userData.role             ?? "user",
+        profileImgUrl:    userData.profileImgUrl    ?? user.photoURL ?? null,
+        initialized:      true,
+        emailVerified:    user.emailVerified,
+        // ★ Firestore의 profileCompleted 필드를 store에 반영
+        //   없는 필드면 false (기존 가입자도 팝업이 한 번 뜬 후 저장됨)
+        profileCompleted: userData.profileCompleted ?? false,
       });
     }, (err) => {
       console.error("setupAuthListener userSnap error:", err);
