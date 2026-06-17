@@ -5,16 +5,26 @@
 //    - remove(): imgUrls 파라미터 추가
 //      → Firebase Storage URL만 필터링해서 이미지 삭제
 //      → useVisited.ts 와 동일한 패턴 적용
+//    - ★★ addedByUid 구독 + coupleId 구독을 동시에 켜서 합치는 방식으로 변경
+//      → 내가 추가한 위시는 커플 연동/해제와 무관하게 항상 표시
+//      → 커플의 위시는 연동 중일 때만 추가로 표시
+//      → 두 결과는 id 기준으로 합치고 중복 제거
+//      (이전: coupleId 없으면 구독 자체를 시작하지 않아 위시리스트가
+//             통째로 안 보이던 문제 + 연동 해제 시 본인 위시까지 사라지던 버그 수정)
+//    - ★ initialized 체크 추가 — Auth 확정 전 구독 시작 방지
 // ============================================================
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  collection, query, where, orderBy, onSnapshot,
-  addDoc, updateDoc, deleteDoc, doc,
+  collection, addDoc, updateDoc, deleteDoc, doc,
 } from "firebase/firestore";
 import { db }            from "@/lib/firebase/config";
-import { deleteImages }  from "@/lib/firebase/storage";   // ★ 추가
+import {
+  subscribeWishlist,
+  subscribeWishlistByAuthor,
+} from "@/lib/firebase/firestore";
+import { deleteImages }  from "@/lib/firebase/storage";
 import { useAuthStore }  from "@/store/authStore";
 import type { WishRecord } from "@/types";
 
@@ -26,26 +36,65 @@ interface AddWishInput {
 }
 
 export function useWishlist() {
-  const { coupleId, myUid, myName } = useAuthStore();
-  const [records, setRecords] = useState<WishRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { coupleId, myUid, myName, initialized } = useAuthStore();
 
+  // ★ 내가 추가한 위시(addedByUid 기준) — 커플 연동 여부와 무관하게 항상 구독
+  const [authorRecords, setAuthorRecords] = useState<WishRecord[]>([]);
+  const [authorLoaded, setAuthorLoaded]   = useState(false);
+
+  // ★ 커플 위시(coupleId 기준) — coupleId 있을 때만 구독
+  const [coupleRecords, setCoupleRecords] = useState<WishRecord[]>([]);
+  const [coupleLoaded, setCoupleLoaded]   = useState(false);
+
+  // 내 위시 구독 (로그인 상태 + Auth 초기화 완료 시에만)
   useEffect(() => {
-    if (!coupleId) { setLoading(false); return; }
+    // ★ Auth 초기화 완료 전에는 구독 시작하지 않음
+    if (!initialized) return;
 
-    // createdAt desc → 새 글 항상 맨 위
-    // Firestore 인덱스: wishlist / coupleId(asc) + createdAt(desc)
-    const q = query(
-      collection(db, "wishlist"),
-      where("coupleId", "==", coupleId),
-      orderBy("createdAt", "desc")
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WishRecord)));
-      setLoading(false);
+    if (!myUid) {
+      setAuthorRecords([]);
+      setAuthorLoaded(true);
+      return;
+    }
+
+    setAuthorLoaded(false);
+    const unsub = subscribeWishlistByAuthor(myUid, (data) => {
+      setAuthorRecords(data);
+      setAuthorLoaded(true);
     });
     return () => unsub();
-  }, [coupleId]);
+  }, [initialized, myUid]);
+
+  // 커플 위시 구독 (coupleId 있을 때만)
+  useEffect(() => {
+    if (!initialized) return;
+
+    if (!coupleId) {
+      setCoupleRecords([]);
+      setCoupleLoaded(true);
+      return;
+    }
+
+    setCoupleLoaded(false);
+    const unsub = subscribeWishlist(coupleId, (data) => {
+      setCoupleRecords(data);
+      setCoupleLoaded(true);
+    });
+    return () => unsub();
+  }, [initialized, coupleId]);
+
+  // ★ 두 구독 결과를 id 기준으로 합침 (addedDate desc 기준 정렬)
+  const records = useMemo(() => {
+    const map = new Map<string, WishRecord>();
+    coupleRecords.forEach((r) => map.set(r.id, r));
+    authorRecords.forEach((r) => map.set(r.id, r));
+    return Array.from(map.values()).sort((a, b) => b.addedDate.localeCompare(a.addedDate));
+  }, [authorRecords, coupleRecords]);
+
+  const loading =
+    !initialized ||
+    !authorLoaded ||
+    (!!coupleId && !coupleLoaded);
 
   const add = async (input: AddWishInput) => {
     if (!coupleId || !myUid || !myName) throw new Error("로그인/커플 연동 확인");

@@ -180,6 +180,22 @@ export function subscribeWishlist(
   });
 }
 
+// ★ addedByUid 기준 구독 — 커플 연동 여부와 무관하게 "내가 추가한" 위시 항상 표시
+//   Firestore 인덱스 필요: wishlist / addedByUid(asc) + createdAt(desc)
+export function subscribeWishlistByAuthor(
+  addedByUid: string,
+  callback: (records: WishRecord[]) => void
+): Unsubscribe {
+  const q = query(
+    collection(db, "wishlist"),
+    where("addedByUid", "==", addedByUid),
+    orderBy("createdAt", "desc")
+  );
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WishRecord)));
+  });
+}
+
 // ══════════════════════════════════════════════════════════
 //  COMMUNITY
 // ══════════════════════════════════════════════════════════
