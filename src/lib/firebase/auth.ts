@@ -287,9 +287,28 @@ export async function disconnectCouple(
   }
   await userBatch.commit();
 
-  await Promise.allSettled(
+  const deleteResults = await Promise.allSettled(
     deletedCoupleIds.map((cid) => deleteDoc(doc(db, "couples", cid)))
   );
+
+  // ★ 삭제 실패를 더 이상 조용히 삼키지 않음 — 원인 진단 + 사용자에게 알림
+  const failed = deleteResults
+    .map((r, i) => ({ r, cid: deletedCoupleIds[i] }))
+    .filter(({ r }) => r.status === "rejected");
+
+  if (failed.length > 0) {
+    failed.forEach(({ r, cid }) => {
+      console.error(
+        `[disconnectCouple] couples/${cid} 삭제 실패:`,
+        (r as PromiseRejectedResult).reason,
+      );
+    });
+    // users.coupleId는 이미 null로 갱신됐으므로 앱 사용에는 문제 없지만,
+    // couples 문서가 남아있다는 사실은 호출 쪽(UI)에 알려서 재연동 시 충돌을 예방
+    throw new Error(
+      "연동은 해제됐지만 일부 정리 작업에 실패했어요. 같은 코드로 재연동이 안 되면 문의해주세요."
+    );
+  }
 }
 
 /* ── 커플 정보 조회 ── */
