@@ -212,11 +212,19 @@ export async function joinCouple(
   return newCoupleId;
 }
 
+// ★ 연동 해제 결과 — users.coupleId 갱신(핵심 동작)과
+//   couples 문서 삭제(뒷정리)를 분리해서 보고
+//   (뒷정리 실패는 더 이상 throw로 처리하지 않음 — UI에서 재시도 배너로 안내)
+export interface DisconnectResult {
+  success: boolean;          // 뒷정리(couples 문서 삭제)까지 모두 성공했는지
+  staleCoupleIds: string[];  // 삭제 실패해서 남아있는 couples 문서 id 목록
+}
+
 /* ── 커플 연동 해제 ── */
 export async function disconnectCouple(
   myUid: string,
   coupleId: string,
-): Promise<void> {
+): Promise<DisconnectResult> {
   const myUserSnap = await getDocFromServer(doc(db, "users", myUid));
   const myActualCoupleId: string | null = myUserSnap.exists()
     ? (myUserSnap.data().coupleId ?? null)
@@ -264,26 +272,81 @@ export async function disconnectCouple(
   );
   // ★ v3: 위 deleteDoc()들이 트리거하는 Cloud Functions의
   //   onCoupleDisconnected가 각 coupleId로 된 visited/wishlist 글을
-  //   coupleId: "" 로 자동 초기화함
+  //   coupleId: "" 로 자동 초기화함 — deleteDoc 자체가 실패하면
+  //   이 트리거가 발생하지 않아 글의 coupleId가 그대로 남지만,
+  //   useVisited()가 coupleId 없을 때 authorUid 기준 fallback 구독을 하므로
+  //   화면 표시에는 지장 없음 (정리는 재시도로 마무리)
 
-  // ★ 삭제 실패를 더 이상 조용히 삼키지 않음 — 원인 진단 + 사용자에게 알림
-  const failed = deleteResults
-    .map((r, i) => ({ r, cid: deletedCoupleIds[i] }))
-    .filter(({ r }) => r.status === "rejected");
-
-  if (failed.length > 0) {
-    failed.forEach(({ r, cid }) => {
+  // ★ 삭제 실패를 더 이상 조용히 삼키지 않음 — 원인 로깅 + 호출 쪽에 결과 전달
+  const staleCoupleIds: string[] = [];
+  deleteResults.forEach((r, i) => {
+    if (r.status === "rejected") {
+      staleCoupleIds.push(deletedCoupleIds[i]);
       console.error(
-        `[disconnectCouple] couples/${cid} 삭제 실패:`,
+        `[disconnectCouple] couples/${deletedCoupleIds[i]} 삭제 실패:`,
         (r as PromiseRejectedResult).reason,
       );
-    });
-    // users.coupleId는 이미 null로 갱신됐으므로 앱 사용에는 문제 없지만,
-    // couples 문서가 남아있다는 사실은 호출 쪽(UI)에 알려서 재연동 시 충돌을 예방
-    throw new Error(
-      "연동은 해제됐지만 일부 정리 작업에 실패했어요. 같은 코드로 재연동이 안 되면 문의해주세요."
-    );
-  }
+    }
+  });
+
+  // users.coupleId는 이미 null로 갱신됐으므로 연동 해제 자체는 성공.
+  // couples 문서 정리만 실패했다면 staleCoupleIds로 알려서 UI에서 재시도 버튼 노출
+  return { success: staleCoupleIds.length === 0, staleCoupleIds };
+}
+
+/* ── 정리 안 된 couples 문서 조회 (읽기 전용 헬퍼) ──
+   현재 실제로 연동 중인 코드(myCurrentCoupleId)는 절대 건드리지 않음 */
+async function findOrphanCoupleIds(myUid: string): Promise<string[]> {
+  const mySnap = await getDocFromServer(doc(db, "users", myUid));
+  const myCurrentCoupleId: string | null = mySnap.exists()
+    ? (mySnap.data().coupleId ?? null)
+    : null;
+
+  const [asUser1Snap, asUser2Snap] = await Promise.all([
+    getDocs(query(collection(db, "couples"), where("user1Uid", "==", myUid))),
+    getDocs(query(collection(db, "couples"), where("user2Uid", "==", myUid))),
+  ]);
+
+  return Array.from(new Set([
+    ...asUser1Snap.docs.map((d) => d.id),
+    ...asUser2Snap.docs.map((d) => d.id),
+  ])).filter((id) => id !== myCurrentCoupleId);
+}
+
+/* ── 정리 안 된 couples 문서가 있는지 확인 (UI 배너 표시 여부 판단용) ── */
+export async function hasOrphanCouples(myUid: string): Promise<boolean> {
+  const ids = await findOrphanCoupleIds(myUid);
+  return ids.length > 0;
+}
+
+/* ── 연동 해제 후 남은 couples 문서 정리 재시도 ── */
+// disconnectCouple()의 couples 문서 삭제가 실패했을 때 다시 시도하는 용도.
+// 삭제할 id를 따로 저장해두지 않고, findOrphanCoupleIds로 다시 조회해서 처리
+// — 단, 지금 실제로 연동 중인 코드는 건드리지 않음.
+// ★ v3: 삭제가 성공하면 Cloud Functions의 onCoupleDisconnected가
+//   해당 coupleId의 visited/wishlist를 자동으로 coupleId:"" 처리함
+export async function retryCleanupOrphanCouples(
+  myUid: string,
+): Promise<{ cleaned: number; stillFailed: string[] }> {
+  const candidateIds = await findOrphanCoupleIds(myUid);
+  if (candidateIds.length === 0) return { cleaned: 0, stillFailed: [] };
+
+  const results = await Promise.allSettled(
+    candidateIds.map((cid) => deleteDoc(doc(db, "couples", cid)))
+  );
+
+  const stillFailed: string[] = [];
+  results.forEach((r, i) => {
+    if (r.status === "rejected") {
+      stillFailed.push(candidateIds[i]);
+      console.error(
+        `[retryCleanupOrphanCouples] couples/${candidateIds[i]} 삭제 재시도 실패:`,
+        (r as PromiseRejectedResult).reason,
+      );
+    }
+  });
+
+  return { cleaned: candidateIds.length - stillFailed.length, stillFailed };
 }
 
 /* ── 커플 정보 조회 ── */

@@ -4,12 +4,18 @@
 //  수정사항:
 //    ★ 파트너 이름 말줄임 — 파트너 정보 카드 및 팝업에서
 //      10자 초과 시 "…" 처리 (긴 구글 계정 이름 레이아웃 방지)
+//    ★ 연동 해제 시 couples 문서 삭제가 실패해도 더 이상 조용히 넘어가지 않음
+//      → 미연동 화면에 "정리 안 된 연동 코드" 배너 + 재시도 버튼 추가
+//      → 코드 생성/입력 시도 직전에도 자동(best-effort)으로 한 번 더 정리 시도
 // ============================================================
 "use client";
 
 import { useState, useEffect }              from "react";
 import { useRouter }                        from "next/navigation";
-import { createCouple, joinCouple, disconnectCouple } from "@/lib/firebase/auth";
+import {
+  createCouple, joinCouple, disconnectCouple,
+  hasOrphanCouples, retryCleanupOrphanCouples,
+} from "@/lib/firebase/auth";
 import { useAuthStore }                     from "@/store/authStore";
 import { calcDDay }                         from "@/lib/utils/date";
 
@@ -21,6 +27,9 @@ const MUTED   = "#8A8078";
 const BORDER  = "#E2DDD8";
 const WARM    = "#FAF7F3";
 const RED     = "#EF4444";
+const AMBER        = "#856404";
+const AMBER_BG     = "#FFF3CD";
+const AMBER_BORDER = "#FFE69C";
 
 // ★ 이름 말줄임 헬퍼
 function tn(name: string, max = 10): string {
@@ -128,6 +137,25 @@ function DisconnectConfirmPopup({ partnerName, onConfirm, onClose, loading }: {
   );
 }
 
+// ★ 신규 — 정리 안 된 연동 코드(couples 문서)가 남아있을 때 보여주는 배너 + 재시도 버튼
+function OrphanCleanupBanner({ cleaning, onRetry }: { cleaning: boolean; onRetry: () => void }) {
+  return (
+    <div style={{ background:AMBER_BG, border:`1px solid ${AMBER_BORDER}`, borderRadius:12, padding:"12px 14px", marginBottom:20, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+      <p style={{ fontSize:12, color:AMBER, lineHeight:1.5 }}>
+        ⚠️ 이전 연동 해제가 완전히 정리되지 않았어요.
+      </p>
+      <button
+        onClick={onRetry}
+        disabled={cleaning}
+        className="tap"
+        style={{ padding:"6px 12px", background:"#fff", border:`1px solid ${AMBER}`, borderRadius:8, color:AMBER, fontSize:12, fontWeight:700, cursor:cleaning?"default":"pointer", fontFamily:"inherit", whiteSpace:"nowrap", flexShrink:0 }}
+      >
+        {cleaning ? "정리 중…" : "다시 정리"}
+      </button>
+    </div>
+  );
+}
+
 export default function CouplePage() {
   const router = useRouter();
   const {
@@ -147,11 +175,23 @@ export default function CouplePage() {
   const [showDisconnectPopup, setShowDisconnectPopup] = useState(false);
   const [disconnecting,       setDisconnecting]       = useState(false);
 
+  // ★ 신규 — 정리 안 된(orphan) couples 문서 존재 여부 + 재시도 로딩 상태
+  const [showCleanupBanner, setShowCleanupBanner] = useState(false);
+  const [cleaning,          setCleaning]          = useState(false);
+
   useEffect(() => {
     if (status === "idle" || status === "loading") return;
     const t = setTimeout(() => setStatus("idle"), 3000);
     return () => clearTimeout(t);
   }, [status]);
+
+  // ★ 신규 — 미연동 상태로 들어올 때마다(연동 해제 직후 포함) 정리 안 된 코드가 남아있는지 확인
+  useEffect(() => {
+    if (!initialized || coupleId || !myUid) return;
+    hasOrphanCouples(myUid)
+      .then(setShowCleanupBanner)
+      .catch(() => {}); // 확인 자체가 실패해도 배너만 안 보일 뿐 — 재연동 자체는 그대로 가능
+  }, [initialized, coupleId, myUid]);
 
   const showStatus = (s: Status, msg: string) => { setStatus(s); setStatusMsg(msg); };
 
@@ -162,9 +202,30 @@ export default function CouplePage() {
     outline:"none", boxSizing:"border-box",
   };
 
+  // ★ 신규 — 배너의 "다시 정리" 버튼
+  const handleRetryCleanup = async () => {
+    if (!myUid) return;
+    setCleaning(true);
+    try {
+      const { cleaned, stillFailed } = await retryCleanupOrphanCouples(myUid);
+      if (stillFailed.length === 0) {
+        setShowCleanupBanner(false);
+        showStatus("success", cleaned > 0 ? "정리가 완료됐어요. 이제 다시 연동할 수 있어요." : "정리할 항목이 없어요.");
+      } else {
+        showStatus("error", "아직 정리가 안 됐어요. 잠시 후 다시 시도해주세요.");
+      }
+    } catch (e: any) {
+      showStatus("error", e.message ?? "정리에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   const handleCreate = async () => {
     if (!sDate) { showStatus("empty", "교제 시작일을 선택해주세요."); return; }
     setStatus("loading");
+    // ★ 새 코드를 만들기 전에 이전 정리 실패분을 조용히 한 번 더 시도 (best-effort)
+    await retryCleanupOrphanCouples(myUid).catch(() => {});
     try {
       const { coupleId: id, inviteCode: code } = await createCouple(myUid, sDate);
       setCoupleId(id);
@@ -182,6 +243,8 @@ export default function CouplePage() {
     if (!code)                              { showStatus("empty",   "초대 코드를 입력해주세요."); return; }
     if (!/^TASTE-[A-Z0-9]{6}$/.test(code)) { showStatus("invalid", "코드 형식이 맞지 않아요. (TASTE-XXXXXX)"); return; }
     setStatus("loading");
+    // ★ 연동 시도 전에 이전 정리 실패분을 조용히 한 번 더 시도 (best-effort)
+    await retryCleanupOrphanCouples(myUid).catch(() => {});
     try {
       const id = await joinCouple(code, myUid);
       setCoupleId(id);
@@ -200,10 +263,18 @@ export default function CouplePage() {
     if (!coupleId) return;
     setDisconnecting(true);
     try {
-      await disconnectCouple(myUid, coupleId);
+      const { success, staleCoupleIds } = await disconnectCouple(myUid, coupleId);
+      // users.coupleId는 항상 null로 갱신됐으므로 연동 해제 자체는 성공
       setAuth({ coupleId: null, partnerName: "", partnerProfileImgUrl: null, startDate: "" });
       setShowDisconnectPopup(false);
-      showStatus("success", "커플 연동이 해제됐어요.");
+
+      if (success) {
+        showStatus("success", "커플 연동이 해제됐어요.");
+      } else {
+        // couples 문서 정리만 실패한 경우 — 배너로 안내, 재시도 버튼 노출
+        setShowCleanupBanner(true);
+        showStatus("success", `연동은 해제됐어요. (정리가 덜 됐어요 — ${staleCoupleIds.length}건, 아래에서 다시 시도할 수 있어요)`);
+      }
     } catch (e: any) {
       showStatus("error", e.message ?? "연동 해제에 실패했어요.");
       setShowDisconnectPopup(false);
@@ -293,7 +364,12 @@ export default function CouplePage() {
   return (
     <div>
       <h2 style={{ fontSize:20, fontWeight:700, color:INK, marginBottom:6 }}>커플 연동</h2>
-      <p style={{ fontSize:13, color:MUTED, marginBottom:24 }}>파트너와 연동해야 함께 기록을 볼 수 있어요 💑</p>
+      <p style={{ fontSize:13, color:MUTED, marginBottom:20 }}>파트너와 연동해야 함께 기록을 볼 수 있어요 💑</p>
+
+      {/* ★ 신규 — 이전 연동 해제가 덜 정리됐을 때 표시되는 배너 */}
+      {showCleanupBanner && (
+        <OrphanCleanupBanner cleaning={cleaning} onRetry={handleRetryCleanup} />
+      )}
 
       <div style={{ display:"flex", background:WARM, borderRadius:12, padding:3, border:`1px solid ${BORDER}`, marginBottom:24 }}>
         {(["create","join"] as const).map(m => (
