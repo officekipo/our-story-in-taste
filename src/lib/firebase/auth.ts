@@ -109,38 +109,10 @@ export async function fetchUser(uid: string): Promise<AppUser | null> {
   return snap.data() as AppUser;
 }
 
-// ★ 특정 유저의 기존 기록(visited/wishlist)에 coupleId 일괄 업데이트
-// coupleId가 "" (빈 문자열) 또는 null인 기록 모두 처리
-async function backfillCoupleId(uid: string, coupleId: string): Promise<void> {
-  const batch = writeBatch(db);
-  let   count = 0;
-
-  // visited — coupleId: "" 인 기록
-  const visitedEmptySnap = await getDocs(
-    query(collection(db, "visited"), where("authorUid", "==", uid), where("coupleId", "==", ""))
-  );
-  visitedEmptySnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
-
-  // visited — coupleId: null 인 기록
-  const visitedNullSnap = await getDocs(
-    query(collection(db, "visited"), where("authorUid", "==", uid), where("coupleId", "==", null))
-  );
-  visitedNullSnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
-
-  // wishlist — coupleId: "" 인 기록
-  const wishEmptySnap = await getDocs(
-    query(collection(db, "wishlist"), where("addedByUid", "==", uid), where("coupleId", "==", ""))
-  );
-  wishEmptySnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
-
-  // wishlist — coupleId: null 인 기록
-  const wishNullSnap = await getDocs(
-    query(collection(db, "wishlist"), where("addedByUid", "==", uid), where("coupleId", "==", null))
-  );
-  wishNullSnap.docs.forEach((d) => { batch.update(d.ref, { coupleId }); count++; });
-
-  if (count > 0) await batch.commit();
-}
+// ★ v3: backfillCoupleId()는 제거됨
+//   → Cloud Functions의 onCoupleJoined / onCoupleDisconnected가 대체
+//   (이유: 보안 규칙상 cross-user 쓰기가 막히고, ""/null만 매칭해
+//    과거 연동의 stale한 coupleId를 못 잡는 문제가 있었음 — Admin SDK로 해결)
 
 /* ── 커플 방 생성 (초대 코드 발급) ── */
 export async function createCouple(
@@ -179,7 +151,8 @@ export async function createCouple(
     createdAt:  serverTimestamp(),
   });
   await updateDoc(doc(db, "users", myUid), { coupleId });
-  await backfillCoupleId(myUid, coupleId).catch(() => {});
+  // ★ v3: backfillCoupleId 호출 제거 — user2Uid가 채워질 때
+  //   Cloud Functions의 onCoupleJoined가 양쪽 글을 일괄 재할당함
 
   return { coupleId, inviteCode };
 }
@@ -231,11 +204,10 @@ export async function joinCouple(
 
   await updateDoc(coupleDoc.ref,           { user2Uid: myUid });
   await updateDoc(doc(db, "users", myUid), { coupleId: newCoupleId });
-
-  await Promise.all([
-    backfillCoupleId(myUid,               newCoupleId).catch(() => {}),
-    backfillCoupleId(coupleData.user1Uid, newCoupleId).catch(() => {}),
-  ]);
+  // ★ v3: backfillCoupleId 호출 제거 — 위에서 user2Uid가 null → myUid로
+  //   바뀌는 순간 Cloud Functions의 onCoupleJoined가 트리거되어
+  //   양쪽(user1Uid + myUid)의 기존 글을 newCoupleId로 일괄 재할당함
+  //   (Admin SDK 사용 → cross-user 쓰기도 항상 성공, stale coupleId도 모두 잡음)
 
   return newCoupleId;
 }
@@ -290,6 +262,9 @@ export async function disconnectCouple(
   const deleteResults = await Promise.allSettled(
     deletedCoupleIds.map((cid) => deleteDoc(doc(db, "couples", cid)))
   );
+  // ★ v3: 위 deleteDoc()들이 트리거하는 Cloud Functions의
+  //   onCoupleDisconnected가 각 coupleId로 된 visited/wishlist 글을
+  //   coupleId: "" 로 자동 초기화함
 
   // ★ 삭제 실패를 더 이상 조용히 삼키지 않음 — 원인 진단 + 사용자에게 알림
   const failed = deleteResults
