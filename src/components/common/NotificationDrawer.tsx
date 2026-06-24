@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { collection, query, where, orderBy, limit, startAfter, onSnapshot, writeBatch, doc, getDocs, QueryDocumentSnapshot } from "firebase/firestore";
+import { collection, query, where, orderBy, limit, startAfter, onSnapshot, writeBatch, doc, getDocs, QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useAuthStore } from "@/store/authStore";
 
@@ -98,7 +98,7 @@ export function NotificationDrawer({ open, onClose, onBadges }: Props) {
 
   const [notifHasMore,  setNotifHasMore]  = useState(false);
   const [notifLoadMore, setNotifLoadMore] = useState(false);
-  const [lastNotifDoc,  setLastNotifDoc]  = useState<QueryDocumentSnapshot|null>(null);
+  const [lastNotifDoc,  setLastNotifDoc]  = useState<QueryDocumentSnapshot<DocumentData>|null>(null);
 
   const toggleExpand = (id: string) =>
     setExpanded(prev => { const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
@@ -171,18 +171,18 @@ export function NotificationDrawer({ open, onClose, onBadges }: Props) {
     if (!myUid) return;
     try {
       // 500개씩 나눠서 배치 처리
-      let lastDoc: QueryDocumentSnapshot | null = null;
+      let lastDoc: QueryDocumentSnapshot<DocumentData> | null = null;
       while (true) {
-        const q: ReturnType<typeof query> = lastDoc
-          ? query(collection(db,"notifications"), where("uid","==",myUid), where("read","==",false), limit(500), startAfter(lastDoc))
-          : query(collection(db,"notifications"), where("uid","==",myUid), where("read","==",false), limit(500));
-        const snap = await getDocs(q);
+        const baseConstraints = [where("uid","==",myUid), where("read","==",false), limit(500)] as const;
+        const snap = lastDoc
+          ? await getDocs(query(collection(db,"notifications"), ...baseConstraints, startAfter(lastDoc)))
+          : await getDocs(query(collection(db,"notifications"), ...baseConstraints));
         if (snap.empty) break;
         const batch = writeBatch(db);
         snap.docs.forEach(d => batch.update(doc(db,"notifications",d.id), { read: true }));
         await batch.commit();
         if (snap.docs.length < 500) break;
-        lastDoc = snap.docs[snap.docs.length - 1];
+        lastDoc = snap.docs[snap.docs.length - 1] as QueryDocumentSnapshot<DocumentData>;
       }
     } catch (e) { console.warn("markAllRead error:", e); }
   }, [myUid]);
