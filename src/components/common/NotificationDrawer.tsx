@@ -173,7 +173,7 @@ export function NotificationDrawer({ open, onClose, onBadges }: Props) {
       // 500개씩 나눠서 배치 처리
       let lastDoc: QueryDocumentSnapshot | null = null;
       while (true) {
-        const q = lastDoc
+        const q: ReturnType<typeof query> = lastDoc
           ? query(collection(db,"notifications"), where("uid","==",myUid), where("read","==",false), limit(500), startAfter(lastDoc))
           : query(collection(db,"notifications"), where("uid","==",myUid), where("read","==",false), limit(500));
         const snap = await getDocs(q);
