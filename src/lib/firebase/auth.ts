@@ -193,6 +193,14 @@ export async function joinCouple(
   if (coupleData.user1Uid === myUid)
     throw new Error("본인이 만든 코드는 사용할 수 없습니다.");
 
+  // user1의 현재 coupleId가 이 문서와 일치하는지 확인 (stale 문서 필터링)
+  const u1Snap = await getDocFromServer(doc(db, "users", coupleData.user1Uid));
+  const u1CurrentCoupleId = u1Snap.exists() ? (u1Snap.data().coupleId ?? null) : null;
+  if (u1CurrentCoupleId !== newCoupleId) {
+    // user1이 이미 다른 커플로 연동됐거나 이 문서를 버린 경우 — stale 문서
+    throw new Error("유효하지 않은 초대 코드입니다. 다시 확인해주세요.");
+  }
+
   if (coupleData.user2Uid) {
     const u2Snap     = await getDocFromServer(doc(db, "users", coupleData.user2Uid));
     const u2CoupleId = u2Snap.exists() ? (u2Snap.data().coupleId ?? null) : null;

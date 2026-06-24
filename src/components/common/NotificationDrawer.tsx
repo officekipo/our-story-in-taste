@@ -208,28 +208,28 @@ export function NotificationDrawer({ open, onClose, onBadges }: Props) {
     markTabRead(t);
   }, [markTabRead]);
 
-  /* ★ 활동 알림이 로드된 직후에도 읽음 처리 (드로어 열린 상태에서 새 알림 수신 시) */
+  /* ★ 활동 알림이 처음 로드됐을 때 한 번만 읽음 처리
+       notifications를 의존성에 넣지 않아 onSnapshot 재발화 루프를 방지함 */
+  const hasMarkedRef = { current: false };
   useEffect(() => {
-    if (open && tab === "activity" && notifications.length > 0) {
+    if (!open) { hasMarkedRef.current = false; return; }
+    if (tab === "activity" && notifications.length > 0 && !hasMarkedRef.current) {
+      hasMarkedRef.current = true;
       markAllRead();
     }
-  }, [notifications]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const notices = useMemo(()=>announcements.filter(a=>a.type==="notice"), [announcements]);
   const events  = useMemo(()=>announcements.filter(a=>a.type==="event"&&isEventActive(a)), [announcements]);
 
-  /* ── onBadges: 드로어 닫혀있을 때만 뱃지 업데이트 (열려있으면 읽음처리 진행 중) ── */
+  /* ── onBadges: 뱃지 업데이트 ── */
   useEffect(() => {
     if (!onBadges) return;
-    if (open && tab === "activity") {
-      // 드로어가 열려있고 activity 탭이면 뱃지 즉시 제거
-      onBadges({ activity: false, notice: false, event: false });
-      return;
-    }
+    // 드로어가 열려 있으면 activity 뱃지는 항상 false (읽음 처리 중이므로 깜빡임 방지)
     const noticeLastRead = localStorage.getItem(LS_NOTICE_READ);
     const eventLastRead  = localStorage.getItem(LS_EVENT_READ);
     onBadges({
-      activity: !open ? notifications.some(n=>!n.read) : false,
+      activity: open ? false : notifications.some(n=>!n.read),
       notice:   notices.some(a=>!noticeLastRead||a.createdAt>noticeLastRead),
       event:    events.some(a=>!eventLastRead||a.createdAt>eventLastRead),
     });

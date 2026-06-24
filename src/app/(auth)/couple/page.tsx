@@ -348,7 +348,7 @@ function CouplePageInner() {
   return (
     <div>
       {/* ★ 뒤로가기 버튼 */}
-      <button onClick={() => router.push("/")} style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:"none", color:MUTED, fontSize:13, cursor:"pointer", fontFamily:"inherit", padding:"0 0 16px 0" }}>
+      <button onClick={() => router.replace("/")} style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:"none", color:MUTED, fontSize:13, cursor:"pointer", fontFamily:"inherit", padding:"0 0 16px 0" }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
         홈으로
       </button>
@@ -415,14 +415,14 @@ function CouplePageInner() {
         <CodeCreatedPopup
           inviteCode={inviteCode}
           onCopy={() => { navigator.clipboard.writeText(inviteCode); showStatus("success", "클립보드에 복사됐어요!"); }}
-          onClose={() => { setShowCodePopup(false); router.push("/"); }}
+          onClose={() => { setShowCodePopup(false); router.replace("/"); }}
         />
       )}
 
       {showSuccessPopup && (
         <CoupleSuccessPopup
           partnerName={partnerName || undefined}
-          onStart={() => { setShowSuccessPopup(false); router.push("/"); }}
+          onStart={() => { setShowSuccessPopup(false); router.replace("/"); }}
         />
       )}
     </div>
