@@ -134,6 +134,19 @@ export async function createCouple(
     }
   }
 
+  // ★ stale couples 문서(이전 해제 실패로 남은 문서) 정리 후 생성
+  //   user1Uid 또는 user2Uid가 myUid인 기존 문서가 있으면 삭제
+  try {
+    const [asUser1, asUser2] = await Promise.all([
+      getDocs(query(collection(db, "couples"), where("user1Uid", "==", myUid))),
+      getDocs(query(collection(db, "couples"), where("user2Uid", "==", myUid))),
+    ]);
+    const staleDocs = [...asUser1.docs, ...asUser2.docs];
+    if (staleDocs.length > 0) {
+      await Promise.allSettled(staleDocs.map(d => deleteDoc(d.ref)));
+    }
+  } catch (_) { /* 정리 실패해도 생성은 계속 진행 */ }
+
   const chars      = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let   randomPart = "";
   for (let i = 0; i < 6; i++) {
@@ -192,14 +205,6 @@ export async function joinCouple(
 
   if (coupleData.user1Uid === myUid)
     throw new Error("본인이 만든 코드는 사용할 수 없습니다.");
-
-  // user1의 현재 coupleId가 이 문서와 일치하는지 확인 (stale 문서 필터링)
-  const u1Snap = await getDocFromServer(doc(db, "users", coupleData.user1Uid));
-  const u1CurrentCoupleId = u1Snap.exists() ? (u1Snap.data().coupleId ?? null) : null;
-  if (u1CurrentCoupleId !== newCoupleId) {
-    // user1이 이미 다른 커플로 연동됐거나 이 문서를 버린 경우 — stale 문서
-    throw new Error("유효하지 않은 초대 코드입니다. 다시 확인해주세요.");
-  }
 
   if (coupleData.user2Uid) {
     const u2Snap     = await getDocFromServer(doc(db, "users", coupleData.user2Uid));

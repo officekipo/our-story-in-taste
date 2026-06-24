@@ -15,6 +15,7 @@ const PUBLIC_PATHS = [
   "/onboarding",
   "/login",
   "/signup",
+  "/couple",
 
   "/settings/privacy",
   "/settings/terms",
@@ -468,7 +469,8 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     const isLegalPage = ["/settings/privacy", "/settings/terms", "/settings/location-terms"]
       .some((p) => pathname.startsWith(p));
 
-    if (isPublic && !isLegalPage && myUid && emailVerified) {
+    const isCouplePage = pathname.startsWith("/couple");
+    if (isPublic && !isLegalPage && !isCouplePage && myUid && emailVerified) {
       router.replace("/");
     }
   }, [mounted, initialized, myUid, emailVerified, pathname, router]);
@@ -481,7 +483,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     .some((p) => pathname.startsWith(p));
 
   if (isLegalPage) return <>{children}</>;
-  if (isPublic && myUid && emailVerified) return <SplashScreen />;
+  if (isPublic && !pathname.startsWith("/couple") && myUid && emailVerified) return <SplashScreen />;
   if (isPublic) return <>{children}</>;
   if (!myUid)   return <SplashScreen />;
 
