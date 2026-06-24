@@ -301,6 +301,10 @@ function CouplePageInner() {
     const displayPartnerName = partnerName ? tn(partnerName, 12) : "파트너";
     return (
       <div>
+        <button onClick={() => { window.location.href = "/"; }} style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:"none", color:MUTED, fontSize:13, cursor:"pointer", fontFamily:"inherit", padding:"0 0 16px 0" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          홈으로
+        </button>
         <h2 style={{ fontSize:20, fontWeight:700, color:INK, marginBottom:6 }}>커플 연동</h2>
         <p style={{ fontSize:13, color:MUTED, marginBottom:20 }}>현재 파트너와 연동 중이에요 💑</p>
 
