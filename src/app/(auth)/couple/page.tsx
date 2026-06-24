@@ -2,6 +2,8 @@
 //  couple/page.tsx  적용 경로: src/app/(auth)/couple/page.tsx
 //
 //  수정사항:
+//    ★ useSearchParams()로 ?mode=join URL 파라미터 읽어 초기 탭 설정
+//    ★ 미연동 상태 상단에 "← 홈으로" 뒤로가기 버튼 추가
 //    ★ 파트너 이름 말줄임 — 파트너 정보 카드 및 팝업에서
 //      10자 초과 시 "…" 처리 (긴 구글 계정 이름 레이아웃 방지)
 //    ★ 연동 해제 시 couples 문서 삭제가 실패해도 더 이상 조용히 넘어가지 않음
@@ -10,14 +12,14 @@
 // ============================================================
 "use client";
 
-import { useState, useEffect }              from "react";
-import { useRouter }                        from "next/navigation";
+import { useState, useEffect, Suspense }   from "react";
+import { useRouter, useSearchParams }      from "next/navigation";
 import {
   createCouple, joinCouple, disconnectCouple,
   hasOrphanCouples, retryCleanupOrphanCouples,
 } from "@/lib/firebase/auth";
-import { useAuthStore }                     from "@/store/authStore";
-import { calcDDay }                         from "@/lib/utils/date";
+import { useAuthStore }                    from "@/store/authStore";
+import { calcDDay }                        from "@/lib/utils/date";
 
 const ROSE    = "#C96B52";
 const ROSE_LT = "#F2D5CC";
@@ -31,7 +33,6 @@ const AMBER        = "#856404";
 const AMBER_BG     = "#FFF3CD";
 const AMBER_BORDER = "#FFE69C";
 
-// ★ 이름 말줄임 헬퍼
 function tn(name: string, max = 10): string {
   return name.length > max ? name.slice(0, max) + "…" : name;
 }
@@ -57,7 +58,6 @@ function StatusToast({ status, msg }: { status: Status; msg: string }) {
 }
 
 function CoupleSuccessPopup({ partnerName, onStart }: { partnerName?: string; onStart: () => void }) {
-  // ★ 팝업에서도 파트너 이름 말줄임 적용
   const displayName = partnerName ? tn(partnerName, 12) : null;
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:24, animation:"fadeIn 0.2s ease" }}>
@@ -112,7 +112,6 @@ function CodeCreatedPopup({ inviteCode, onClose, onCopy }: { inviteCode:string; 
 function DisconnectConfirmPopup({ partnerName, onConfirm, onClose, loading }: {
   partnerName?:string; onConfirm:()=>void; onClose:()=>void; loading:boolean;
 }) {
-  // ★ 팝업에서도 파트너 이름 말줄임
   const displayName = partnerName ? tn(partnerName, 12) : null;
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
@@ -137,33 +136,32 @@ function DisconnectConfirmPopup({ partnerName, onConfirm, onClose, loading }: {
   );
 }
 
-// ★ 신규 — 정리 안 된 연동 코드(couples 문서)가 남아있을 때 보여주는 배너 + 재시도 버튼
 function OrphanCleanupBanner({ cleaning, onRetry }: { cleaning: boolean; onRetry: () => void }) {
   return (
     <div style={{ background:AMBER_BG, border:`1px solid ${AMBER_BORDER}`, borderRadius:12, padding:"12px 14px", marginBottom:20, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
       <p style={{ fontSize:12, color:AMBER, lineHeight:1.5 }}>
         ⚠️ 이전 연동 해제가 완전히 정리되지 않았어요.
       </p>
-      <button
-        onClick={onRetry}
-        disabled={cleaning}
-        className="tap"
-        style={{ padding:"6px 12px", background:"#fff", border:`1px solid ${AMBER}`, borderRadius:8, color:AMBER, fontSize:12, fontWeight:700, cursor:cleaning?"default":"pointer", fontFamily:"inherit", whiteSpace:"nowrap", flexShrink:0 }}
-      >
+      <button onClick={onRetry} disabled={cleaning} className="tap" style={{ padding:"6px 12px", background:"#fff", border:`1px solid ${AMBER}`, borderRadius:8, color:AMBER, fontSize:12, fontWeight:700, cursor:cleaning?"default":"pointer", fontFamily:"inherit", whiteSpace:"nowrap", flexShrink:0 }}>
         {cleaning ? "정리 중…" : "다시 정리"}
       </button>
     </div>
   );
 }
 
-export default function CouplePage() {
-  const router = useRouter();
+// ★ useSearchParams를 사용하는 내부 컴포넌트 — Suspense로 감싸야 함
+function CouplePageInner() {
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+
   const {
     myUid, coupleId, partnerName, partnerProfileImgUrl, startDate,
     initialized, setCoupleId, setStartDate: setAuthStartDate, setAuth,
   } = useAuthStore();
 
-  const [mode,       setMode]       = useState<Mode>("create");
+  // ★ URL ?mode=join 파라미터로 초기 탭 결정
+  const initialMode = searchParams.get("mode") === "join" ? "join" : "create";
+  const [mode,       setMode]       = useState<Mode>(initialMode);
   const [sDate,      setSDate]      = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [inputCode,  setInputCode]  = useState("");
@@ -175,7 +173,6 @@ export default function CouplePage() {
   const [showDisconnectPopup, setShowDisconnectPopup] = useState(false);
   const [disconnecting,       setDisconnecting]       = useState(false);
 
-  // ★ 신규 — 정리 안 된(orphan) couples 문서 존재 여부 + 재시도 로딩 상태
   const [showCleanupBanner, setShowCleanupBanner] = useState(false);
   const [cleaning,          setCleaning]          = useState(false);
 
@@ -185,12 +182,11 @@ export default function CouplePage() {
     return () => clearTimeout(t);
   }, [status]);
 
-  // ★ 신규 — 미연동 상태로 들어올 때마다(연동 해제 직후 포함) 정리 안 된 코드가 남아있는지 확인
   useEffect(() => {
     if (!initialized || coupleId || !myUid) return;
     hasOrphanCouples(myUid)
       .then(setShowCleanupBanner)
-      .catch(() => {}); // 확인 자체가 실패해도 배너만 안 보일 뿐 — 재연동 자체는 그대로 가능
+      .catch(() => {});
   }, [initialized, coupleId, myUid]);
 
   const showStatus = (s: Status, msg: string) => { setStatus(s); setStatusMsg(msg); };
@@ -202,7 +198,6 @@ export default function CouplePage() {
     outline:"none", boxSizing:"border-box",
   };
 
-  // ★ 신규 — 배너의 "다시 정리" 버튼
   const handleRetryCleanup = async () => {
     if (!myUid) return;
     setCleaning(true);
@@ -224,7 +219,6 @@ export default function CouplePage() {
   const handleCreate = async () => {
     if (!sDate) { showStatus("empty", "교제 시작일을 선택해주세요."); return; }
     setStatus("loading");
-    // ★ 새 코드를 만들기 전에 이전 정리 실패분을 조용히 한 번 더 시도 (best-effort)
     await retryCleanupOrphanCouples(myUid).catch(() => {});
     try {
       const { coupleId: id, inviteCode: code } = await createCouple(myUid, sDate);
@@ -243,7 +237,6 @@ export default function CouplePage() {
     if (!code)                              { showStatus("empty",   "초대 코드를 입력해주세요."); return; }
     if (!/^TASTE-[A-Z0-9]{6}$/.test(code)) { showStatus("invalid", "코드 형식이 맞지 않아요. (TASTE-XXXXXX)"); return; }
     setStatus("loading");
-    // ★ 연동 시도 전에 이전 정리 실패분을 조용히 한 번 더 시도 (best-effort)
     await retryCleanupOrphanCouples(myUid).catch(() => {});
     try {
       const id = await joinCouple(code, myUid);
@@ -264,14 +257,11 @@ export default function CouplePage() {
     setDisconnecting(true);
     try {
       const { success, staleCoupleIds } = await disconnectCouple(myUid, coupleId);
-      // users.coupleId는 항상 null로 갱신됐으므로 연동 해제 자체는 성공
       setAuth({ coupleId: null, partnerName: "", partnerProfileImgUrl: null, startDate: "" });
       setShowDisconnectPopup(false);
-
       if (success) {
         showStatus("success", "커플 연동이 해제됐어요.");
       } else {
-        // couples 문서 정리만 실패한 경우 — 배너로 안내, 재시도 버튼 노출
         setShowCleanupBanner(true);
         showStatus("success", `연동은 해제됐어요. (정리가 덜 됐어요 — ${staleCoupleIds.length}건, 아래에서 다시 시도할 수 있어요)`);
       }
@@ -305,17 +295,15 @@ export default function CouplePage() {
     );
   }
 
-  // ★ 이미 연동된 상태 — 파트너 정보 + 해제 버튼
+  // 이미 연동된 상태 — 파트너 정보 + 해제 버튼
   if (coupleId) {
     const dday = startDate ? calcDDay(startDate) : null;
-    // ★ 파트너 카드 이름 말줄임 (아바타 이니셜도 동일하게)
     const displayPartnerName = partnerName ? tn(partnerName, 12) : "파트너";
     return (
       <div>
         <h2 style={{ fontSize:20, fontWeight:700, color:INK, marginBottom:6 }}>커플 연동</h2>
         <p style={{ fontSize:13, color:MUTED, marginBottom:20 }}>현재 파트너와 연동 중이에요 💑</p>
 
-        {/* 파트너 정보 카드 */}
         <div style={{ background:WARM, borderRadius:16, padding:16, marginBottom:16, display:"flex", alignItems:"center", gap:14 }}>
           <div style={{ width:52, height:52, borderRadius:"50%", background:SAGE, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:20, fontWeight:700, flexShrink:0 }}>
             {partnerProfileImgUrl
@@ -323,7 +311,6 @@ export default function CouplePage() {
               : (partnerName ? partnerName[0] : "?")}
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            {/* ★ overflow ellipsis + JS truncate 이중 적용 */}
             <p style={{ fontSize:15, fontWeight:700, color:INK, marginBottom:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
               {displayPartnerName}
             </p>
@@ -336,10 +323,7 @@ export default function CouplePage() {
           </div>
         </div>
 
-        {/* 연동 해제 버튼 */}
-        <button
-          onClick={() => setShowDisconnectPopup(true)}
-          style={{ width:"100%", padding:14, background:"transparent", border:`1.5px solid ${RED}`, borderRadius:12, color:RED, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+        <button onClick={() => setShowDisconnectPopup(true)} style={{ width:"100%", padding:14, background:"transparent", border:`1.5px solid ${RED}`, borderRadius:12, color:RED, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
           💔 커플 연동 해제하기
         </button>
         <p style={{ fontSize:11, color:MUTED, textAlign:"center", marginTop:10, lineHeight:1.6 }}>
@@ -363,10 +347,15 @@ export default function CouplePage() {
   // 미연동 상태 — 코드 만들기 / 입력하기
   return (
     <div>
+      {/* ★ 뒤로가기 버튼 */}
+      <button onClick={() => router.push("/")} style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:"none", color:MUTED, fontSize:13, cursor:"pointer", fontFamily:"inherit", padding:"0 0 16px 0" }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        홈으로
+      </button>
+
       <h2 style={{ fontSize:20, fontWeight:700, color:INK, marginBottom:6 }}>커플 연동</h2>
       <p style={{ fontSize:13, color:MUTED, marginBottom:20 }}>파트너와 연동해야 함께 기록을 볼 수 있어요 💑</p>
 
-      {/* ★ 신규 — 이전 연동 해제가 덜 정리됐을 때 표시되는 배너 */}
       {showCleanupBanner && (
         <OrphanCleanupBanner cleaning={cleaning} onRetry={handleRetryCleanup} />
       )}
@@ -404,8 +393,7 @@ export default function CouplePage() {
             <input
               placeholder="TASTE-XXXXXX" value={inputCode}
               onChange={e => handleCodeInput(e.target.value)}
-              style={{ ...inp, letterSpacing:3, fontWeight:600, textAlign:"center", fontSize:16,
-                border:`1.5px solid ${status==="empty"||status==="invalid"?RED:status==="success"?SAGE:BORDER}` }}
+              style={{ ...inp, letterSpacing:3, fontWeight:600, textAlign:"center", fontSize:16, border:`1.5px solid ${status==="empty"||status==="invalid"?RED:status==="success"?SAGE:BORDER}` }}
             />
             {inputCode.length > 0 && (
               <div style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", fontSize:14 }}>
@@ -438,5 +426,14 @@ export default function CouplePage() {
         />
       )}
     </div>
+  );
+}
+
+// ★ useSearchParams는 반드시 Suspense로 감싸야 빌드 오류 없음
+export default function CouplePage() {
+  return (
+    <Suspense fallback={null}>
+      <CouplePageInner />
+    </Suspense>
   );
 }

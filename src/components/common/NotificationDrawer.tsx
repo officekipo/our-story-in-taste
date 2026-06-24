@@ -15,7 +15,7 @@ const WARM    = "#FAF7F3";
 const BG      = "#F5F0EB";
 const BOTTOM_NAV_H = 60;
 
-const PAGE_SIZE = 20; // 한 번에 로드할 알림 수
+const PAGE_SIZE = 20;
 
 const LS_NOTICE_READ = "notif_notice_last_read";
 const LS_EVENT_READ  = "notif_event_last_read";
@@ -96,10 +96,8 @@ export function NotificationDrawer({ open, onClose, onBadges }: Props) {
   const [loadingA, setLoadingA]           = useState(false);
   const [expanded, setExpanded]           = useState<Set<string>>(new Set());
 
-  /* ── 더 보기 상태 ── */
-  const [notifPage,     setNotifPage]     = useState(1);           // 현재 로드된 페이지 수
-  const [notifHasMore,  setNotifHasMore]  = useState(false);       // 더 불러올 항목 있는지
-  const [notifLoadMore, setNotifLoadMore] = useState(false);       // 더 보기 로딩 중
+  const [notifHasMore,  setNotifHasMore]  = useState(false);
+  const [notifLoadMore, setNotifLoadMore] = useState(false);
   const [lastNotifDoc,  setLastNotifDoc]  = useState<QueryDocumentSnapshot|null>(null);
 
   const toggleExpand = (id: string) =>
@@ -110,7 +108,6 @@ export function NotificationDrawer({ open, onClose, onBadges }: Props) {
   /* 드로어 닫히면 페이지 초기화 */
   useEffect(() => {
     if (!open) {
-      setNotifPage(1);
       setNotifHasMore(false);
       setLastNotifDoc(null);
       setNotifications([]);
@@ -169,18 +166,30 @@ export function NotificationDrawer({ open, onClose, onBadges }: Props) {
     return unsub;
   }, [open]);
 
-  /* ── unread 일괄 처리 ── */
+  /* ── ★ 활동 알림 일괄 읽음 처리 — 500개 배치 제한 대응 ── */
   const markAllRead = useCallback(async () => {
     if (!myUid) return;
     try {
-      const snap=await getDocs(query(collection(db,"notifications"),where("uid","==",myUid),where("read","==",false)));
-      if (snap.empty) return;
-      const batch=writeBatch(db);
-      snap.docs.forEach(d=>batch.update(doc(db,"notifications",d.id),{read:true}));
-      await batch.commit();
-    } catch {}
+      // 500개씩 나눠서 배치 처리
+      let lastDoc: QueryDocumentSnapshot | null = null;
+      while (true) {
+        const q = lastDoc
+          ? query(collection(db,"notifications"), where("uid","==",myUid), where("read","==",false), limit(500), startAfter(lastDoc))
+          : query(collection(db,"notifications"), where("uid","==",myUid), where("read","==",false), limit(500));
+        const snap = await getDocs(q);
+        if (snap.empty) break;
+        const batch = writeBatch(db);
+        snap.docs.forEach(d => batch.update(doc(db,"notifications",d.id), { read: true }));
+        await batch.commit();
+        if (snap.docs.length < 500) break;
+        lastDoc = snap.docs[snap.docs.length - 1];
+      }
+    } catch (e) { console.warn("markAllRead error:", e); }
   }, [myUid]);
 
+  /* ── ★ 탭 읽음 처리:
+       - activity 탭: 드로어가 열리고 탭이 activity일 때 즉시 + 탭 전환 시
+       - notice/event: localStorage 타임스탬프 갱신 ── */
   const markTabRead = useCallback((t: MainTab) => {
     const now = new Date().toISOString();
     if (t==="notice")   localStorage.setItem(LS_NOTICE_READ, now);
@@ -188,21 +197,43 @@ export function NotificationDrawer({ open, onClose, onBadges }: Props) {
     if (t==="activity") markAllRead();
   }, [markAllRead]);
 
-  useEffect(() => { if (open) markTabRead(tab); }, [open, tab]);
+  /* ★ 드로어가 열릴 때 현재 탭 기준으로 즉시 읽음 처리 */
+  useEffect(() => {
+    if (open) markTabRead(tab);
+  }, [open]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ★ 탭 전환 시 읽음 처리 */
+  const handleTabChange = useCallback((t: MainTab) => {
+    setTab(t);
+    markTabRead(t);
+  }, [markTabRead]);
+
+  /* ★ 활동 알림이 로드된 직후에도 읽음 처리 (드로어 열린 상태에서 새 알림 수신 시) */
+  useEffect(() => {
+    if (open && tab === "activity" && notifications.length > 0) {
+      markAllRead();
+    }
+  }, [notifications]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const notices = useMemo(()=>announcements.filter(a=>a.type==="notice"), [announcements]);
   const events  = useMemo(()=>announcements.filter(a=>a.type==="event"&&isEventActive(a)), [announcements]);
 
+  /* ── onBadges: 드로어 닫혀있을 때만 뱃지 업데이트 (열려있으면 읽음처리 진행 중) ── */
   useEffect(() => {
     if (!onBadges) return;
+    if (open && tab === "activity") {
+      // 드로어가 열려있고 activity 탭이면 뱃지 즉시 제거
+      onBadges({ activity: false, notice: false, event: false });
+      return;
+    }
     const noticeLastRead = localStorage.getItem(LS_NOTICE_READ);
     const eventLastRead  = localStorage.getItem(LS_EVENT_READ);
     onBadges({
-      activity: notifications.some(n=>!n.read),
+      activity: !open ? notifications.some(n=>!n.read) : false,
       notice:   notices.some(a=>!noticeLastRead||a.createdAt>noticeLastRead),
       event:    events.some(a=>!eventLastRead||a.createdAt>eventLastRead),
     });
-  }, [notifications, notices, events, onBadges]);
+  }, [notifications, notices, events, onBadges, open, tab]);
 
   if (!open) return null;
 
@@ -239,7 +270,7 @@ export function NotificationDrawer({ open, onClose, onBadges }: Props) {
           {TABS.map(({ id, label }) => {
             const active=tab===id, hasDot=hasUnread(id);
             return (
-              <button key={id} onClick={()=>setTab(id)} style={{ flex:1, paddingBottom:9, background:"none", border:"none", cursor:"pointer", fontSize:13, fontWeight:active?700:500, color:active?ROSE:MUTED, borderBottom:active?`2px solid ${ROSE}`:"2px solid transparent", transition:"color 0.15s, border-color 0.15s", position:"relative" }}>
+              <button key={id} onClick={()=>handleTabChange(id)} style={{ flex:1, paddingBottom:9, background:"none", border:"none", cursor:"pointer", fontSize:13, fontWeight:active?700:500, color:active?ROSE:MUTED, borderBottom:active?`2px solid ${ROSE}`:"2px solid transparent", transition:"color 0.15s, border-color 0.15s", position:"relative" }}>
                 {label}
                 {hasDot&&!active&&<span style={{ position:"absolute", top:2, right:"calc(50% - 18px)", width:6, height:6, borderRadius:"50%", background:ROSE, display:"inline-block" }}/>}
               </button>
@@ -278,7 +309,6 @@ export function NotificationDrawer({ open, onClose, onBadges }: Props) {
                   </div>
                 );
               })}
-              {/* ★ 더 보기 버튼 */}
               {notifHasMore&&(
                 <button onClick={loadMoreNotifs} disabled={notifLoadMore} style={{ width:"100%", padding:"14px 0", background:"none", border:"none", borderTop:`1px solid ${BORDER}`, cursor:notifLoadMore?"default":"pointer", fontSize:13, fontWeight:600, color:notifLoadMore?MUTED:ROSE, fontFamily:"inherit" }}>
                   {notifLoadMore?"불러오는 중...":"알림 더 보기"}
