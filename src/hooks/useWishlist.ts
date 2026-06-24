@@ -97,10 +97,10 @@ export function useWishlist() {
     (!!coupleId && !coupleLoaded);
 
   const add = async (input: AddWishInput) => {
-    if (!coupleId || !myUid || !myName) throw new Error("로그인/커플 연동 확인");
+    if (!myUid || !myName) throw new Error("로그인 상태를 확인하세요.");
     const now = new Date().toISOString();
     const record: any = {
-      coupleId,
+      coupleId: coupleId ?? "",
       addedByUid:  myUid,
       addedByName: myName,
       addedDate:   now.slice(0, 10),

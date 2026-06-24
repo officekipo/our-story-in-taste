@@ -7,6 +7,7 @@
 "use client";
 
 import { useState }        from "react";
+import { useRouter }       from "next/navigation";
 import { AppShell }        from "@/components/layout/AppShell";
 import { WishCard }        from "@/components/wishlist/WishCard";
 import { WishModal }       from "@/components/wishlist/WishModal";
@@ -132,8 +133,18 @@ export default function WishlistPage() {
   const [visitTarget,   setVisitTarget] = useState<WishRecord | null>(null);
   const [visitSaving,   setVisitSaving] = useState(false);
 
+  const router = useRouter();
   const { myName, partnerName, coupleId, myUid } = useAuthStore();
   const { confirmTarget, closeConfirm } = useUIStore();
+
+  // 미연동 시 위시 추가 시도 → 커플 연동 안내 팝업
+  const [showCouplePrompt, setShowCouplePrompt] = useState(false);
+
+  const handleFabClick = () => {
+    // 미연동 상태에서도 위시 추가 허용 (coupleId: "" 로 저장됨)
+    setEditingWish(null);
+    setWishModal(true);
+  };
 
   // ── 탭 필터 ──────────────────────────────────────────────
   const meItems      = records.filter(r => r.addedByName === myName);
@@ -254,7 +265,7 @@ export default function WishlistPage() {
   return (
     <AppShell activeTab="wishlist" fab={
       <button
-        onClick={() => { setEditingWish(null); setWishModal(true); }}
+        onClick={handleFabClick}
         className="tap"
         style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: SAGE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(107,158,126,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
         <span className="tap" style={{ fontSize: 28, lineHeight: "47px" }}>+</span>
@@ -264,6 +275,18 @@ export default function WishlistPage() {
         <h2 style={{ fontSize: 20, fontWeight: 800, color: INK, marginBottom: 4 }}>가고 싶은 맛집</h2>
         <p style={{ fontSize: 13, color: MUTED }}>함께 가보고 싶은 곳 {records.length}개</p>
       </div>
+
+      {/* 미연동 안내 배너 */}
+      {!coupleId && (
+        <div style={{ margin: "0 16px 12px", background: WARM, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#F2D5CC", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 16 }}>⭐</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 2 }}>위시리스트를 함께 관리해요</p>
+            <p style={{ fontSize: 11, color: MUTED }}>커플 연동 시 두 사람의 위시를 함께 볼 수 있어요</p>
+          </div>
+          <button onClick={() => router.push("/couple")} className="tap" style={{ padding: "7px 12px", background: ROSE, border: "none", borderRadius: 8, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0 }}>연동하기</button>
+        </div>
+      )}
 
       {/* 탭 */}
       <div style={{ display: "flex", margin: "0 16px 16px", background: WARM, borderRadius: 12, padding: 3, border: `1px solid ${BORDER}` }}>

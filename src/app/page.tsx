@@ -27,6 +27,7 @@ import { useUIStore }                   from "@/store/uiStore";
 import { useAuthStore }                 from "@/store/authStore";
 import { SAMPLE_VISITED }               from "@/lib/sample-data";
 import { useVisited }                   from "@/hooks/useVisited";
+import { useWishlist }                  from "@/hooks/useWishlist";
 import { SIDO, CUISINES, SORT }         from "@/types";
 import type { VisitedRecord, VisitedFormData } from "@/types";
 
@@ -188,7 +189,8 @@ export default function HomePage() {
   const router = useRouter();
 
   const [dummyRecords, setDummyRecords] = useState<VisitedRecord[]>(SAMPLE_VISITED);
-  const firebase = useVisited();
+  const firebase     = useVisited();
+  const firebaseWish = useWishlist();
 
   const records = DUMMY_MODE ? dummyRecords : firebase.records;
   const loading = DUMMY_MODE ? false        : firebase.loading;
@@ -331,6 +333,11 @@ export default function HomePage() {
       headerProps={{
         viewMode,    onViewMode:     setViewMode,
         showSearch,  onToggleSearch: handleToggleSearch,
+        visitedCount: records.length,
+        avgRating:    records.length
+          ? (records.reduce((s, r) => s + r.rating, 0) / records.length).toFixed(1)
+          : "—",
+        wishCount:    firebaseWish.records.length,
       }}
     >
       <div style={viewMode === "gallery" && !timeline ? {} : { padding: "12px 16px 0" }}>

@@ -8,7 +8,6 @@
 
 import { useRouter }     from "next/navigation";
 import { useAuthStore }  from "@/store/authStore";
-import { useStatsStore } from "@/store/statsStore";
 import { calcDDay }      from "@/lib/utils/date";
 import type { TabId }    from "./BottomNav";
 
@@ -52,10 +51,9 @@ export function Header({
   const router = useRouter();
   const { myName, partnerName, startDate } = useAuthStore();
 
-  const stats         = useStatsStore();
-  const _visitedCount = stats.visitedCount || visitedCount;
-  const _avgRating    = stats.avgRating    || avgRating;
-  const _wishCount    = stats.wishCount !== 0 ? stats.wishCount : wishCount;
+  const _visitedCount = visitedCount;
+  const _avgRating    = avgRating;
+  const _wishCount    = wishCount;
 
   const dday      = calcDDay(startDate || "2023-01-01");
   const isVisited = activeTab === "visited";
