@@ -23,6 +23,7 @@ function tn(name: string, max = 8): string {
 interface HeaderProps {
   activeTab:       TabId;
   scrolled?:       boolean;
+  // ★ 통계 props는 optional — 미전달 시 authStore.headerStats 값을 사용
   visitedCount?:   number;
   avgRating?:      string | number;
   wishCount?:      number;
@@ -49,11 +50,14 @@ export function Header({
   onBell,
 }: HeaderProps) {
   const router = useRouter();
-  const { myName, partnerName, startDate } = useAuthStore();
+  const { myName, partnerName, startDate, headerStats } = useAuthStore();
 
-  const _visitedCount = visitedCount;
-  const _avgRating    = avgRating;
-  const _wishCount    = wishCount;
+  // ★ props로 전달된 값 우선, 없으면 전역 store 값 사용
+  //   → 다녀온 곳 탭: props로 전달 (기존 동작 유지)
+  //   → 위시/지도/커뮤니티/통계 탭: store 값 자동 표시
+  const _visitedCount = visitedCount ?? headerStats.visitedCount;
+  const _avgRating    = avgRating    ?? headerStats.avgRating;
+  const _wishCount    = wishCount    ?? headerStats.wishCount;
 
   const dday      = calcDDay(startDate || "2023-01-01");
   const isVisited = activeTab === "visited";

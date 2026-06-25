@@ -240,7 +240,11 @@ function CouplePageInner() {
     await retryCleanupOrphanCouples(myUid).catch(() => {});
     try {
       const id = await joinCouple(code, myUid);
-      setCoupleId(id);
+      // ★ setCoupleId를 여기서 즉시 호출하면 coupleId가 생겨 "연동된 상태" 분기로
+      //   전환되면서 showSuccessPopup 팝업과 화면이 겹치는 버그 발생.
+      //   → 팝업을 먼저 열고, 팝업의 "맛지도 시작하기" 버튼에서 페이지를 이동.
+      //   → authStore의 onSnapshot이 Firestore 변경을 감지해 자동으로 coupleId를
+      //     업데이트하므로 별도로 setCoupleId를 호출할 필요 없음.
       setStatus("idle");
       setShowSuccessPopup(true);
     } catch (e: any) {
@@ -257,7 +261,13 @@ function CouplePageInner() {
     setDisconnecting(true);
     try {
       const { success, staleCoupleIds } = await disconnectCouple(myUid, coupleId);
+      // ★ store 즉시 초기화 (onSnapshot 반응 전에 UI가 먼저 정리되도록)
       setAuth({ coupleId: null, partnerName: "", partnerProfileImgUrl: null, startDate: "" });
+      // ★ 해제 후 날짜 입력값도 초기화 — 직전 sDate가 남아 즉시 재생성되는 버그 방지
+      setSDate("");
+      setInviteCode("");
+      setInputCode("");
+      setMode("create");
       setShowDisconnectPopup(false);
       if (success) {
         showStatus("success", "커플 연동이 해제됐어요.");
@@ -292,6 +302,23 @@ function CouplePageInner() {
         <p style={{ fontSize:13, color:MUTED }}>불러오는 중…</p>
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
+    );
+  }
+
+  // ★ 연동 완료 팝업이 열려있는 동안은 연동된 화면으로 전환하지 않음
+  //   (joinCouple 완료 → setCoupleId → coupleId 생겨 분기 변경 타이밍 충돌 방지)
+  if (showSuccessPopup) {
+    return (
+      <>
+        <div style={{ textAlign:"center", padding:"80px 24px", color:MUTED }}>
+          <div style={{ fontSize:52, marginBottom:12 }}>💑</div>
+          <p style={{ fontSize:16, fontWeight:700, color:INK }}>연동 완료!</p>
+        </div>
+        <CoupleSuccessPopup
+          partnerName={partnerName || undefined}
+          onStart={() => { setShowSuccessPopup(false); window.location.href = "/"; }}
+        />
+      </>
     );
   }
 
@@ -420,13 +447,6 @@ function CouplePageInner() {
           inviteCode={inviteCode}
           onCopy={() => { navigator.clipboard.writeText(inviteCode); showStatus("success", "클립보드에 복사됐어요!"); }}
           onClose={() => { setShowCodePopup(false); window.location.href = "/"; }}
-        />
-      )}
-
-      {showSuccessPopup && (
-        <CoupleSuccessPopup
-          partnerName={partnerName || undefined}
-          onStart={() => { setShowSuccessPopup(false); window.location.href = "/"; }}
         />
       )}
     </div>

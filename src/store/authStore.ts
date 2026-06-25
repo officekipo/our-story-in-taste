@@ -13,10 +13,21 @@
 //    ★ profileCompleted Firestore 필드 추가
 //      - sessionStorage 대신 Firestore users 문서의 profileCompleted 필드로 팝업 억제
 //      - PWA 재실행·기기 교체에도 팝업 재노출 없음
+//    ★ 헤더 통계 전역 공유 (v2)
+//      - headerStats: { visitedCount, avgRating, wishCount } 추가
+//      - setHeaderStats() 액션 추가
+//      - app/page.tsx에서 저장 → 모든 탭의 Header에서 읽어서 표시
 import { create }                          from "zustand";
 import { onAuthStateChanged }              from "firebase/auth";
 import { doc, getDoc, onSnapshot }         from "firebase/firestore";
 import { auth, db }                        from "@/lib/firebase/config";
+
+// ── 헤더 통계 타입 ────────────────────────────────────────
+export interface HeaderStats {
+  visitedCount: number;
+  avgRating:    string | number;
+  wishCount:    number;
+}
 
 interface AuthState {
   myUid:                string;
@@ -32,16 +43,25 @@ interface AuthState {
   emailVerified:        boolean;
   // ★ 프로필 완성 여부 (Firestore users 문서의 profileCompleted 필드)
   profileCompleted:     boolean;
+  // ★ 헤더 통계 — app/page.tsx에서 계산 후 저장, 모든 탭에서 공유
+  headerStats:          HeaderStats;
 
-  setAuth:                 (data: Partial<Omit<AuthState, "setAuth" | "setProfileImgUrl" | "setPartnerProfileImgUrl" | "setCoupleId" | "setStartDate" | "setFcmToken" | "setEmailVerified" | "reset">>) => void;
+  setAuth:                 (data: Partial<Omit<AuthState, "setAuth" | "setProfileImgUrl" | "setPartnerProfileImgUrl" | "setCoupleId" | "setStartDate" | "setFcmToken" | "setEmailVerified" | "setHeaderStats" | "reset">>) => void;
   setProfileImgUrl:        (url: string) => void;
   setPartnerProfileImgUrl: (url: string | null) => void;
   setCoupleId:             (id: string | null) => void;
   setStartDate:            (date: string) => void;
   setFcmToken:             (token: string | null) => void;
   setEmailVerified:        (v: boolean) => void;
+  setHeaderStats:          (stats: HeaderStats) => void;
   reset:                   () => void;
 }
+
+const initialHeaderStats: HeaderStats = {
+  visitedCount: 0,
+  avgRating:    "—",
+  wishCount:    0,
+};
 
 const initialState = {
   myUid:                "",
@@ -56,6 +76,7 @@ const initialState = {
   fcmToken:             null,
   emailVerified:        false,
   profileCompleted:     false,
+  headerStats:          initialHeaderStats,
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -67,6 +88,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   setStartDate:            (date)  => set({ startDate: date }),
   setFcmToken:             (token) => set({ fcmToken: token }),
   setEmailVerified:        (v)     => set({ emailVerified: v }),
+  setHeaderStats:          (stats) => set({ headerStats: stats }),
   reset:                   ()      => set({ ...initialState, initialized: true }),
 }));
 
