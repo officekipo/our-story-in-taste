@@ -9,10 +9,20 @@
 //    ★ 연동 해제 시 couples 문서 삭제가 실패해도 더 이상 조용히 넘어가지 않음
 //      → 미연동 화면에 "정리 안 된 연동 코드" 배너 + 재시도 버튼 추가
 //      → 코드 생성/입력 시도 직전에도 자동(best-effort)으로 한 번 더 정리 시도
+//
+//  버그 수정 (2026-06-26):
+//    ★ 연동 해제 직후 orphan 배너가 잘못 뜨는 버그 수정
+//      원인: handleDisconnect → setAuth({ coupleId: null }) → useEffect 재실행
+//            → 이 시점 deleteDoc이 Firestore에 미반영 → hasOrphanCouples=true 오감지
+//      해결: disconnectingRef(useRef)로 해제 진행 중 orphan 체크 차단
+//            + useEffect 내 800ms 딜레이로 Firestore 반영 시간 확보
+//            + 해제 성공 시 setShowCleanupBanner(false) 명시 호출
+//            + finally에서 1000ms 후 disconnectingRef 해제
+//    ★ inp 타입 React.CSSProperties → CSSProperties (규칙 10 준수)
 // ============================================================
 "use client";
 
-import { useState, useEffect, Suspense }   from "react";
+import { useState, useEffect, useRef, Suspense, type CSSProperties } from "react";
 import { useRouter, useSearchParams }      from "next/navigation";
 import {
   createCouple, joinCouple, disconnectCouple,
@@ -176,6 +186,9 @@ function CouplePageInner() {
   const [showCleanupBanner, setShowCleanupBanner] = useState(false);
   const [cleaning,          setCleaning]          = useState(false);
 
+  // ★ 해제 진행 중 플래그 — ref로 관리해야 useEffect 클로저에서 최신값을 읽을 수 있음
+  const disconnectingRef = useRef(false);
+
   useEffect(() => {
     if (status === "idle" || status === "loading") return;
     const t = setTimeout(() => setStatus("idle"), 3000);
@@ -183,15 +196,25 @@ function CouplePageInner() {
   }, [status]);
 
   useEffect(() => {
+    // ★ 초기화 미완료 / 이미 연동 중 / myUid 없는 경우 체크 안 함
     if (!initialized || coupleId || !myUid) return;
-    hasOrphanCouples(myUid)
-      .then(setShowCleanupBanner)
-      .catch(() => {});
+    // ★ 핵심 수정: disconnectCouple 진행 중 / 직후에는 orphan 체크를 하지 않음.
+    //   handleDisconnect에서 setAuth({ coupleId: null })을 호출하면 이 effect가
+    //   재실행되는데, 이 시점엔 deleteDoc이 아직 Firestore에 반영되지 않아
+    //   orphan으로 오감지해 배너가 잘못 뜨는 버그를 방지함.
+    //   disconnectingRef가 해제되고 800ms 후에 체크해 반영 시간을 확보함.
+    const t = setTimeout(() => {
+      if (disconnectingRef.current) return;
+      hasOrphanCouples(myUid)
+        .then(setShowCleanupBanner)
+        .catch(() => {});
+    }, 800);
+    return () => clearTimeout(t);
   }, [initialized, coupleId, myUid]);
 
   const showStatus = (s: Status, msg: string) => { setStatus(s); setStatusMsg(msg); };
 
-  const inp: React.CSSProperties = {
+  const inp: CSSProperties = {
     width:"100%", padding:"12px 14px", background:WARM,
     border:`1.5px solid ${BORDER}`, borderRadius:10,
     color:INK, fontSize:14, fontFamily:"inherit",
@@ -263,6 +286,7 @@ function CouplePageInner() {
   const handleDisconnect = async () => {
     if (!coupleId) return;
     setDisconnecting(true);
+    disconnectingRef.current = true;  // ★ orphan 체크 차단 시작
     try {
       const { success, staleCoupleIds } = await disconnectCouple(myUid, coupleId);
       // ★ store 즉시 초기화 (onSnapshot 반응 전에 UI가 먼저 정리되도록)
@@ -274,6 +298,11 @@ function CouplePageInner() {
       setMode("create");
       setShowDisconnectPopup(false);
       if (success) {
+        // ★ 핵심 수정: 성공 시 배너를 명시적으로 숨김
+        //   (useEffect가 coupleId=null 감지 후 orphan 체크를 800ms 후에 하도록
+        //   딜레이를 줬지만, disconnectingRef가 아직 true인 동안은 체크를 막음.
+        //   여기서 false로 리셋하면 이후 800ms 후 타이머가 정상 체크를 수행함)
+        setShowCleanupBanner(false);
         showStatus("success", "커플 연동이 해제됐어요.");
       } else {
         setShowCleanupBanner(true);
@@ -284,6 +313,8 @@ function CouplePageInner() {
       setShowDisconnectPopup(false);
     } finally {
       setDisconnecting(false);
+      // ★ Firestore deleteDoc 반영을 기다린 후 ref 해제 (800ms는 effect 딜레이와 동일)
+      setTimeout(() => { disconnectingRef.current = false; }, 1000);
     }
   };
 

@@ -6,10 +6,11 @@
 //   ★ onBell prop으로 NotificationDrawer 열기 연결
 "use client";
 
-import { useRouter }     from "next/navigation";
-import { useAuthStore }  from "@/store/authStore";
-import { calcDDay }      from "@/lib/utils/date";
-import type { TabId }    from "./BottomNav";
+import { useRouter }      from "next/navigation";
+import { useAuthStore }   from "@/store/authStore";
+import { useStatsStore }  from "@/store/statsStore";
+import { calcDDay }       from "@/lib/utils/date";
+import type { TabId }     from "./BottomNav";
 
 const ROSE   = "#C96B52";
 const INK    = "#1A1412";
@@ -50,14 +51,19 @@ export function Header({
   onBell,
 }: HeaderProps) {
   const router = useRouter();
-  const { myName, partnerName, startDate, headerStats } = useAuthStore();
-
-  // ★ props로 전달된 값 우선, 없으면 전역 store 값 사용
-  //   → 다녀온 곳 탭: props로 전달 (기존 동작 유지)
-  //   → 위시/지도/커뮤니티/통계 탭: store 값 자동 표시
-  const _visitedCount = visitedCount ?? headerStats.visitedCount;
-  const _avgRating    = avgRating    ?? headerStats.avgRating;
-  const _wishCount    = wishCount    ?? headerStats.wishCount;
+  const { myName, partnerName, startDate } = useAuthStore();
+  // ★ 통계는 statsStore에서 읽음 — useStats()가 모든 탭에서 실시간 유지
+  //   props로 전달된 값 우선, 없으면 store 값 사용 (stats/page.tsx 직접 전달 호환)
+  const stats = useStatsStore();
+  const _visitedCount = visitedCount !== undefined && visitedCount !== 0
+    ? visitedCount
+    : stats.visitedCount;
+  const _avgRating = avgRating !== undefined && avgRating !== "—"
+    ? avgRating
+    : (stats.avgRating ?? "—");
+  const _wishCount = wishCount !== undefined && wishCount !== 0
+    ? wishCount
+    : stats.wishCount;
 
   const dday      = calcDDay(startDate || "2023-01-01");
   const isVisited = activeTab === "visited";

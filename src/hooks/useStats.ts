@@ -27,16 +27,17 @@ import { useStatsStore } from "@/store/statsStore";
 
 export function useStats() {
   const coupleId = useAuthStore((s) => s.coupleId);
+  const myUid    = useAuthStore((s) => s.myUid);
   const setStats = useStatsStore((s) => s.setStats);
 
   // ── visited 실시간 구독 ─────────────────────────────────
+  // ★ coupleId 있으면 커플 전체, 없으면 본인(authorUid) 기준 fallback
   useEffect(() => {
-    if (!coupleId) return;
+    if (!myUid) return;
 
-    const q = query(
-      collection(db, "visited"),
-      where("coupleId", "==", coupleId)
-    );
+    const q = coupleId
+      ? query(collection(db, "visited"), where("coupleId", "==", coupleId))
+      : query(collection(db, "visited"), where("authorUid", "==", myUid));
 
     const unsub = onSnapshot(q, (snap) => {
       const docs = snap.docs.map((d) => d.data());
@@ -44,32 +45,28 @@ export function useStats() {
       const avgRating =
         visitedCount > 0
           ? Math.round(
-              (docs.reduce((sum, d) => sum + (d.rating ?? 0), 0) /
-                visitedCount) *
-                10
+              (docs.reduce((sum, d) => sum + (d.rating ?? 0), 0) / visitedCount) * 10
             ) / 10
           : 0;
-
-      // wishCount 는 wishlist 구독에서 최신값을 가져오므로 덮어쓰지 않음
       setStats({ visitedCount, avgRating });
     });
 
     return () => unsub();
-  }, [coupleId, setStats]);
+  }, [coupleId, myUid, setStats]);
 
   // ── wishlist 실시간 구독 ────────────────────────────────
+  // ★ coupleId 있으면 커플 전체, 없으면 본인(addedByUid) 기준 fallback
   useEffect(() => {
-    if (!coupleId) return;
+    if (!myUid) return;
 
-    const q = query(
-      collection(db, "wishlist"),
-      where("coupleId", "==", coupleId)
-    );
+    const q = coupleId
+      ? query(collection(db, "wishlist"), where("coupleId", "==", coupleId))
+      : query(collection(db, "wishlist"), where("addedByUid", "==", myUid));
 
     const unsub = onSnapshot(q, (snap) => {
       setStats({ wishCount: snap.size });
     });
 
     return () => unsub();
-  }, [coupleId, setStats]);
+  }, [coupleId, myUid, setStats]);
 }
