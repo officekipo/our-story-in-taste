@@ -221,8 +221,12 @@ function CouplePageInner() {
     setStatus("loading");
     await retryCleanupOrphanCouples(myUid).catch(() => {});
     try {
-      const { coupleId: id, inviteCode: code } = await createCouple(myUid, sDate);
-      setCoupleId(id);
+      const { inviteCode: code } = await createCouple(myUid, sDate);
+      // ★ setCoupleId를 여기서 즉시 호출하면 coupleId가 생겨 "연동된 상태" 분기로
+      //   전환되면서 CodeCreatedPopup 팝업과 화면이 겹치는 버그 발생.
+      //   → 팝업을 먼저 열고, 팝업의 "나중에 연동하기" 버튼에서 페이지를 이동.
+      //   → authStore의 onSnapshot이 Firestore 변경을 감지해 자동으로 coupleId를
+      //     업데이트하므로 별도로 setCoupleId를 호출할 필요 없음. (handleJoin과 동일)
       setAuthStartDate(sDate);
       setInviteCode(code);
       setStatus("idle");
