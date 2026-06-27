@@ -10,6 +10,15 @@
 //     handleDelete: closeConfirm() 후 showToast()
 //     AddEditModal에 onAddVisit, existingRecords prop
 //     커플 미연동 온보딩 배너
+//
+// 버그 수정 (2026-06-26):
+//   ★ 헤더 통계(방문수/평점/위시수) 0 표시 버그 수정 (버그 B)
+//     원인: setHeaderStats(authStore)와 useStats(statsStore) 이원화 →
+//           coupleId 생성 직후 records가 빈 배열로 잠깐 됐다가 채워지는 타이밍에
+//           setHeaderStats({ visitedCount:0 })가 statsStore를 0으로 덮어씀
+//     해결: page.tsx의 setHeaderStats useEffect 제거
+//           → AppShell의 useStats()가 statsStore를 단독으로 관리
+//           → Header는 statsStore만 읽어 항상 최신값 표시
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -25,7 +34,6 @@ import { KakaoAdFitInFeed }             from "@/components/common/KakaoAdFitInFe
 import { DateRangePicker }              from "@/components/visited/DateRangePicker";
 import { useUIStore }                   from "@/store/uiStore";
 import { useAuthStore }                 from "@/store/authStore";
-import type { HeaderStats }             from "@/store/authStore";
 import { SAMPLE_VISITED }               from "@/lib/sample-data";
 import { useVisited }                   from "@/hooks/useVisited";
 import { useWishlist }                  from "@/hooks/useWishlist";
@@ -213,7 +221,7 @@ export default function HomePage() {
   const [scrolled, setScrolled] = useState(false);
 
   const { toastMsg, clearToast, confirmTarget, closeConfirm, openAddModal, showToast } = useUIStore();
-  const { myName, coupleId, setHeaderStats } = useAuthStore();
+  const { myName, coupleId } = useAuthStore();
 
   const showOnboarding = !coupleId && !bannerDismissed;
 
@@ -251,15 +259,6 @@ export default function HomePage() {
     if (timeline && sortedMonths.length > 0) setExpandedMonths(new Set([sortedMonths[0]]));
   }, [timeline]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ★ 헤더 통계를 전역 store에 동기화 — 모든 탭의 Header에서 공유
-  useEffect(() => {
-    const visitedCount = records.length;
-    const avgRating: string | number = records.length
-      ? parseFloat((records.reduce((s, r) => s + r.rating, 0) / records.length).toFixed(1))
-      : "—";
-    const wishCount = firebaseWish.records.length;
-    setHeaderStats({ visitedCount, avgRating, wishCount });
-  }, [records, firebaseWish.records, setHeaderStats]);
 
   const toggleMonth = (m: string) => {
     setExpandedMonths(prev => { const next = new Set(prev); next.has(m) ? next.delete(m) : next.add(m); return next; });

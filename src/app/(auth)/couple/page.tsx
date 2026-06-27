@@ -19,6 +19,9 @@
 //            + 해제 성공 시 setShowCleanupBanner(false) 명시 호출
 //            + finally에서 1000ms 후 disconnectingRef 해제
 //    ★ inp 타입 React.CSSProperties → CSSProperties (규칙 10 준수)
+//    ★ coupleId 있어도 파트너(user2Uid) 없으면 "코드 대기 중" UI 표시 (버그 A 수정)
+//      - if (coupleId && !partnerName): 초대 코드 재확인 + 취소 버튼
+//      - if (coupleId && partnerName): 기존 연동 완료 UI
 // ============================================================
 "use client";
 
@@ -357,10 +360,93 @@ function CouplePageInner() {
     );
   }
 
-  // 이미 연동된 상태 — 파트너 정보 + 해제 버튼
-  if (coupleId) {
+  // ★ coupleId는 있지만 파트너(user2Uid)가 없는 상태
+  //   — "코드 만들기"만 한 경우: 파트너가 코드를 입력하길 기다리는 중
+  //   — 이 상태에서는 "연동 중" UI 대신 "초대 코드 대기 중" UI를 표시
+  //   — partnerName이 ""이면 파트너 미연동 판단 (subscribeCoupleDoc 동작과 일치)
+  if (coupleId && !partnerName) {
+    return (
+      <div>
+        <button onClick={() => { window.location.href = "/"; }} style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:"none", color:MUTED, fontSize:13, cursor:"pointer", fontFamily:"inherit", padding:"0 0 16px 0" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke={MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          홈으로
+        </button>
+        <h2 style={{ fontSize:20, fontWeight:700, color:INK, marginBottom:6 }}>커플 연동</h2>
+        <p style={{ fontSize:13, color:MUTED, marginBottom:20 }}>파트너가 코드를 입력하면 자동으로 연동돼요 💌</p>
+
+        {/* 대기 안내 카드 */}
+        <div style={{ background:WARM, borderRadius:16, padding:"20px 16px", marginBottom:20, textAlign:"center", border:`1px solid ${BORDER}` }}>
+          <div style={{ fontSize:44, marginBottom:10 }}>⏳</div>
+          <p style={{ fontSize:14, fontWeight:700, color:INK, marginBottom:6 }}>파트너를 기다리는 중이에요</p>
+          <p style={{ fontSize:12, color:MUTED, lineHeight:1.7 }}>
+            파트너에게 초대 코드를 전달하고<br/>코드를 입력하면 자동으로 연동됩니다.
+          </p>
+        </div>
+
+        {/* 코드 재확인 버튼 — 다시 코드 발급 팝업 열기 */}
+        <button
+          onClick={async () => {
+            if (!sDate) {
+              showStatus("error", "날짜가 설정되지 않았어요. 연동 해제 후 다시 시도해주세요.");
+              return;
+            }
+            setStatus("loading");
+            try {
+              // ★ 이미 couples 문서가 있으므로 기존 inviteCode 재조회
+              const { getDoc, doc: fsDoc } = await import("firebase/firestore");
+              const { db: fsDb } = await import("@/lib/firebase/config");
+              const snap = await getDoc(fsDoc(fsDb, "couples", coupleId));
+              if (snap.exists()) {
+                const code = snap.data().inviteCode as string;
+                setInviteCode(code);
+                setStatus("idle");
+                setShowCodePopup(true);
+              } else {
+                showStatus("error", "코드를 찾을 수 없어요. 연동 해제 후 다시 시도해주세요.");
+              }
+            } catch {
+              showStatus("error", "코드 조회에 실패했어요.");
+            }
+          }}
+          disabled={isLoading}
+          style={{ width:"100%", padding:13, background:isLoading?"#C0B8B0":SAGE, border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:isLoading?"default":"pointer", fontFamily:"inherit", marginBottom:12 }}
+        >
+          {isLoading ? "조회 중…" : "📋 초대 코드 다시 확인하기"}
+        </button>
+
+        {/* 취소(연동 해제) 버튼 */}
+        <button onClick={() => setShowDisconnectPopup(true)} style={{ width:"100%", padding:13, background:"transparent", border:`1.5px solid ${RED}`, borderRadius:12, color:RED, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+          ✕ 코드 취소하기
+        </button>
+        <p style={{ fontSize:11, color:MUTED, textAlign:"center", marginTop:10, lineHeight:1.6 }}>
+          취소하면 초대 코드가 무효화됩니다.
+        </p>
+
+        <StatusToast status={status} msg={statusMsg} />
+
+        {showCodePopup && (
+          <CodeCreatedPopup
+            inviteCode={inviteCode}
+            onCopy={() => { navigator.clipboard.writeText(inviteCode); showStatus("success", "클립보드에 복사됐어요!"); }}
+            onClose={() => { setShowCodePopup(false); }}
+          />
+        )}
+
+        {showDisconnectPopup && (
+          <DisconnectConfirmPopup
+            onConfirm={handleDisconnect}
+            onClose={() => setShowDisconnectPopup(false)}
+            loading={disconnecting}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // 파트너까지 연동된 상태 — 파트너 정보 + 해제 버튼
+  if (coupleId && partnerName) {
     const dday = startDate ? calcDDay(startDate) : null;
-    const displayPartnerName = partnerName ? tn(partnerName, 12) : "파트너";
+    const displayPartnerName = tn(partnerName, 12);
     return (
       <div>
         <button onClick={() => { window.location.href = "/"; }} style={{ display:"flex", alignItems:"center", gap:6, background:"none", border:"none", color:MUTED, fontSize:13, cursor:"pointer", fontFamily:"inherit", padding:"0 0 16px 0" }}>
@@ -374,7 +460,7 @@ function CouplePageInner() {
           <div style={{ width:52, height:52, borderRadius:"50%", background:SAGE, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:20, fontWeight:700, flexShrink:0 }}>
             {partnerProfileImgUrl
               ? <img src={partnerProfileImgUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-              : (partnerName ? partnerName[0] : "?")}
+              : partnerName[0]}
           </div>
           <div style={{ flex:1, minWidth:0 }}>
             <p style={{ fontSize:15, fontWeight:700, color:INK, marginBottom:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
