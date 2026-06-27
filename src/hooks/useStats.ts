@@ -42,12 +42,11 @@ export function useStats() {
     const unsub = onSnapshot(q, (snap) => {
       const docs = snap.docs.map((d) => d.data());
       const visitedCount = docs.length;
-      const avgRating =
-        visitedCount > 0
-          ? Math.round(
-              (docs.reduce((sum, d) => sum + (d.rating ?? 0), 0) / visitedCount) * 10
-            ) / 10
-          : 0;
+      // ★ toFixed(1) 문자열로 저장 — 모든 탭 헤더에서 소수점 1자리 통일 표시
+      // (예: 4.0, 4.3, 3.7 / 기록 없으면 "—")
+      const avgRating = visitedCount > 0
+        ? (docs.reduce((sum, d) => sum + (d.rating ?? 0), 0) / visitedCount).toFixed(1)
+        : "—";
       setStats({ visitedCount, avgRating });
     });
 
