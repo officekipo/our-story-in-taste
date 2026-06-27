@@ -24,7 +24,8 @@ function tn(name: string, max = 8): string {
 interface HeaderProps {
   activeTab:       TabId;
   scrolled?:       boolean;
-  // ★ 통계 props는 optional — 미전달 시 authStore.headerStats 값을 사용
+  // ★ 통계(visitedCount/avgRating/wishCount)는 statsStore에서 직접 읽음
+  //   하위 호환을 위해 props는 유지하되 실제로는 사용하지 않음
   visitedCount?:   number;
   avgRating?:      string | number;
   wishCount?:      number;
@@ -39,31 +40,26 @@ interface HeaderProps {
 
 export function Header({
   activeTab,
-  scrolled     = false,
-  visitedCount = 0,
-  avgRating    = "—",
-  wishCount    = 0,
+  scrolled       = false,
   viewMode,
   onViewMode,
-  showSearch   = false,
+  showSearch     = false,
   onToggleSearch,
-  unreadCount  = 0,
+  unreadCount    = 0,
   onBell,
 }: HeaderProps) {
   const router = useRouter();
   const { myName, partnerName, startDate } = useAuthStore();
-  // ★ 통계는 statsStore에서 읽음 — useStats()가 모든 탭에서 실시간 유지
-  //   props로 전달된 값 우선, 없으면 store 값 사용 (stats/page.tsx 직접 전달 호환)
+  // ★ 통계는 statsStore에서 항상 읽음 — props는 무시 (모든 탭 일관성 보장)
+  //   AppShell의 useStats()가 실시간으로 statsStore를 업데이트함
   const stats = useStatsStore();
-  const _visitedCount = visitedCount !== undefined && visitedCount !== 0
-    ? visitedCount
-    : stats.visitedCount;
-  const _avgRating = avgRating !== undefined && avgRating !== "—"
-    ? avgRating
-    : (stats.avgRating ?? "—");
-  const _wishCount = wishCount !== undefined && wishCount !== 0
-    ? wishCount
-    : stats.wishCount;
+  const _visitedCount = stats.visitedCount;
+  const _wishCount    = stats.wishCount;
+  // ★ avgRating: number를 toFixed(1) 문자열로 변환하여 소수점 1자리 표시
+  //   0이면 "—" 표시 (기록 없음)
+  const _avgRating = stats.avgRating > 0
+    ? stats.avgRating.toFixed(1)
+    : "—";
 
   const dday      = calcDDay(startDate || "2023-01-01");
   const isVisited = activeTab === "visited";
