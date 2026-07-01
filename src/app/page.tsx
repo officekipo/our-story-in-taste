@@ -22,7 +22,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { useRouter }                    from "next/navigation";
+
 import { AppShell }                     from "@/components/layout/AppShell";
 import { VisitedCard }                  from "@/components/visited/VisitedCard";
 import { GalleryGrid }                  from "@/components/visited/GalleryGrid";
@@ -32,6 +32,7 @@ import { Toast }                        from "@/components/common/Toast";
 import { ConfirmDialog }                from "@/components/common/ConfirmDialog";
 import { KakaoAdFitInFeed }             from "@/components/common/KakaoAdFitInFeed";
 import { DateRangePicker }              from "@/components/visited/DateRangePicker";
+import { InvitePopup }                   from "@/components/settings/InvitePopup";
 import { useUIStore }                   from "@/store/uiStore";
 import { useAuthStore }                 from "@/store/authStore";
 import { SAMPLE_VISITED }               from "@/lib/sample-data";
@@ -195,8 +196,6 @@ function FilterBar({ show, filterSido, filterCui, sortBy, timeline, showSearch, 
    홈 페이지
 ───────────────────────────────────────────────────────── */
 export default function HomePage() {
-  const router = useRouter();
-
   const [dummyRecords, setDummyRecords] = useState<VisitedRecord[]>(SAMPLE_VISITED);
   const firebase     = useVisited();
   const firebaseWish = useWishlist();
@@ -215,6 +214,7 @@ export default function HomePage() {
   const [filterDateTo,    setFilterDateTo]    = useState("");
   const [expandedMonths,  setExpandedMonths]  = useState<Set<string>>(new Set());
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [showInvitePopup,  setShowInvitePopup]  = useState(false);
 
   // AppShell의 scrolled 상태와 연동된 필터 바 표시 여부
   // AppShell이 scrolled를 Header로만 전달하므로, page.tsx에서 별도로 추적
@@ -302,7 +302,7 @@ export default function HomePage() {
     showToast("기록을 삭제했어요 🗑️");
   };
 
-  const goToCouple = (mode?: "create" | "join") => router.push(mode === "join" ? "/couple?mode=join" : "/couple");
+  const openInvitePopup = () => setShowInvitePopup(true);
 
   if (loading) return (
     <AppShell activeTab="visited">
@@ -352,7 +352,7 @@ export default function HomePage() {
           <>
             {showOnboarding && filtered.length > 0 && (
               <div style={{ padding: "12px 16px 0" }}>
-                <OnboardingBanner variant="slim" onCouple={() => goToCouple("create")} onJoin={() => goToCouple("join")} onDismiss={() => setBannerDismissed(true)} />
+                <OnboardingBanner variant="slim" onCouple={openInvitePopup} onJoin={openInvitePopup} onDismiss={() => setBannerDismissed(true)} />
               </div>
             )}
             <GalleryGrid items={filtered} />
@@ -363,13 +363,13 @@ export default function HomePage() {
         {(viewMode === "list" || timeline) && (
           <div>
             {showOnboarding && filtered.length === 0 && !filterSido && !filterCui && !filterDateFrom && !filterDateTo && !searchText && (
-              <OnboardingBanner variant="full" onCouple={() => goToCouple("create")} onJoin={() => goToCouple("join")} onDismiss={() => setBannerDismissed(true)} />
+              <OnboardingBanner variant="full" onCouple={openInvitePopup} onJoin={openInvitePopup} onDismiss={() => setBannerDismissed(true)} />
             )}
 
             {filtered.length > 0 && (
               <>
                 {showOnboarding && (
-                  <OnboardingBanner variant="slim" onCouple={() => goToCouple("create")} onJoin={() => goToCouple("join")} onDismiss={() => setBannerDismissed(true)} />
+                  <OnboardingBanner variant="slim" onCouple={openInvitePopup} onJoin={openInvitePopup} onDismiss={() => setBannerDismissed(true)} />
                 )}
 
                 {timeline ? (
@@ -433,6 +433,7 @@ export default function HomePage() {
       <DetailModal />
       {toastMsg      && <Toast message={toastMsg} onClose={clearToast} />}
       {confirmTarget && <ConfirmDialog message={confirmTarget.msg} onConfirm={handleDelete} onCancel={closeConfirm} />}
+      {showInvitePopup && <InvitePopup onClose={() => setShowInvitePopup(false)} />}
     </AppShell>
   );
 }
