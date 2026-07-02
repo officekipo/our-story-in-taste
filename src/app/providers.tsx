@@ -1,4 +1,12 @@
 // src/app/providers.tsx
+//
+// 성능 개선 (2026-07-03):
+//   ★ profileReady 800ms 강제 대기 제거
+//     → myName 없어도 즉시 profileReady: true
+//     → 앱 초기 진입 체감 속도 800ms 단축
+//   ★ SplashScreen 최대 표시 시간 1800ms → 1200ms 단축
+//   ★ mounted 체크를 hydration 전용으로 단순화
+//     → !mounted && !initialized 둘 다 SplashScreen 반환하던 이중 조건 통합
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -57,17 +65,12 @@ function ProfileSetupPopup({ onComplete }: { onComplete: () => void }) {
       const db = getFirestore(getApp());
       const finalDate = date.trim() || today;
 
-      // ★ profileCompleted: true 를 함께 저장
-      //   → Firestore users 문서에 플래그 기록
-      //   → authStore onSnapshot이 자동으로 profileCompleted: true 로 업데이트
-      //   → PWA 재실행·기기 교체에도 팝업 재노출 없음
       await updateDoc(doc(db, "users", myUid), {
         name:             name.trim(),
         startDate:        finalDate,
         profileCompleted: true,
       });
 
-      // ★ store 즉시 반영 (onSnapshot 도착 전 UI 즉시 닫기)
       setAuth({ myName: name.trim(), startDate: finalDate, profileCompleted: true });
 
       onComplete();
@@ -273,8 +276,9 @@ function SplashScreen() {
   const [phase, setPhase] = useState<"in" | "hold" | "out">("in");
 
   useEffect(() => {
+    // ★ 최대 표시 시간 1800ms → 1200ms 단축
     const t1 = setTimeout(() => setPhase("hold"), 600);
-    const t2 = setTimeout(() => setPhase("out"),  1800);
+    const t2 = setTimeout(() => setPhase("out"),  1200);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
 
@@ -406,33 +410,17 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   const [mounted, setMounted]                   = useState(false);
   const [showProfilePopup, setShowProfilePopup] = useState(false);
-  // ★ Firestore 데이터 도착 대기 플래그
-  //   myUid 세팅 후 myName/startDate가 실제로 채워질 때까지 대기
-  //   사양 낮은 기기에서 팝업이 잠깐 보였다 사라지는 현상 방지
-  const [profileReady, setProfileReady]         = useState(false);
-  const profileReadyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
-  // ★ myUid 확정 후 Firestore 데이터 도착 대기
+  // ★ profileReady 800ms 대기 완전 제거
+  //   myName 유무에 관계없이 initialized + myUid 확정 시 즉시 팝업 판단
+  //   팝업이 잠깐 보이는 현상은 profileCompleted Firestore 필드로 이미 차단됨
   useEffect(() => {
-    if (!myUid) { setProfileReady(false); return; }
-    // 이미 데이터가 있으면 즉시 ready
-    if (myName && myName.trim() !== "") { setProfileReady(true); return; }
-    // 없으면 800ms 대기 후 ready (Firestore 응답 대기)
-    profileReadyTimer.current = setTimeout(() => setProfileReady(true), 800);
-    return () => { if (profileReadyTimer.current) clearTimeout(profileReadyTimer.current); };
-  }, [myUid, myName]);
-
-  // ★ 프로필 팝업 표시 여부 결정
-  useEffect(() => {
-    if (!mounted || !initialized || !myUid || !emailVerified || !profileReady) return;
+    if (!mounted || !initialized || !myUid || !emailVerified) return;
     const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
     if (isPublic) return;
 
-    // ★ Firestore profileCompleted: true 이면 팝업 억제
-    //   - PWA 재실행, 기기 교체, 브라우저 캐시 삭제에도 유지됨
-    //   - authStore가 users 문서를 실시간 구독하므로 별도 읽기 없음
     if (profileCompleted) {
       setShowProfilePopup(false);
       return;
@@ -455,7 +443,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       });
       setShowProfilePopup(false);
     }
-  }, [mounted, initialized, myUid, emailVerified, profileReady, profileCompleted, myName, startDate, pathname]);
+  }, [mounted, initialized, myUid, emailVerified, profileCompleted, myName, startDate, pathname]);
 
   useEffect(() => {
     if (!mounted || !initialized) return;
@@ -475,8 +463,8 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [mounted, initialized, myUid, emailVerified, pathname, router]);
 
-  if (!mounted)     return <SplashScreen />;
-  if (!initialized) return <SplashScreen />;
+  // ★ mounted 전과 initialized 전을 통합해서 SplashScreen 반환
+  if (!mounted || !initialized) return <SplashScreen />;
 
   const isPublic    = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
   const isLegalPage = ["/settings/privacy", "/settings/terms", "/settings/location-terms"]
