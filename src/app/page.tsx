@@ -1,27 +1,18 @@
 // src/app/page.tsx
 //
-// 변경사항:
-//   ★ FilterBar 컴포넌트 분리 → AppShell의 filterBar slot으로 전달
-//     → 헤더 높이에 영향 없음 → 탭 이동 시 덜컥임 완전 해결
-//   ★ FilterBar max-height + opacity 슬라이드 애니메이션
-//   ★ 플로팅 돋보기(handleToggleSearch) 클릭 시 main scrollTo(0,0)
-//     → 스크롤 최상단 이동 → AppShell의 scrolled=false → 필터 바 자동 펼침
-//   기존 유지:
-//     handleDelete: closeConfirm() 후 showToast()
-//     AddEditModal에 onAddVisit, existingRecords prop
-//     커플 미연동 온보딩 배너
-//
-// 버그 수정 (2026-06-26):
-//   ★ 헤더 통계(방문수/평점/위시수) 0 표시 버그 수정 (버그 B)
-//     원인: setHeaderStats(authStore)와 useStats(statsStore) 이원화 →
-//           coupleId 생성 직후 records가 빈 배열로 잠깐 됐다가 채워지는 타이밍에
-//           setHeaderStats({ visitedCount:0 })가 statsStore를 0으로 덮어씀
-//     해결: page.tsx의 setHeaderStats useEffect 제거
-//           → AppShell의 useStats()가 statsStore를 단독으로 관리
-//           → Header는 statsStore만 읽어 항상 최신값 표시
+// 버그 수정 (2026-07-03):
+//   ★ 달력(DateRangePicker) 클릭 시 아무 반응 없는 버그 수정
+//     원인: showCalendar state가 FilterBar 내부에 있고,
+//           FilterBar 루트 div가 overflow:hidden + maxHeight:0 이라
+//           달력 팝업이 렌더돼도 clip 되어 보이지 않음
+//     해결: showCalendar state를 HomePage로 끌어올림
+//           DateRangePicker를 createPortal로 document.body에 직접 렌더
+//           → overflow:hidden 부모의 영향 완전히 벗어남
+//           onCalendarToggle prop 추가로 FilterBar → HomePage 콜백
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { createPortal }                         from "react-dom";
 
 import { AppShell }                     from "@/components/layout/AppShell";
 import { VisitedCard }                  from "@/components/visited/VisitedCard";
@@ -32,7 +23,7 @@ import { Toast }                        from "@/components/common/Toast";
 import { ConfirmDialog }                from "@/components/common/ConfirmDialog";
 import { KakaoAdFitInFeed }             from "@/components/common/KakaoAdFitInFeed";
 import { DateRangePicker }              from "@/components/visited/DateRangePicker";
-import { InvitePopup }                   from "@/components/settings/InvitePopup";
+import { InvitePopup }                  from "@/components/settings/InvitePopup";
 import { useUIStore }                   from "@/store/uiStore";
 import { useAuthStore }                 from "@/store/authStore";
 import { SAMPLE_VISITED }               from "@/lib/sample-data";
@@ -100,20 +91,26 @@ function OnboardingBanner({ variant, onCouple, onJoin, onDismiss }: {
 /* ─────────────────────────────────────────────────────────
    필터 바 — AppShell filterBar slot으로 전달
    show=false 시 max-height:0 + opacity:0 으로 슬라이드 접힘
+   ★ showCalendar / onCalendarToggle: HomePage에서 제어 (portal 렌더를 위해)
 ───────────────────────────────────────────────────────── */
 const _chipBase: React.CSSProperties = { padding: "5px 11px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: "none", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0 };
 
-function FilterBar({ show, filterSido, filterCui, sortBy, timeline, showSearch, searchText, filterDateFrom, filterDateTo, onFilterSido, onFilterCui, onSort, onTimeline, onToggleSearch, onSearchText, onFilterDateRange }: {
+function FilterBar({ show, filterSido, filterCui, sortBy, timeline, showSearch, searchText, filterDateFrom, filterDateTo, showCalendar, onFilterSido, onFilterCui, onSort, onTimeline, onToggleSearch, onSearchText, onFilterDateRange, onCalendarToggle }: {
   show: boolean;
   filterSido: string; filterCui: string; sortBy: string; timeline: boolean;
   showSearch: boolean; searchText: string; filterDateFrom: string; filterDateTo: string;
+  showCalendar: boolean;
   onFilterSido: (v: string) => void; onFilterCui: (v: string) => void; onSort: (v: string) => void;
   onTimeline: () => void; onToggleSearch: () => void; onSearchText: (v: string) => void;
   onFilterDateRange: (from: string, to: string) => void;
+  onCalendarToggle: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
-  const [showCalendar, setShowCalendar] = useState(false);
   const hasDateFilter = !!(filterDateFrom || filterDateTo);
-  const dateChipText = filterDateFrom && filterDateTo ? `${filterDateFrom}  ~  ${filterDateTo}` : filterDateFrom ? `${filterDateFrom} 이후` : filterDateTo ? `${filterDateTo} 이전` : "";
+  const dateChipText = filterDateFrom && filterDateTo
+    ? `${filterDateFrom}  ~  ${filterDateTo}`
+    : filterDateFrom ? `${filterDateFrom} 이후`
+    : filterDateTo   ? `${filterDateTo} 이전`
+    : "";
   const chipActive:   React.CSSProperties = { ..._chipBase, background: ROSE,  color: "#fff",  outline: `1.5px solid ${ROSE}` };
   const chipInactive: React.CSSProperties = { ..._chipBase, background: "#fff", color: MUTED,  outline: `1px solid ${BORDER}` };
 
@@ -156,7 +153,8 @@ function FilterBar({ show, filterSido, filterCui, sortBy, timeline, showSearch, 
         <div style={{ paddingBottom: 8, position: "relative" }}>
           <div style={{ position: "relative" }}>
             <input value={searchText} onChange={e => onSearchText(e.target.value)} placeholder="식당, 지역, 추억 검색..." autoFocus style={{ width: "100%", padding: "9px 44px 9px 14px", background: "#FAFAFA", border: `1.5px solid ${BORDER}`, borderRadius: 10, color: INK, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
-            <button onClick={() => setShowCalendar(v => !v)} aria-label="날짜 기간 검색" className="tap" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: hasDateFilter || showCalendar ? "#F2D5CC" : "none", border: "none", cursor: "pointer", padding: 4, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, transition: "background 0.15s" }}>
+            {/* ★ onClick: HomePage의 onCalendarToggle 호출 — e를 그대로 전달해 버튼 위치 계산 */}
+            <button onClick={onCalendarToggle} aria-label="날짜 기간 검색" className="tap" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: hasDateFilter || showCalendar ? "#F2D5CC" : "none", border: "none", cursor: "pointer", padding: 4, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, transition: "background 0.15s" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <rect x="3" y="4" width="18" height="17" rx="2.5" stroke={hasDateFilter || showCalendar ? ROSE : MUTED} strokeWidth="2"/>
                 <path d="M3 9h18" stroke={hasDateFilter || showCalendar ? ROSE : MUTED} strokeWidth="2"/>
@@ -178,14 +176,7 @@ function FilterBar({ show, filterSido, filterCui, sortBy, timeline, showSearch, 
               </div>
             </div>
           )}
-          {showCalendar && (
-            <>
-              <div onClick={() => setShowCalendar(false)} style={{ position: "fixed", inset: 0, zIndex: 98 }} />
-              <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 99 }}>
-                <DateRangePicker valueFrom={filterDateFrom} valueTo={filterDateTo} onChange={(from, to) => { onFilterDateRange(from, to); setShowCalendar(false); }} onClose={() => setShowCalendar(false)} />
-              </div>
-            </>
-          )}
+          {/* ★ DateRangePicker는 여기서 렌더하지 않음 — HomePage에서 createPortal로 렌더 */}
         </div>
       )}
     </div>
@@ -214,21 +205,44 @@ export default function HomePage() {
   const [filterDateTo,    setFilterDateTo]    = useState("");
   const [expandedMonths,  setExpandedMonths]  = useState<Set<string>>(new Set());
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [showInvitePopup,  setShowInvitePopup]  = useState(false);
+  const [showInvitePopup, setShowInvitePopup] = useState(false);
+  const [scrolled,        setScrolled]        = useState(false);
 
-  // AppShell의 scrolled 상태와 연동된 필터 바 표시 여부
-  // AppShell이 scrolled를 Header로만 전달하므로, page.tsx에서 별도로 추적
-  const [scrolled, setScrolled] = useState(false);
+  // ★ showCalendar를 HomePage로 끌어올림 — portal 렌더를 위해
+  const [showCalendar, setShowCalendar] = useState(false);
+  // ★ 달력 팝업 위치 (달력 버튼의 getBoundingClientRect 기준)
+  const [calPos, setCalPos] = useState<{ top: number; right: number } | null>(null);
+  // ★ SSR hydration 완료 후에만 portal 사용 (document.body 접근 안전)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const { toastMsg, clearToast, confirmTarget, closeConfirm, openAddModal, showToast } = useUIStore();
   const { myName, coupleId } = useAuthStore();
 
   const showOnboarding = !coupleId && !bannerDismissed;
 
-  // 플로팅 돋보기 클릭 핸들러
-  // — 검색 토글 + main 스크롤 최상단 이동(→ AppShell scrolled=false → 필터 바 펼침)
+  // ★ 달력 버튼 클릭 핸들러 — 버튼 rect 기준으로 팝업 위치 결정 후 토글
+  const handleCalendarToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!showCalendar) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      setCalPos({
+        top:   rect.bottom + 6,
+        right: window.innerWidth - rect.right,
+      });
+    }
+    setShowCalendar(v => !v);
+  };
+
+  const handleCalendarClose = () => setShowCalendar(false);
+
+  const handleFilterDateRange = (from: string, to: string) => {
+    setFilterDateFrom(from);
+    setFilterDateTo(to);
+  };
+
   const handleToggleSearch = () => {
     setShowSearch(s => !s);
+    setShowCalendar(false);
     const main = document.querySelector<HTMLElement>("main");
     if (main) main.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -259,12 +273,9 @@ export default function HomePage() {
     if (timeline && sortedMonths.length > 0) setExpandedMonths(new Set([sortedMonths[0]]));
   }, [timeline]); // eslint-disable-line react-hooks/exhaustive-deps
 
-
   const toggleMonth = (m: string) => {
     setExpandedMonths(prev => { const next = new Set(prev); next.has(m) ? next.delete(m) : next.add(m); return next; });
   };
-
-  const handleFilterDateRange = (from: string, to: string) => { setFilterDateFrom(from); setFilterDateTo(to); };
 
   const handleSave = async (data: VisitedFormData, imgUrls: string[]) => {
     const { editTarget } = useUIStore.getState();
@@ -317,123 +328,144 @@ export default function HomePage() {
   const midAdIdx = MID_AD_INDEX(filtered.length);
 
   return (
-    <AppShell
-      activeTab="visited"
-      fab={
-        <button onClick={openAddModal} className="tap" style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: ROSE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(201,107,82,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
-          <span className="tap" style={{ fontSize: 28, lineHeight: "47px" }}>+</span>
-        </button>
-      }
-      /* ── 필터 바: Header 외부, AppShell의 Header-main 사이 slot ── */
-      filterBar={
-        <FilterBar
-          show={!scrolled}
-          filterSido={filterSido}     filterCui={filterCui}         sortBy={sortBy}
-          timeline={timeline}         showSearch={showSearch}        searchText={searchText}
-          filterDateFrom={filterDateFrom}                            filterDateTo={filterDateTo}
-          onFilterSido={setFilterSido}   onFilterCui={setFilterCui}    onSort={setSortBy}
-          onTimeline={() => setTimeline(t => !t)}
-          onToggleSearch={() => setShowSearch(s => !s)}
-          onSearchText={setSearchText}
-          onFilterDateRange={handleFilterDateRange}
-        />
-      }
-      /* ── scrolled 상태를 AppShell에서 받아와 filterBar show 제어 ── */
-      onScrolledChange={setScrolled}
-      headerProps={{
-        viewMode,    onViewMode:     setViewMode,
-        showSearch,  onToggleSearch: handleToggleSearch,
-      }}
-    >
-      <div style={viewMode === "gallery" && !timeline ? {} : { padding: "12px 16px 0" }}>
+    <>
+      <AppShell
+        activeTab="visited"
+        fab={
+          <button onClick={openAddModal} className="tap" style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: ROSE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(201,107,82,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
+            <span className="tap" style={{ fontSize: 28, lineHeight: "47px" }}>+</span>
+          </button>
+        }
+        filterBar={
+          <FilterBar
+            show={!scrolled}
+            filterSido={filterSido}      filterCui={filterCui}          sortBy={sortBy}
+            timeline={timeline}          showSearch={showSearch}         searchText={searchText}
+            filterDateFrom={filterDateFrom}                              filterDateTo={filterDateTo}
+            showCalendar={showCalendar}
+            onFilterSido={setFilterSido}    onFilterCui={setFilterCui}     onSort={setSortBy}
+            onTimeline={() => setTimeline(t => !t)}
+            onToggleSearch={() => setShowSearch(s => !s)}
+            onSearchText={setSearchText}
+            onFilterDateRange={handleFilterDateRange}
+            onCalendarToggle={handleCalendarToggle}
+          />
+        }
+        onScrolledChange={setScrolled}
+        headerProps={{
+          viewMode,    onViewMode:     setViewMode,
+          showSearch,  onToggleSearch: handleToggleSearch,
+        }}
+      >
+        <div style={viewMode === "gallery" && !timeline ? {} : { padding: "12px 16px 0" }}>
 
-        {/* ── 갤러리 모드 ── */}
-        {viewMode === "gallery" && !timeline && (
-          <>
-            {showOnboarding && filtered.length > 0 && (
-              <div style={{ padding: "12px 16px 0" }}>
-                <OnboardingBanner variant="slim" onCouple={openInvitePopup} onJoin={openInvitePopup} onDismiss={() => setBannerDismissed(true)} />
-              </div>
-            )}
-            <GalleryGrid items={filtered} />
-          </>
-        )}
-
-        {/* ── 리스트 or 타임라인 ── */}
-        {(viewMode === "list" || timeline) && (
-          <div>
-            {showOnboarding && filtered.length === 0 && !filterSido && !filterCui && !filterDateFrom && !filterDateTo && !searchText && (
-              <OnboardingBanner variant="full" onCouple={openInvitePopup} onJoin={openInvitePopup} onDismiss={() => setBannerDismissed(true)} />
-            )}
-
-            {filtered.length > 0 && (
-              <>
-                {showOnboarding && (
+          {/* ── 갤러리 모드 ── */}
+          {viewMode === "gallery" && !timeline && (
+            <>
+              {showOnboarding && filtered.length > 0 && (
+                <div style={{ padding: "12px 16px 0" }}>
                   <OnboardingBanner variant="slim" onCouple={openInvitePopup} onJoin={openInvitePopup} onDismiss={() => setBannerDismissed(true)} />
-                )}
+                </div>
+              )}
+              <GalleryGrid items={filtered} />
+            </>
+          )}
 
-                {timeline ? (
-                  <>
-                    <KakaoAdFitInFeed key="ad-timeline-top" />
-                    {sortedMonths.map((m, monthIdx) => {
-                      const isOpen = expandedMonths.has(m);
-                      return (
-                        <div key={m}>
-                          <div onClick={() => toggleMonth(m)} style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 4, paddingBottom: isOpen ? 12 : 4, cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", marginBottom: isOpen ? 0 : 4 }}>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: "#8C4A38", flexShrink: 0 }}>{m.replace("-", "년 ")}월</span>
-                            <div style={{ flex: 1, height: 1, background: BORDER }} />
-                            <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>{byMonth[m].length}곳</span>
-                            <div style={{ width: 18, height: 18, borderRadius: "50%", background: isOpen ? ROSE : "#F0EBE3", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "background 0.2s" }}>
-                              <svg width="8" height="8" viewBox="0 0 10 6" fill="none" style={{ transform: isOpen ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.2s" }}>
-                                <path d="M1 5L5 1L9 5" stroke={isOpen ? "#fff" : MUTED} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
+          {/* ── 리스트 or 타임라인 ── */}
+          {(viewMode === "list" || timeline) && (
+            <div>
+              {showOnboarding && filtered.length === 0 && !filterSido && !filterCui && !filterDateFrom && !filterDateTo && !searchText && (
+                <OnboardingBanner variant="full" onCouple={openInvitePopup} onJoin={openInvitePopup} onDismiss={() => setBannerDismissed(true)} />
+              )}
+
+              {filtered.length > 0 && (
+                <>
+                  {showOnboarding && (
+                    <OnboardingBanner variant="slim" onCouple={openInvitePopup} onJoin={openInvitePopup} onDismiss={() => setBannerDismissed(true)} />
+                  )}
+
+                  {timeline ? (
+                    <>
+                      <KakaoAdFitInFeed key="ad-timeline-top" />
+                      {sortedMonths.map((m, monthIdx) => {
+                        const isOpen = expandedMonths.has(m);
+                        return (
+                          <div key={m}>
+                            <div onClick={() => toggleMonth(m)} style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 4, paddingBottom: isOpen ? 12 : 4, cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", marginBottom: isOpen ? 0 : 4 }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#8C4A38", flexShrink: 0 }}>{m.replace("-", "년 ")}월</span>
+                              <div style={{ flex: 1, height: 1, background: BORDER }} />
+                              <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>{byMonth[m].length}곳</span>
+                              <div style={{ width: 18, height: 18, borderRadius: "50%", background: isOpen ? ROSE : "#F0EBE3", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "background 0.2s" }}>
+                                <svg width="8" height="8" viewBox="0 0 10 6" fill="none" style={{ transform: isOpen ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.2s" }}>
+                                  <path d="M1 5L5 1L9 5" stroke={isOpen ? "#fff" : MUTED} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </div>
                             </div>
+                            {isOpen && (viewMode === "gallery"
+                              ? <div style={{ marginBottom: 8 }}><GalleryGrid items={byMonth[m]} /></div>
+                              : <div style={{ marginBottom: 20 }}>{byMonth[m].map(r => <VisitedCard key={r.id} record={r} onDelete={() => {}} />)}</div>
+                            )}
+                            {monthIdx === 0 && sortedMonths.length > 1 && <KakaoAdFitInFeed key="ad-timeline-mid" />}
                           </div>
-                          {isOpen && (viewMode === "gallery"
-                            ? <div style={{ marginBottom: 8 }}><GalleryGrid items={byMonth[m]} /></div>
-                            : <div style={{ marginBottom: 20 }}>{byMonth[m].map(r => <VisitedCard key={r.id} record={r} onDelete={() => {}} />)}</div>
-                          )}
-                          {monthIdx === 0 && sortedMonths.length > 1 && <KakaoAdFitInFeed key="ad-timeline-mid" />}
+                        );
+                      })}
+                    </>
+                  ) : (
+                    <>
+                      <KakaoAdFitInFeed key="ad-list-top" />
+                      {filtered.map((r, idx) => (
+                        <div key={r.id}>
+                          <VisitedCard record={r} onDelete={() => {}} />
+                          {idx === midAdIdx && idx < filtered.length - 1 && <KakaoAdFitInFeed key="ad-list-mid" />}
                         </div>
-                      );
-                    })}
-                  </>
-                ) : (
-                  <>
-                    <KakaoAdFitInFeed key="ad-list-top" />
-                    {filtered.map((r, idx) => (
-                      <div key={r.id}>
-                        <VisitedCard record={r} onDelete={() => {}} />
-                        {idx === midAdIdx && idx < filtered.length - 1 && <KakaoAdFitInFeed key="ad-list-mid" />}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </>
-            )}
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
 
-            {filtered.length === 0 && (filterSido || filterCui || filterDateFrom || filterDateTo || searchText) && (
-              <div style={{ textAlign: "center", padding: "48px 0", color: "#C0B8B0" }}>
-                <div style={{ fontSize: 44 }}>🔍</div>
-                <p style={{ marginTop: 10, fontSize: 14 }}>{emptyMsg}</p>
-              </div>
-            )}
+              {filtered.length === 0 && (filterSido || filterCui || filterDateFrom || filterDateTo || searchText) && (
+                <div style={{ textAlign: "center", padding: "48px 0", color: "#C0B8B0" }}>
+                  <div style={{ fontSize: 44 }}>🔍</div>
+                  <p style={{ marginTop: 10, fontSize: 14 }}>{emptyMsg}</p>
+                </div>
+              )}
 
-            {filtered.length === 0 && coupleId && !filterSido && !filterCui && !filterDateFrom && !filterDateTo && !searchText && (
-              <div style={{ textAlign: "center", padding: "48px 0", color: "#C0B8B0" }}>
-                <div style={{ fontSize: 44 }}>🍽️</div>
-                <p style={{ marginTop: 10, fontSize: 14 }}>아직 기록이 없어요. 첫 맛집을 기록해보세요!</p>
-              </div>
-            )}
+              {filtered.length === 0 && coupleId && !filterSido && !filterCui && !filterDateFrom && !filterDateTo && !searchText && (
+                <div style={{ textAlign: "center", padding: "48px 0", color: "#C0B8B0" }}>
+                  <div style={{ fontSize: 44 }}>🍽️</div>
+                  <p style={{ marginTop: 10, fontSize: 14 }}>아직 기록이 없어요. 첫 맛집을 기록해보세요!</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <AddEditModal onSave={handleSave} onAddVisit={handleAddVisit} existingRecords={records} />
+        <DetailModal />
+        {toastMsg      && <Toast message={toastMsg} onClose={clearToast} />}
+        {confirmTarget && <ConfirmDialog message={confirmTarget.msg} onConfirm={handleDelete} onCancel={closeConfirm} />}
+        {showInvitePopup && <InvitePopup onClose={() => setShowInvitePopup(false)} />}
+      </AppShell>
+
+      {/* ★ DateRangePicker — createPortal로 document.body에 직접 렌더
+           FilterBar의 overflow:hidden clip 영향을 완전히 벗어남
+           calPos: 달력 버튼의 getBoundingClientRect 기준 위치 */}
+      {mounted && showCalendar && calPos && createPortal(
+        <>
+          {/* 바깥 클릭 시 닫기 */}
+          <div onClick={handleCalendarClose} style={{ position: "fixed", inset: 0, zIndex: 998 }} />
+          <div style={{ position: "fixed", top: calPos.top, right: calPos.right, zIndex: 999 }}>
+            <DateRangePicker
+              valueFrom={filterDateFrom}
+              valueTo={filterDateTo}
+              onChange={(from, to) => { handleFilterDateRange(from, to); handleCalendarClose(); }}
+              onClose={handleCalendarClose}
+            />
           </div>
-        )}
-      </div>
-
-      <AddEditModal onSave={handleSave} onAddVisit={handleAddVisit} existingRecords={records} />
-      <DetailModal />
-      {toastMsg      && <Toast message={toastMsg} onClose={clearToast} />}
-      {confirmTarget && <ConfirmDialog message={confirmTarget.msg} onConfirm={handleDelete} onCancel={closeConfirm} />}
-      {showInvitePopup && <InvitePopup onClose={() => setShowInvitePopup(false)} />}
-    </AppShell>
+        </>,
+        document.body
+      )}
+    </>
   );
 }

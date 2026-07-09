@@ -26,8 +26,9 @@ const BLUE   = "#3B82F6";
 const BG     = "#F5F0EB";
 
 /* ── 상수 ── */
-const PAGE_SIZE = 30; // 탭별 한 번에 로드할 문서 수
-const ANN_PAGE  = 20; // 공지 탭 페이지 크기
+const PAGE_SIZE = 30;
+const ANN_PAGE  = 20;
+const USER_PAGE = 30;
 
 export const FAQ_CATEGORIES = ["커플 연동", "맛집 기록", "위시리스트", "지도·통계", "커뮤니티", "알림", "앱·계정"];
 
@@ -37,7 +38,7 @@ type Tab = "reports" | "posts" | "faq" | "contacts" | "users" | "config" | "anno
 interface FAQItem      { id: string; question: string; answer: string; order: number; category: string; }
 interface ContactItem  { id: string; name: string; email: string; message: string; createdAt: string; status: "pending"|"done"; }
 interface ReportItem   { id: string; postId: string; postName: string; reason: string; reportedAt: string; status: "pending"|"resolved"; }
-interface PostItem     { id: string; name: string; emoji: string; coupleLabel: string; likes: number; authorUid: string; }
+interface PostItem     { id: string; name: string; emoji: string; coupleLabel: string; likes: number; authorUid: string; createdAt: string; imgUrls: string[]; }
 interface ConfigItem   { appVersion: string; supportEmail: string; notice: string; companyName: string; termsDate: string; }
 interface UserItem     { id: string; name: string; role: "admin"|"user"; coupleId: string|null; profileImgUrl: string|null; }
 interface UserPost     { id: string; name: string; emoji: string; likes: number; createdAt: string; }
@@ -66,7 +67,6 @@ async function adminFetch(path: string, options: RequestInit = {}) {
 /* ── 공지 이미지 Storage 헬퍼 ── */
 async function uploadAnnounceImages(files: File[], annId: string): Promise<string[]> {
   return Promise.all(files.map(async (file, i) => {
-    // ★ Storage 규칙 announcements/ 경로 추가 필요 (Firebase Console)
     const path = `announcements/${annId}/${Date.now()}_${i}_${file.name}`;
     const snap = await uploadBytes(ref(storage, path), file);
     return getDownloadURL(snap.ref);
@@ -83,17 +83,7 @@ async function deleteAnnounceImages(urls: string[]) {
 
 /* ── 공통 UI ── */
 function btnStyle(color: string, outline?: boolean): CSSProperties {
-  return {
-    padding: "6px 14px",
-    background: outline ? color + "1A" : color,
-    border: outline ? `1px solid ${color}60` : "none",
-    borderRadius: 10,
-    color: outline ? color : "#fff",
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: "pointer",
-    fontFamily: "inherit",
-  };
+  return { padding: "6px 14px", background: outline ? color + "1A" : color, border: outline ? `1px solid ${color}60` : "none", borderRadius: 10, color: outline ? color : "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
 }
 
 function Toast({ msg }: { msg: string }) {
@@ -123,7 +113,7 @@ function Badge({ text, color }: { text: string; color: string }) {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderBottom:`1px solid #F0EBE3` }}>
+    <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderBottom:"1px solid #F0EBE3" }}>
       <span style={{ fontSize:13, color:MUTED }}>{label}</span>
       <span style={{ fontSize:13, color:INK, fontWeight:500, maxWidth:"60%", textAlign:"right", wordBreak:"break-all" }}>{value}</span>
     </div>
@@ -150,13 +140,26 @@ function StatCard({ label, value, color }: { label: string; value: number; color
 
 function LoadMoreBtn({ loading, onClick }: { loading: boolean; onClick: () => void }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={loading}
-      style={{ width:"100%", padding:"14px 0", background:"#fff", border:`1px solid ${BORDER}`, borderRadius:14, cursor:loading?"default":"pointer", fontSize:13, fontWeight:600, color:loading?MUTED:ROSE, fontFamily:"inherit", marginBottom:10, boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}
-    >
+    <button onClick={onClick} disabled={loading} style={{ width:"100%", padding:"14px 0", background:"#fff", border:`1px solid ${BORDER}`, borderRadius:14, cursor:loading?"default":"pointer", fontSize:13, fontWeight:600, color:loading?MUTED:ROSE, fontFamily:"inherit", marginBottom:10, boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
       {loading ? "불러오는 중..." : "더 보기"}
     </button>
+  );
+}
+
+/* ── 검색 바 공통 컴포넌트 ── */
+function SearchBar({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  const inp: CSSProperties = { width:"100%", padding:"10px 12px 10px 36px", background:"#fff", border:`1px solid ${BORDER}`, borderRadius:12, fontSize:13, fontFamily:"inherit", outline:"none", color:INK, boxSizing:"border-box" };
+  return (
+    <div style={{ position:"relative", marginBottom:12 }}>
+      <svg style={{ position:"absolute", left:11, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }} width="16" height="16" viewBox="0 0 24 24" fill="none">
+        <circle cx="11" cy="11" r="7" stroke={MUTED} strokeWidth="2"/>
+        <path d="M16.5 16.5L21 21" stroke={MUTED} strokeWidth="2" strokeLinecap="round"/>
+      </svg>
+      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={inp}/>
+      {value && (
+        <button onClick={() => onChange("")} style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", color:MUTED, fontSize:16, lineHeight:1 }}>×</button>
+      )}
+    </div>
   );
 }
 
@@ -170,65 +173,49 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
   const [newPw,       setNewPw]       = useState("");
   const [pwLoading,   setPwLoading]   = useState(false);
 
-  /* ★ 모든 데이터를 Promise.all로 병렬 로드 → 속도 개선 */
+  /* ★ 모든 데이터 Promise.all 병렬 로드 */
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-
     const loadAll = async () => {
       try {
-        // 1) Auth 정보 + 커플 정보 + 게시글 병렬 시작
         const [authRes, communitySnap] = await Promise.all([
           adminFetch(`/api/admin/user/${user.id}`),
           getDocs(query(collection(db, "community"), where("authorUid", "==", user.id))),
         ]);
-
         if (cancelled) return;
 
-        // 2) Auth 정보 파싱
         const authData = await authRes.json();
         if (!cancelled) setAuthInfo(authData);
 
-        // 3) 게시글 파싱 + 신고 수 집계 병렬 처리
         const postList: UserPost[] = communitySnap.docs.map(d => {
           const v = d.data();
           return { id: d.id, name: v.name ?? "", emoji: v.emoji ?? "🍽️", likes: v.likeCount ?? 0, createdAt: v.createdAt ?? "" };
         }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-
         if (!cancelled) setPosts(postList);
 
-        // 4) 커플 정보 + 신고 수 병렬 처리
         const parallelTasks: Promise<void>[] = [];
-
         if (user.coupleId) {
-          parallelTasks.push(
-            (async () => {
-              const coupleSnap = await getDoc(doc(db, "couples", user.coupleId!));
-              if (!coupleSnap.exists() || cancelled) return;
-              const d = coupleSnap.data();
-              const partnerUid = d.user1Uid === user.id ? d.user2Uid : d.user1Uid;
-              if (!partnerUid) return;
-              const ps = await getDoc(doc(db, "users", partnerUid));
-              if (!cancelled && ps.exists()) {
-                setCoupleInfo({ partnerName: ps.data().name ?? "이름 없음", partnerUid, startDate: d.startDate ?? "—" });
-              }
-            })()
-          );
+          parallelTasks.push((async () => {
+            const coupleSnap = await getDoc(doc(db, "couples", user.coupleId!));
+            if (!coupleSnap.exists() || cancelled) return;
+            const d = coupleSnap.data();
+            const partnerUid = d.user1Uid === user.id ? d.user2Uid : d.user1Uid;
+            if (!partnerUid) return;
+            const ps = await getDoc(doc(db, "users", partnerUid));
+            if (!cancelled && ps.exists()) setCoupleInfo({ partnerName: ps.data().name ?? "이름 없음", partnerUid, startDate: d.startDate ?? "—" });
+          })());
         }
-
         if (postList.length > 0) {
           const ids = postList.map(p => p.id);
           const chunks: string[][] = [];
           for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30));
           parallelTasks.push(
-            Promise.all(
-              chunks.map(c => getCountFromServer(query(collection(db, "community_reports"), where("postId", "in", c))))
-            ).then(results => {
+            Promise.all(chunks.map(c => getCountFromServer(query(collection(db, "community_reports"), where("postId", "in", c))))).then(results => {
               if (!cancelled) setReportTotal(results.reduce((sum, x) => sum + x.data().count, 0));
             })
           );
         }
-
         await Promise.all(parallelTasks);
       } catch (e) {
         console.error("UserDetailModal load error:", e);
@@ -236,7 +223,6 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
         if (!cancelled) setLoading(false);
       }
     };
-
     loadAll();
     return () => { cancelled = true; };
   }, [user.id, user.coupleId]);
@@ -275,7 +261,6 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background:"#fff", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"90vh", overflowY:"auto", padding:"20px 20px 40px" }}>
-        {/* 헤더 */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <div style={{ width:40, height:40, borderRadius:"50%", background:user.role==="admin"?PURPLE+"20":WARM, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>
@@ -308,9 +293,7 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
                     {authInfo?.emailVerified ? "✅ 인증됨" : "❌ 미인증"}
                   </span>
                   {authInfo && !authInfo.emailVerified && (
-                    <button onClick={forceVerify} style={{ padding:"4px 10px", background:"#05966920", border:"1px solid #05966960", borderRadius:8, color:"#059669", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
-                      강제 인증
-                    </button>
+                    <button onClick={forceVerify} style={{ padding:"4px 10px", background:"#05966920", border:"1px solid #05966960", borderRadius:8, color:"#059669", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>강제 인증</button>
                   )}
                 </div>
               </div>
@@ -350,13 +333,13 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
 
             <Section title="활동 통계">
               <div style={{ display:"flex", gap:10, marginTop:4 }}>
-                <StatCard label="게시 글" value={posts.length} color={SAGE}/>
-                <StatCard label="총 신고 횟수" value={reportTotal} color={reportTotal > 0 ? RED : MUTED}/>
+                <StatCard label="게시글" value={posts.length} color={SAGE}/>
+                <StatCard label="신고 횟수" value={reportTotal} color={reportTotal > 0 ? RED : MUTED}/>
               </div>
             </Section>
 
             {posts.length > 0 && (
-              <Section title="게시 글 목록">
+              <Section title="게시글 목록">
                 {posts.map(p => (
                   <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom:`1px solid ${BORDER}` }}>
                     <span style={{ fontSize:20 }}>{p.emoji}</span>
@@ -389,10 +372,21 @@ export default function AdminPage() {
   const [posts,     setPosts]     = useState<PageState<PostItem>>(initPage());
   const [faqs,      setFaqs]      = useState<FAQItem[]>([]);
   const [contacts,  setContacts]  = useState<PageState<ContactItem>>(initPage());
-  const [users,     setUsers]     = useState<UserItem[]>([]);
+  const [users,     setUsers]     = useState<PageState<UserItem>>(initPage());
   const [announces, setAnnounces] = useState<PageState<AnnounceItem>>(initPage());
   const [config,    setConfig]    = useState<ConfigItem>({ appVersion:"1.0.0", supportEmail:"", notice:"", companyName:"", termsDate:"" });
   const [badgeCounts, setBadgeCounts] = useState({ reports:0, posts:0, contacts:0 });
+
+  /* ── 각 탭 검색 상태 ── */
+  const [searchReports,  setSearchReports]  = useState("");
+  const [searchPosts,    setSearchPosts]    = useState("");
+  const [searchContacts, setSearchContacts] = useState("");
+  const [searchUsers,    setSearchUsers]    = useState("");
+  const [searchAnn,      setSearchAnn]      = useState("");
+
+  /* ── 유저 prefix 검색 ── */
+  // 서버 prefix 쿼리: name >= keyword AND name < keyword + '\uf8ff'
+  const [userSearchActive, setUserSearchActive] = useState(false);
 
   /* ── FAQ ── */
   const [faqEdit,      setFaqEdit]      = useState<FAQItem|null>(null);
@@ -400,6 +394,7 @@ export default function AdminPage() {
   const [faqA,         setFaqA]         = useState("");
   const [faqCat,       setFaqCat]       = useState(FAQ_CATEGORIES[0]);
   const [faqFilterCat, setFaqFilterCat] = useState(FAQ_CATEGORIES[0]);
+  const [searchFaq,    setSearchFaq]    = useState("");
 
   /* ── Config ── */
   const [cfgEdit,  setCfgEdit]  = useState(false);
@@ -410,9 +405,8 @@ export default function AdminPage() {
   const [pushBody,    setPushBody]    = useState("");
   const [pushLoading, setPushLoading] = useState(false);
 
-  /* ── 유저 ── */
+  /* ── 유저 상세 ── */
   const [selectedUser, setSelectedUser] = useState<UserItem|null>(null);
-  const [userSearch,   setUserSearch]   = useState("");
 
   /* ── 공지 폼 ── */
   const EMPTY_ANN: Omit<AnnounceItem, "id"|"createdAt"> = { title:"", body:"", type:"notice", pinned:false, visible:true, startAt:"", endAt:"", imgUrls:[] };
@@ -425,13 +419,14 @@ export default function AdminPage() {
   const [annUploading, setAnnUploading] = useState(false);
   const annFileRef = useRef<HTMLInputElement>(null);
 
-  const unsubRef = useRef<(()=>void)|null>(null);
+  const unsubRef     = useRef<(()=>void)|null>(null);
+  const userTimerRef = useRef<ReturnType<typeof setTimeout>|null>(null);
 
   /* ── 권한 체크 ── */
   useEffect(() => { if (role !== "admin") router.replace("/"); }, [role, router]);
   if (role !== "admin") return null;
 
-  /* ── 토스트 (stale closure 방지) ── */
+  /* ── 토스트 ── */
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -452,13 +447,62 @@ export default function AdminPage() {
     })();
   }, []);
 
+  /* ══════════════════════════════════════════
+     유저 탭 — 서버 prefix 검색 + 페이지네이션
+     ══════════════════════════════════════════ */
+  const fetchUsers = useCallback(async (keyword: string, append = false, lastDocSnap: QueryDocumentSnapshot|null = null) => {
+    setUsers(p => ({ ...p, loading: true }));
+    try {
+      let q;
+      if (keyword.trim()) {
+        // prefix 검색: name >= keyword AND name < keyword + \uf8ff
+        const end = keyword.trim() + "\uf8ff";
+        q = lastDocSnap
+          ? query(collection(db, "users"), orderBy("name"), where("name", ">=", keyword.trim()), where("name", "<", end), startAfter(lastDocSnap), limit(USER_PAGE))
+          : query(collection(db, "users"), orderBy("name"), where("name", ">=", keyword.trim()), where("name", "<", end), limit(USER_PAGE));
+      } else {
+        q = lastDocSnap
+          ? query(collection(db, "users"), orderBy("name"), startAfter(lastDocSnap), limit(USER_PAGE))
+          : query(collection(db, "users"), orderBy("name"), limit(USER_PAGE));
+      }
+      const snap = await getDocs(q);
+      const items: UserItem[] = snap.docs.map(x => {
+        const v = x.data();
+        return { id: x.id, name: v.name ?? "이름 없음", role: v.role ?? "user", coupleId: v.coupleId ?? null, profileImgUrl: v.profileImgUrl ?? null };
+      });
+      const lastSnap = snap.docs[snap.docs.length - 1] ?? null;
+      setUsers(p => ({
+        items: append ? [...p.items, ...items] : items,
+        lastDoc: lastSnap,
+        hasMore: snap.docs.length === USER_PAGE,
+        loading: false,
+      }));
+    } catch { setUsers(p => ({ ...p, loading: false })); }
+  }, []);
+
+  /* ── 유저 검색 debounce ── */
+  useEffect(() => {
+    if (tab !== "users") return;
+    if (userTimerRef.current) clearTimeout(userTimerRef.current);
+    userTimerRef.current = setTimeout(() => {
+      setUserSearchActive(!!searchUsers.trim());
+      fetchUsers(searchUsers, false, null);
+    }, 350);
+  }, [searchUsers, tab, fetchUsers]);
+
+  const loadMoreUsers = useCallback(() => {
+    if (!users.lastDoc || users.loading) return;
+    fetchUsers(searchUsers, true, users.lastDoc);
+  }, [users.lastDoc, users.loading, searchUsers, fetchUsers]);
+
   /* ── 탭별 lazy 구독 / 초기 로드 ── */
   useEffect(() => {
     if (unsubRef.current) { unsubRef.current(); unsubRef.current = null; }
 
     switch (tab) {
       case "reports": {
-        /* 페이지네이션: 첫 PAGE_SIZE개 실시간 구독 */
+        /* ★ community 컬렉션: orderBy("createdAt") 단일 인덱스만 사용
+           Firestore 복합 인덱스 없이도 동작하도록 단순화 */
         const unsub = onSnapshot(
           query(collection(db, "community_reports"), orderBy("reportedAt", "desc"), limit(PAGE_SIZE)),
           s => {
@@ -471,6 +515,7 @@ export default function AdminPage() {
         break;
       }
       case "posts": {
+        /* ★ 단일 orderBy("createdAt") — 복합 인덱스 불필요, 5개 제한 문제 해소 */
         const unsub = onSnapshot(
           query(collection(db, "community"), orderBy("createdAt", "desc"), limit(PAGE_SIZE)),
           s => {
@@ -483,6 +528,8 @@ export default function AdminPage() {
                 coupleLabel: v.showAuthorName === false ? "익명 커플" : (v.authorName ? `${v.authorName}의 추천` : "커플 추천"),
                 likes: v.likeCount ?? 0,
                 authorUid: v.authorUid ?? "",
+                createdAt: v.createdAt ?? "",
+                imgUrls: Array.isArray(v.imgUrls) ? v.imgUrls : [],
               } as PostItem;
             });
             setPosts({ items: d, lastDoc: s.docs[s.docs.length - 1] ?? null, hasMore: s.docs.length === PAGE_SIZE, loading: false });
@@ -493,10 +540,7 @@ export default function AdminPage() {
         break;
       }
       case "faq": {
-        const unsub = onSnapshot(
-          query(collection(db, "faq"), orderBy("order", "asc")),
-          s => setFaqs(s.docs.map(x => ({ id: x.id, ...x.data() } as FAQItem)))
-        );
+        const unsub = onSnapshot(query(collection(db, "faq"), orderBy("order", "asc")), s => setFaqs(s.docs.map(x => ({ id: x.id, ...x.data() } as FAQItem))));
         unsubRef.current = unsub;
         break;
       }
@@ -513,46 +557,24 @@ export default function AdminPage() {
         break;
       }
       case "users": {
-        const unsub = onSnapshot(
-          collection(db, "users"),
-          s => setUsers(
-            s.docs.map(x => {
-              const v = x.data();
-              return { id: x.id, name: v.name ?? "이름 없음", role: v.role ?? "user", coupleId: v.coupleId ?? null, profileImgUrl: v.profileImgUrl ?? null } as UserItem;
-            }).sort((a, b) => {
-              if (a.role === "admin" && b.role !== "admin") return -1;
-              if (a.role !== "admin" && b.role === "admin") return 1;
-              return a.name.localeCompare(b.name);
-            })
-          )
-        );
-        unsubRef.current = unsub;
+        /* 유저 탭은 fetchUsers로 관리 (onSnapshot 아님) */
+        fetchUsers("", false, null);
         break;
       }
       case "config": {
         const unsub = onSnapshot(doc(db, "config", "app"), s => {
           if (s.exists()) {
             const d = s.data();
-            const cfg: ConfigItem = {
-              appVersion:   d.appVersion   ?? "1.0.0",
-              supportEmail: d.supportEmail ?? "",
-              notice:       d.notice       ?? "",
-              companyName:  d.companyName  ?? "",
-              termsDate:    d.termsDate    ?? "",
-            };
-            setConfig(cfg);
-            setCfgDraft(cfg);
+            const cfg: ConfigItem = { appVersion: d.appVersion ?? "1.0.0", supportEmail: d.supportEmail ?? "", notice: d.notice ?? "", companyName: d.companyName ?? "", termsDate: d.termsDate ?? "" };
+            setConfig(cfg); setCfgDraft(cfg);
           }
         });
         unsubRef.current = unsub;
         break;
       }
       case "announce": {
-        /* ★ 공지 탭은 getDocs(1회) 방식으로 변경 — onSnapshot + loadMore 혼용 리셋 버그 해결 */
         setAnnounces(p => ({ ...p, loading: true }));
-        getDocs(
-          query(collection(db, "announcements"), orderBy("pinned", "desc"), orderBy("createdAt", "desc"), limit(ANN_PAGE))
-        ).then(s => {
+        getDocs(query(collection(db, "announcements"), orderBy("pinned", "desc"), orderBy("createdAt", "desc"), limit(ANN_PAGE))).then(s => {
           const items = s.docs.map(x => {
             const v = x.data();
             return { id: x.id, title: v.title ?? "", body: v.body ?? "", type: v.type ?? "notice", pinned: v.pinned ?? false, visible: v.visible ?? true, startAt: v.startAt ?? "", endAt: v.endAt ?? "", imgUrls: v.imgUrls ?? [], createdAt: v.createdAt ?? "" } as AnnounceItem;
@@ -562,68 +584,48 @@ export default function AdminPage() {
         break;
       }
     }
-
     return () => { if (unsubRef.current) { unsubRef.current(); unsubRef.current = null; } };
-  }, [tab]);
+  }, [tab, fetchUsers]);
 
-  /* ── 더 보기 공통 핸들러 ── */
-  const loadMore = useCallback(async (
+  /* ── 더 보기 공통 (신고/게시물/문의) ── */
+  const loadMoreGeneric = useCallback(async (
     collectionName: string,
     orderField: string,
-    orderDir: "asc"|"desc",
     setter: React.Dispatch<React.SetStateAction<PageState<any>>>,
     mapper: (x: QueryDocumentSnapshot) => any,
-    lastDoc: QueryDocumentSnapshot | null,
-    extraOrder?: [string, "asc"|"desc"],
+    lastDocSnap: QueryDocumentSnapshot | null,
   ) => {
-    if (!lastDoc) return;
+    if (!lastDocSnap) return;
     setter(p => ({ ...p, loading: true }));
     try {
-      const q = extraOrder
-        ? query(collection(db, collectionName), orderBy(extraOrder[0], extraOrder[1]), orderBy(orderField, orderDir), startAfter(lastDoc), limit(PAGE_SIZE))
-        : query(collection(db, collectionName), orderBy(orderField, orderDir), startAfter(lastDoc), limit(PAGE_SIZE));
-      const snap = await getDocs(q);
-      const more = snap.docs.map(mapper);
-      setter(p => ({ items: [...p.items, ...more], lastDoc: snap.docs[snap.docs.length - 1] ?? null, hasMore: snap.docs.length === PAGE_SIZE, loading: false }));
+      const snap = await getDocs(query(collection(db, collectionName), orderBy(orderField, "desc"), startAfter(lastDocSnap), limit(PAGE_SIZE)));
+      setter(p => ({ items: [...p.items, ...snap.docs.map(mapper)], lastDoc: snap.docs[snap.docs.length - 1] ?? null, hasMore: snap.docs.length === PAGE_SIZE, loading: false }));
     } catch { setter(p => ({ ...p, loading: false })); }
   }, []);
 
-  const loadMoreReports = useCallback(() =>
-    loadMore("community_reports", "reportedAt", "desc", setReports, x => ({ id: x.id, ...x.data() } as ReportItem), reports.lastDoc),
-  [reports.lastDoc, loadMore]);
-
-  const loadMorePosts = useCallback(() =>
-    loadMore("community", "createdAt", "desc", setPosts, x => { const v = x.data(); return { id: x.id, name: v.name ?? "", emoji: v.emoji ?? "🍽️", coupleLabel: v.showAuthorName === false ? "익명 커플" : (v.authorName ? `${v.authorName}의 추천` : "커플 추천"), likes: v.likeCount ?? 0, authorUid: v.authorUid ?? "" } as PostItem; }, posts.lastDoc),
-  [posts.lastDoc, loadMore]);
-
-  const loadMoreContacts = useCallback(() =>
-    loadMore("contacts", "createdAt", "desc", setContacts, x => ({ id: x.id, ...x.data() } as ContactItem), contacts.lastDoc),
-  [contacts.lastDoc, loadMore]);
+  const loadMoreReports  = useCallback(() => loadMoreGeneric("community_reports", "reportedAt", setReports,  x => ({ id: x.id, ...x.data() } as ReportItem),  reports.lastDoc),  [reports.lastDoc,  loadMoreGeneric]);
+  const loadMorePosts    = useCallback(() => loadMoreGeneric("community",          "createdAt",  setPosts,    x => { const v = x.data(); return { id: x.id, name: v.name ?? "", emoji: v.emoji ?? "🍽️", coupleLabel: v.showAuthorName === false ? "익명 커플" : (v.authorName ? `${v.authorName}의 추천` : "커플 추천"), likes: v.likeCount ?? 0, authorUid: v.authorUid ?? "", createdAt: v.createdAt ?? "", imgUrls: Array.isArray(v.imgUrls) ? v.imgUrls : [] } as PostItem; }, posts.lastDoc),    [posts.lastDoc,    loadMoreGeneric]);
+  const loadMoreContacts = useCallback(() => loadMoreGeneric("contacts",           "createdAt",  setContacts, x => ({ id: x.id, ...x.data() } as ContactItem), contacts.lastDoc), [contacts.lastDoc, loadMoreGeneric]);
 
   const loadMoreAnn = useCallback(async () => {
     if (!announces.lastDoc || announces.loading) return;
     setAnnounces(p => ({ ...p, loading: true }));
     try {
-      const snap = await getDocs(
-        query(collection(db, "announcements"), orderBy("pinned", "desc"), orderBy("createdAt", "desc"), startAfter(announces.lastDoc), limit(ANN_PAGE))
-      );
-      const more = snap.docs.map(x => {
-        const v = x.data();
-        return { id: x.id, title: v.title ?? "", body: v.body ?? "", type: v.type ?? "notice", pinned: v.pinned ?? false, visible: v.visible ?? true, startAt: v.startAt ?? "", endAt: v.endAt ?? "", imgUrls: v.imgUrls ?? [], createdAt: v.createdAt ?? "" } as AnnounceItem;
-      });
+      const snap = await getDocs(query(collection(db, "announcements"), orderBy("pinned", "desc"), orderBy("createdAt", "desc"), startAfter(announces.lastDoc), limit(ANN_PAGE)));
+      const more = snap.docs.map(x => { const v = x.data(); return { id: x.id, title: v.title ?? "", body: v.body ?? "", type: v.type ?? "notice", pinned: v.pinned ?? false, visible: v.visible ?? true, startAt: v.startAt ?? "", endAt: v.endAt ?? "", imgUrls: v.imgUrls ?? [], createdAt: v.createdAt ?? "" } as AnnounceItem; });
       setAnnounces(p => ({ items: [...p.items, ...more], lastDoc: snap.docs[snap.docs.length - 1] ?? null, hasMore: snap.docs.length === ANN_PAGE, loading: false }));
     } catch { setAnnounces(p => ({ ...p, loading: false })); }
   }, [announces.lastDoc, announces.loading]);
 
-  /* ── 게시물 삭제 (연관 신고도 batch 처리) ── */
+  /* ── 게시물 삭제 (연관 신고 batch) ── */
   const deletePost = useCallback(async (id: string, name: string) => {
     try {
-      /* 연관 신고 문서 조회 후 batch 삭제 */
       const reportSnap = await getDocs(query(collection(db, "community_reports"), where("postId", "==", id)));
       const batch = writeBatch(db);
       batch.delete(doc(db, "community", id));
       reportSnap.docs.forEach(d => batch.delete(d.ref));
       await batch.commit();
+      setPosts(p => ({ ...p, items: p.items.filter(x => x.id !== id) }));
       showToast(`"${name}" 삭제됨`);
     } catch { showToast("❌ 삭제 실패"); }
   }, [showToast]);
@@ -635,24 +637,17 @@ export default function AdminPage() {
 
   /* ── FAQ ── */
   const resetFaqForm = useCallback(() => { setFaqEdit(null); setFaqQ(""); setFaqA(""); setFaqCat(FAQ_CATEGORIES[0]); }, []);
-
   const saveFaq = useCallback(async () => {
     if (!faqQ.trim() || !faqA.trim()) return;
-    if (faqEdit) {
-      await updateDoc(doc(db, "faq", faqEdit.id), { question: faqQ, answer: faqA, category: faqCat });
-      showToast("FAQ 수정 완료");
-    } else {
-      await addDoc(collection(db, "faq"), { question: faqQ, answer: faqA, category: faqCat, order: faqs.length });
-      showToast("FAQ 추가됨");
-    }
+    if (faqEdit) { await updateDoc(doc(db, "faq", faqEdit.id), { question: faqQ, answer: faqA, category: faqCat }); showToast("FAQ 수정 완료"); }
+    else { await addDoc(collection(db, "faq"), { question: faqQ, answer: faqA, category: faqCat, order: faqs.length }); showToast("FAQ 추가됨"); }
     resetFaqForm();
   }, [faqQ, faqA, faqCat, faqEdit, faqs.length, showToast, resetFaqForm]);
 
-  const deleteFaq    = useCallback(async (id: string) => { await deleteDoc(doc(db, "faq", id)); showToast("FAQ 삭제됨"); }, [showToast]);
-  const doneContact  = useCallback(async (id: string) => { await updateDoc(doc(db, "contacts", id), { status: "done" }); showToast("문의 처리 완료"); }, [showToast]);
-  const saveConfig   = useCallback(async () => { await setDoc(doc(db, "config", "app"), cfgDraft, { merge: true }); setCfgEdit(false); showToast("설정 저장됨"); }, [cfgDraft, showToast]);
+  const deleteFaq   = useCallback(async (id: string) => { await deleteDoc(doc(db, "faq", id)); showToast("FAQ 삭제됨"); }, [showToast]);
+  const doneContact = useCallback(async (id: string) => { await updateDoc(doc(db, "contacts", id), { status: "done" }); showToast("문의 처리 완료"); }, [showToast]);
+  const saveConfig  = useCallback(async () => { await setDoc(doc(db, "config", "app"), cfgDraft, { merge: true }); setCfgEdit(false); showToast("설정 저장됨"); }, [cfgDraft, showToast]);
 
-  /* ── 전체 푸시 ── */
   const sendPushAll = useCallback(async () => {
     if (!pushTitle.trim() || !pushBody.trim()) return;
     setPushLoading(true);
@@ -666,75 +661,45 @@ export default function AdminPage() {
 
   /* ── 공지 이미지 처리 ── */
   const handleAnnImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected  = Array.from(e.target.files ?? []);
+    const selected = Array.from(e.target.files ?? []);
     const remaining = 5 - (annDraft.imgUrls.length - annDelUrls.length) - annFiles.length;
-    const toAdd     = selected.slice(0, remaining);
+    const toAdd = selected.slice(0, remaining);
     setAnnFiles(p => [...p, ...toAdd]);
     setAnnPreviews(p => [...p, ...toAdd.map(f => URL.createObjectURL(f))]);
     if (annFileRef.current) annFileRef.current.value = "";
   };
-
-  const removeNewImage = (idx: number) => {
-    URL.revokeObjectURL(annPreviews[idx]);
-    setAnnFiles(p => p.filter((_, i) => i !== idx));
-    setAnnPreviews(p => p.filter((_, i) => i !== idx));
-  };
-
-  const markDelExisting = (url: string) => {
-    setAnnDelUrls(p => [...p, url]);
-    setAnnDraft(p => ({ ...p, imgUrls: p.imgUrls.filter(u => u !== url) }));
-  };
-
-  const resetAnnForm = useCallback(() => {
+  const removeNewImage    = (idx: number) => { URL.revokeObjectURL(annPreviews[idx]); setAnnFiles(p => p.filter((_, i) => i !== idx)); setAnnPreviews(p => p.filter((_, i) => i !== idx)); };
+  const markDelExisting   = (url: string) => { setAnnDelUrls(p => [...p, url]); setAnnDraft(p => ({ ...p, imgUrls: p.imgUrls.filter(u => u !== url) })); };
+  const resetAnnForm      = useCallback(() => {
     setAnnEdit(null); setAnnDraft(EMPTY_ANN); setAnnForm(false);
     annFiles.forEach((_, i) => URL.revokeObjectURL(annPreviews[i]));
     setAnnFiles([]); setAnnPreviews([]); setAnnDelUrls([]);
   }, [annFiles, annPreviews]);
 
-  /* ★ saveAnnounce — 신규 등록 시 addDoc으로 ID 먼저 확보 후 이미지 업로드 → 경로 일치 */
   const saveAnnounce = useCallback(async () => {
     if (!annDraft.title.trim() || !annDraft.body.trim()) return;
     setAnnUploading(true);
     try {
       if (annDelUrls.length) await deleteAnnounceImages(annDelUrls);
-
       let finalImgUrls: string[];
-
       if (annEdit) {
-        /* 수정: 기존 ID 사용 */
         let newUrls: string[] = [];
         if (annFiles.length) newUrls = await uploadAnnounceImages(annFiles, annEdit.id);
         finalImgUrls = [...annDraft.imgUrls, ...newUrls];
         await updateDoc(doc(db, "announcements", annEdit.id), { ...annDraft, imgUrls: finalImgUrls });
-        /* 로컬 상태 갱신 */
-        setAnnounces(p => ({
-          ...p,
-          items: p.items.map(a => a.id === annEdit.id ? { ...a, ...annDraft, imgUrls: finalImgUrls } : a),
-        }));
+        setAnnounces(p => ({ ...p, items: p.items.map(a => a.id === annEdit.id ? { ...a, ...annDraft, imgUrls: finalImgUrls } : a) }));
         showToast("공지 수정 완료");
       } else {
-        /* ★ 신규: addDoc으로 실제 ID 먼저 확보 → Storage 경로와 일치 */
-        const newRef = await addDoc(collection(db, "announcements"), {
-          ...annDraft,
-          imgUrls: [],
-          createdAt: new Date().toISOString(),
-        });
+        const newRef = await addDoc(collection(db, "announcements"), { ...annDraft, imgUrls: [], createdAt: new Date().toISOString() });
         let newUrls: string[] = [];
-        if (annFiles.length) {
-          newUrls = await uploadAnnounceImages(annFiles, newRef.id);
-          await updateDoc(newRef, { imgUrls: newUrls });
-        }
+        if (annFiles.length) { newUrls = await uploadAnnounceImages(annFiles, newRef.id); await updateDoc(newRef, { imgUrls: newUrls }); }
         finalImgUrls = newUrls;
-        const newItem: AnnounceItem = { id: newRef.id, ...annDraft, imgUrls: finalImgUrls, createdAt: new Date().toISOString() };
-        setAnnounces(p => ({ ...p, items: [newItem, ...p.items] }));
+        setAnnounces(p => ({ ...p, items: [{ id: newRef.id, ...annDraft, imgUrls: finalImgUrls, createdAt: new Date().toISOString() }, ...p.items] }));
         showToast("공지 등록됨");
       }
-
       resetAnnForm();
-    } catch (e) {
-      console.error(e);
-      showToast("❌ 저장 실패");
-    } finally { setAnnUploading(false); }
+    } catch (e) { console.error(e); showToast("❌ 저장 실패"); }
+    finally { setAnnUploading(false); }
   }, [annDraft, annEdit, annFiles, annDelUrls, showToast, resetAnnForm]);
 
   const deleteAnnounce = useCallback(async (a: AnnounceItem) => {
@@ -750,7 +715,14 @@ export default function AdminPage() {
     showToast(a.visible ? "비공개로 전환" : "공개로 전환");
   }, [showToast]);
 
-  /* ── 탭 정의 ── */
+  /* ── 클라이언트 필터 (신고/게시물/문의/공지/FAQ) ── */
+  const filteredReports  = reports.items.filter(r => !searchReports  || r.postName?.toLowerCase().includes(searchReports.toLowerCase())  || r.reason?.toLowerCase().includes(searchReports.toLowerCase()));
+  const filteredPosts    = posts.items.filter(p  => !searchPosts    || p.name?.toLowerCase().includes(searchPosts.toLowerCase())    || p.coupleLabel?.toLowerCase().includes(searchPosts.toLowerCase()));
+  const filteredContacts = contacts.items.filter(c => !searchContacts || c.name?.toLowerCase().includes(searchContacts.toLowerCase()) || c.email?.toLowerCase().includes(searchContacts.toLowerCase()) || c.message?.toLowerCase().includes(searchContacts.toLowerCase()));
+  const filteredAnn      = announces.items.filter(a => !searchAnn    || a.title?.toLowerCase().includes(searchAnn.toLowerCase())    || a.body?.toLowerCase().includes(searchAnn.toLowerCase()));
+  const filteredFaqs     = faqs.filter(f => f.category === faqFilterCat && (!searchFaq || f.question.toLowerCase().includes(searchFaq.toLowerCase()) || f.answer.toLowerCase().includes(searchFaq.toLowerCase())));
+
+  /* ── UI 상수 ── */
   const TABS: { id: Tab; icon: string; label: string; badge?: number }[] = [
     { id:"reports",  icon:"🚨", label:"신고",  badge: badgeCounts.reports  },
     { id:"posts",    icon:"📋", label:"게시물", badge: badgeCounts.posts    },
@@ -762,9 +734,7 @@ export default function AdminPage() {
   ];
 
   const inp: CSSProperties = { width:"100%", padding:"10px 12px", background:WARM, border:`1px solid ${BORDER}`, borderRadius:10, fontSize:13, fontFamily:"inherit", outline:"none", color:INK, boxSizing:"border-box" };
-  const filteredUsers    = users.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()));
-  const filteredFaqs     = faqs.filter(f => f.category === faqFilterCat);
-  const currentImgCount  = annDraft.imgUrls.length + annFiles.length;
+  const currentImgCount = annDraft.imgUrls.length + annFiles.length;
 
   return (
     <div style={{ minHeight:"100vh", background:BG, maxWidth:480, margin:"0 auto", fontFamily:"inherit", paddingBottom:40 }}>
@@ -793,9 +763,10 @@ export default function AdminPage() {
         {/* ════ 신고 탭 ════ */}
         {tab === "reports" && (
           <>
-            {reports.items.length === 0 ? (
-              <EmptyBox icon="🎉" text="처리 대기 중인 신고가 없어요"/>
-            ) : reports.items.map(r => (
+            <SearchBar value={searchReports} onChange={setSearchReports} placeholder="식당명, 신고 사유 검색"/>
+            {filteredReports.length === 0 ? (
+              <EmptyBox icon="🎉" text={searchReports ? "검색 결과가 없어요" : "처리 대기 중인 신고가 없어요"}/>
+            ) : filteredReports.map(r => (
               <div key={r.id} style={{ background:"#fff", borderRadius:14, marginBottom:10, padding:"14px 16px", boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}>
                   <div style={{ flex:1 }}>
@@ -809,33 +780,55 @@ export default function AdminPage() {
                   {r.status === "pending" && (
                     <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                       <button onClick={() => resolveReport(r.id)} style={btnStyle(SAGE)}>완료</button>
-                      {/* ★ 게시물 + 연관 신고 batch 삭제 */}
                       <button onClick={() => deletePost(r.postId, r.postName)} style={btnStyle(RED, true)}>삭제</button>
                     </div>
                   )}
                 </div>
               </div>
             ))}
-            {reports.hasMore && <LoadMoreBtn loading={reports.loading} onClick={loadMoreReports}/>}
+            {!searchReports && reports.hasMore && <LoadMoreBtn loading={reports.loading} onClick={loadMoreReports}/>}
           </>
         )}
 
         {/* ════ 게시물 탭 ════ */}
         {tab === "posts" && (
           <>
-            {posts.items.length === 0 ? (
-              <EmptyBox icon="📋" text="게시물이 없어요"/>
-            ) : posts.items.map(p => (
-              <div key={p.id} style={{ background:"#fff", borderRadius:14, marginBottom:10, padding:"14px 16px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
-                <span style={{ fontSize:28 }}>{p.emoji}</span>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <p style={{ fontSize:14, fontWeight:600, color:INK, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.name}</p>
-                  <p style={{ fontSize:11, color:MUTED }}>{p.coupleLabel} · ❤️ {p.likes}</p>
+            <SearchBar value={searchPosts} onChange={setSearchPosts} placeholder="식당명, 작성자 검색"/>
+
+            {filteredPosts.length === 0 ? (
+              <EmptyBox icon="📋" text={searchPosts ? "검색 결과가 없어요" : "게시물이 없어요"}/>
+            ) : filteredPosts.map(p => (
+              <div key={p.id} style={{ background:"#fff", borderRadius:14, marginBottom:10, padding:"14px 16px", boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
+                {/* 상단: 이모지 + 정보 + 삭제 버튼 */}
+                <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom: p.imgUrls?.length ? 10 : 0 }}>
+                  <span style={{ fontSize:28, flexShrink:0 }}>{p.emoji}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ fontSize:14, fontWeight:600, color:INK, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.name}</p>
+                    <p style={{ fontSize:11, color:MUTED, marginTop:2 }}>{p.coupleLabel} · ❤️ {p.likes} · {p.createdAt?.slice(0, 10)}</p>
+                    {/* 이미지 개수 뱃지 */}
+                    {p.imgUrls?.length > 0 && (
+                      <p style={{ fontSize:10, color:BLUE, marginTop:3, fontWeight:600 }}>📷 사진 {p.imgUrls.length}장</p>
+                    )}
+                  </div>
+                  <button onClick={() => deletePost(p.id, p.name)} style={{ ...btnStyle(RED, true), flexShrink:0 }}>삭제</button>
                 </div>
-                <button onClick={() => deletePost(p.id, p.name)} style={{ ...btnStyle(RED, true), flexShrink:0 }}>삭제</button>
+                {/* 이미지 썸네일 */}
+                {p.imgUrls?.length > 0 && (
+                  <div style={{ display:"flex", gap:6, overflowX:"auto", paddingBottom:2 }}>
+                    {p.imgUrls.map((url, i) => (
+                      <img
+                        key={i}
+                        src={url}
+                        alt={`${p.name} 이미지 ${i + 1}`}
+                        style={{ width:72, height:72, borderRadius:8, objectFit:"cover", flexShrink:0, border:`1px solid ${BORDER}`, cursor:"pointer" }}
+                        onClick={() => window.open(url, "_blank")}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
-            {posts.hasMore && <LoadMoreBtn loading={posts.loading} onClick={loadMorePosts}/>}
+            {!searchPosts && posts.hasMore && <LoadMoreBtn loading={posts.loading} onClick={loadMorePosts}/>}
           </>
         )}
 
@@ -855,14 +848,13 @@ export default function AdminPage() {
               <input value={faqQ} onChange={e => setFaqQ(e.target.value)} placeholder="질문" style={{ ...inp, marginBottom:8 }}/>
               <textarea value={faqA} onChange={e => setFaqA(e.target.value)} placeholder="답변" rows={3} style={{ ...inp, resize:"none", marginBottom:10 }}/>
               <div style={{ display:"flex", gap:8 }}>
-                {faqEdit && (
-                  <button onClick={resetFaqForm} style={{ flex:1, padding:"10px 0", background:WARM, border:`1px solid ${BORDER}`, borderRadius:10, color:MUTED, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>취소</button>
-                )}
+                {faqEdit && <button onClick={resetFaqForm} style={{ flex:1, padding:"10px 0", background:WARM, border:`1px solid ${BORDER}`, borderRadius:10, color:MUTED, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>취소</button>}
                 <button onClick={saveFaq} style={{ flex:2, padding:"10px 0", background:faqQ&&faqA?SAGE:"#C0B8B0", border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:600, cursor:faqQ&&faqA?"pointer":"default", fontFamily:"inherit" }}>
                   {faqEdit ? "수정 완료" : "추가"}
                 </button>
               </div>
             </div>
+            <SearchBar value={searchFaq} onChange={setSearchFaq} placeholder="질문, 답변 내용 검색"/>
             <div style={{ display:"flex", gap:6, overflowX:"auto", marginBottom:10, paddingBottom:2 }}>
               {FAQ_CATEGORIES.map(cat => {
                 const count  = faqs.filter(f => f.category === cat).length;
@@ -875,7 +867,7 @@ export default function AdminPage() {
               })}
             </div>
             {filteredFaqs.length === 0 ? (
-              <EmptyBox icon="❓" text="등록된 FAQ가 없어요"/>
+              <EmptyBox icon="❓" text={searchFaq ? "검색 결과가 없어요" : "등록된 FAQ가 없어요"}/>
             ) : filteredFaqs.map(f => (
               <div key={f.id} style={{ background:"#fff", borderRadius:14, marginBottom:10, padding:"14px 16px", boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
                 <div style={{ marginBottom:7 }}><Badge text={f.category || "미분류"} color={SAGE}/></div>
@@ -893,9 +885,10 @@ export default function AdminPage() {
         {/* ════ 문의 탭 ════ */}
         {tab === "contacts" && (
           <>
-            {contacts.items.length === 0 ? (
-              <EmptyBox icon="📩" text="접수된 문의가 없어요"/>
-            ) : contacts.items.map(c => (
+            <SearchBar value={searchContacts} onChange={setSearchContacts} placeholder="이름, 이메일, 내용 검색"/>
+            {filteredContacts.length === 0 ? (
+              <EmptyBox icon="📩" text={searchContacts ? "검색 결과가 없어요" : "접수된 문의가 없어요"}/>
+            ) : filteredContacts.map(c => (
               <div key={c.id} style={{ background:"#fff", borderRadius:14, marginBottom:10, padding:"14px 16px", boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
                   <div style={{ flex:1 }}>
@@ -913,17 +906,35 @@ export default function AdminPage() {
                 </div>
               </div>
             ))}
-            {contacts.hasMore && <LoadMoreBtn loading={contacts.loading} onClick={loadMoreContacts}/>}
+            {!searchContacts && contacts.hasMore && <LoadMoreBtn loading={contacts.loading} onClick={loadMoreContacts}/>}
           </>
         )}
 
         {/* ════ 유저 탭 ════ */}
         {tab === "users" && (
           <>
-            <input placeholder="이름 검색" value={userSearch} onChange={e => setUserSearch(e.target.value)} style={{ ...inp, marginBottom:12 }}/>
-            {filteredUsers.length === 0 ? (
-              <EmptyBox icon="👥" text="유저가 없어요"/>
-            ) : filteredUsers.map(u => (
+            {/* ★ 서버 prefix 검색 */}
+            <SearchBar value={searchUsers} onChange={setSearchUsers} placeholder="이름 검색 (앞글자 기준)"/>
+            {userSearchActive && searchUsers && (
+              <p style={{ fontSize:11, color:MUTED, marginBottom:8 }}>'{searchUsers}'으로 시작하는 유저를 표시 중</p>
+            )}
+            {/* 유저 수 표시 */}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+              <p style={{ fontSize:12, color:MUTED }}>
+                {users.loading && users.items.length === 0 ? "불러오는 중..." : `${users.items.length}명 표시 중`}
+              </p>
+              <div style={{ display:"flex", gap:8 }}>
+                <Badge text={`관리자 ${users.items.filter(u => u.role==="admin").length}`} color={PURPLE}/>
+                <Badge text={`커플 ${users.items.filter(u => u.coupleId).length}`} color={ROSE}/>
+              </div>
+            </div>
+            {users.loading && users.items.length === 0 ? (
+              <div style={{ padding:"40px 0", textAlign:"center" }}>
+                <div style={{ width:28, height:28, border:`3px solid ${BORDER}`, borderTopColor:ROSE, borderRadius:"50%", margin:"0 auto", animation:"spin 0.8s linear infinite" }}/>
+              </div>
+            ) : users.items.length === 0 ? (
+              <EmptyBox icon="👥" text={searchUsers ? `'${searchUsers}'으로 시작하는 유저가 없어요` : "유저가 없어요"}/>
+            ) : users.items.map(u => (
               <button key={u.id} onClick={() => setSelectedUser(u)} style={{ width:"100%", background:"#fff", borderRadius:14, marginBottom:10, padding:"14px 16px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 1px 4px rgba(0,0,0,0.05)", border:"none", cursor:"pointer", fontFamily:"inherit", textAlign:"left" }}>
                 <div style={{ width:38, height:38, borderRadius:"50%", background:u.role==="admin"?PURPLE+"20":WARM, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
                   {u.role === "admin" ? "👑" : "👤"}
@@ -938,13 +949,19 @@ export default function AdminPage() {
                 <span style={{ color:BORDER, fontSize:18 }}>›</span>
               </button>
             ))}
+            {users.hasMore && <LoadMoreBtn loading={users.loading} onClick={loadMoreUsers}/>}
           </>
         )}
 
         {/* ════ 공지 탭 ════ */}
         {tab === "announce" && (
           <>
-            {annForm ? (
+            {!annForm && (
+              <button onClick={() => setAnnForm(true)} style={{ width:"100%", padding:"12px 0", background:ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:12 }}>
+                + 새 공지 등록
+              </button>
+            )}
+            {annForm && (
               <div style={{ background:"#fff", borderRadius:14, padding:"16px", marginBottom:12, boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
                 <p style={{ fontSize:13, fontWeight:700, color:INK, marginBottom:12 }}>{annEdit ? "공지 수정" : "공지 등록"}</p>
                 <p style={{ fontSize:11, color:MUTED, marginBottom:6 }}>유형</p>
@@ -1006,19 +1023,15 @@ export default function AdminPage() {
                   </button>
                 </div>
               </div>
-            ) : (
-              <button onClick={() => setAnnForm(true)} style={{ width:"100%", padding:"12px 0", background:ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit", marginBottom:12 }}>
-                + 새 공지 등록
-              </button>
             )}
-
+            <SearchBar value={searchAnn} onChange={setSearchAnn} placeholder="제목, 내용 검색"/>
             {announces.loading && announces.items.length === 0 ? (
               <div style={{ padding:"40px 0", textAlign:"center" }}>
                 <div style={{ width:28, height:28, border:`3px solid ${BORDER}`, borderTopColor:ROSE, borderRadius:"50%", margin:"0 auto", animation:"spin 0.8s linear infinite" }}/>
               </div>
-            ) : announces.items.length === 0 ? (
-              <EmptyBox icon="📢" text="등록된 공지가 없어요"/>
-            ) : announces.items.map(a => (
+            ) : filteredAnn.length === 0 ? (
+              <EmptyBox icon="📢" text={searchAnn ? "검색 결과가 없어요" : "등록된 공지가 없어요"}/>
+            ) : filteredAnn.map(a => (
               <div key={a.id} style={{ background:"#fff", borderRadius:14, marginBottom:10, padding:"14px 16px", boxShadow:"0 1px 4px rgba(0,0,0,0.05)", opacity:a.visible?1:0.55 }}>
                 <div style={{ display:"flex", gap:6, marginBottom:8, flexWrap:"wrap" }}>
                   <Badge text={a.type==="notice"?"공지":"이벤트"} color={a.type==="notice"?ROSE:SAGE}/>
@@ -1041,7 +1054,7 @@ export default function AdminPage() {
                 </div>
               </div>
             ))}
-            {announces.hasMore && <LoadMoreBtn loading={announces.loading} onClick={loadMoreAnn}/>}
+            {!searchAnn && announces.hasMore && <LoadMoreBtn loading={announces.loading} onClick={loadMoreAnn}/>}
           </>
         )}
 
@@ -1097,8 +1110,6 @@ export default function AdminPage() {
 
       {selectedUser && <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onToast={showToast}/>}
       {toast && <Toast msg={toast}/>}
-
-      {/* 로딩 스피너 keyframe */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
