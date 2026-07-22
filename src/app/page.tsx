@@ -1,17 +1,17 @@
 // src/app/page.tsx
 //
-// 버그 수정 (2026-07-03):
-//   ★ 달력(DateRangePicker) 클릭 시 아무 반응 없는 버그 수정
-//     원인: showCalendar state가 FilterBar 내부에 있고,
-//           FilterBar 루트 div가 overflow:hidden + maxHeight:0 이라
-//           달력 팝업이 렌더돼도 clip 되어 보이지 않음
-//     해결: showCalendar state를 HomePage로 끌어올림
-//           DateRangePicker를 createPortal로 document.body에 직접 렌더
-//           → overflow:hidden 부모의 영향 완전히 벗어남
-//           onCalendarToggle prop 추가로 FilterBar → HomePage 콜백
+// 성능 개선 (무한 스크롤):
+//   ★ useVisited 실시간 구독은 기존과 동일하게 유지 (전체 데이터 수신)
+//   ★ 화면 렌더링은 PAGE_SIZE(10) 단위로 클라이언트 슬라이싱
+//   ★ IntersectionObserver — sentinel이 뷰포트 진입 시 자동으로 다음 10개 렌더
+//   ★ 필터/정렬/검색은 전체 데이터 기준 동작 (기존과 동일)
+//   ★ 필터 변경 시 visibleCount 자동 리셋
+//
+// 기존 수정 내용 유지:
+//   ★ 달력(DateRangePicker) createPortal 렌더 (overflow:hidden clip 방지)
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { createPortal }                         from "react-dom";
 
 import { AppShell }                     from "@/components/layout/AppShell";
@@ -39,6 +39,7 @@ const INK     = "#1A1412";
 const MUTED   = "#8A8078";
 const BORDER  = "#E2DDD8";
 const WARM    = "#FAF7F3";
+const PAGE_SIZE = 10;
 
 const MID_AD_INDEX = (len: number) => Math.floor(len / 2);
 
@@ -208,6 +209,11 @@ export default function HomePage() {
   const [showInvitePopup, setShowInvitePopup] = useState(false);
   const [scrolled,        setScrolled]        = useState(false);
 
+  // ★ 무한 스크롤: 현재 화면에 렌더할 개수
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // ★ 무한 스크롤 sentinel ref
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
   // ★ showCalendar를 HomePage로 끌어올림 — portal 렌더를 위해
   const [showCalendar, setShowCalendar] = useState(false);
   // ★ 달력 팝업 위치 (달력 버튼의 getBoundingClientRect 기준)
@@ -247,6 +253,7 @@ export default function HomePage() {
     if (main) main.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // 전체 필터/정렬 결과 (기존과 동일)
   const filtered = useMemo(() => records
     .filter(r =>
       (!filterSido     || r.sido    === filterSido) &&
@@ -260,6 +267,40 @@ export default function HomePage() {
       sortBy === "rating" ? b.rating - a.rating :
       a.name.localeCompare(b.name)
     ), [records, filterSido, filterCui, filterDateFrom, filterDateTo, searchText, sortBy]);
+
+  // ★ 필터 조건 변경 시 visibleCount 리셋
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filterSido, filterCui, filterDateFrom, filterDateTo, searchText, sortBy, timeline]);
+
+  // ★ 현재 화면에 보여줄 항목 (visibleCount만큼 슬라이싱)
+  const visibleFiltered = useMemo(
+    () => filtered.slice(0, visibleCount),
+    [filtered, visibleCount]
+  );
+  const hasMoreVisible = visibleCount < filtered.length;
+
+  // ★ IntersectionObserver — sentinel이 뷰포트에 들어오면 다음 PAGE_SIZE 렌더
+  const handleLoadMore = useCallback(() => {
+    setVisibleCount(prev => Math.min(prev + PAGE_SIZE, filtered.length));
+  }, [filtered.length]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreVisible) {
+          handleLoadMore();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreVisible, handleLoadMore]);
 
   const byMonth = useMemo(() => filtered.reduce((acc, r) => {
     const m = r.date.slice(0, 7);
@@ -325,7 +366,7 @@ export default function HomePage() {
   );
 
   const emptyMsg = filterDateFrom || filterDateTo ? `${filterDateFrom || "시작"} ~ ${filterDateTo || "현재"} 기간에 기록이 없어요` : "기록이 없어요";
-  const midAdIdx = MID_AD_INDEX(filtered.length);
+  const midAdIdx = MID_AD_INDEX(visibleFiltered.length);
 
   return (
     <>
@@ -367,6 +408,7 @@ export default function HomePage() {
                   <OnboardingBanner variant="slim" onCouple={openInvitePopup} onJoin={openInvitePopup} onDismiss={() => setBannerDismissed(true)} />
                 </div>
               )}
+              {/* 갤러리는 전체 filtered 전달 (이미지 그리드라 슬라이싱 효과 미미) */}
               <GalleryGrid items={filtered} />
             </>
           )}
@@ -385,6 +427,7 @@ export default function HomePage() {
                   )}
 
                   {timeline ? (
+                    // ── 타임라인: 월 단위 접기/펼치기 (기존 동일, 전체 filtered 사용)
                     <>
                       <KakaoAdFitInFeed key="ad-timeline-top" />
                       {sortedMonths.map((m, monthIdx) => {
@@ -411,14 +454,25 @@ export default function HomePage() {
                       })}
                     </>
                   ) : (
+                    // ── 리스트: ★ visibleFiltered 기준으로 렌더 (무한 스크롤)
                     <>
                       <KakaoAdFitInFeed key="ad-list-top" />
-                      {filtered.map((r, idx) => (
+                      {visibleFiltered.map((r, idx) => (
                         <div key={r.id}>
                           <VisitedCard record={r} onDelete={() => {}} />
-                          {idx === midAdIdx && idx < filtered.length - 1 && <KakaoAdFitInFeed key="ad-list-mid" />}
+                          {idx === midAdIdx && idx < visibleFiltered.length - 1 && <KakaoAdFitInFeed key="ad-list-mid" />}
                         </div>
                       ))}
+
+                      {/* ★ 무한 스크롤 sentinel */}
+                      <div ref={sentinelRef} style={{ height: 1 }} />
+
+                      {/* 마지막 도달 메시지 */}
+                      {!hasMoreVisible && filtered.length > PAGE_SIZE && (
+                        <p style={{ textAlign: "center", fontSize: 12, color: "#C0B8B0", padding: "16px 0 24px" }}>
+                          모든 기록을 불러왔어요 🎉
+                        </p>
+                      )}
                     </>
                   )}
                 </>

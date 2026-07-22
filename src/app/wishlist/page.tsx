@@ -1,12 +1,16 @@
-// ============================================================
-//  wishlist/page.tsx  적용 경로: src/app/wishlist/page.tsx
+// src/app/wishlist/page.tsx
 //
-//  Fix / Add:
-//    ★ KakaoAdFitInFeed 추가 — 리스트 최상단 + 3개마다 인피드 광고
-// ============================================================
+// 성능 개선 (무한 스크롤):
+//   ★ useWishlist 실시간 구독은 기존과 동일하게 유지 (전체 데이터 수신)
+//   ★ 화면 렌더링은 PAGE_SIZE(10) 단위로 클라이언트 슬라이싱
+//   ★ IntersectionObserver — sentinel이 뷰포트 진입 시 자동으로 다음 10개 렌더
+//   ★ 탭(전체/나/파트너/둘다) 전환 시 visibleCount 자동 리셋
+//
+// 기존 기능 전부 유지:
+//   KakaoAdFitInFeed 광고, 다녀왔어요 바텀시트, 위시 추가/수정/삭제
 "use client";
 
-import { useState }        from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter }       from "next/navigation";
 import { AppShell }        from "@/components/layout/AppShell";
 import { WishCard }        from "@/components/wishlist/WishCard";
@@ -14,7 +18,7 @@ import { WishModal }       from "@/components/wishlist/WishModal";
 import { Toast }           from "@/components/common/Toast";
 import { ConfirmDialog }   from "@/components/common/ConfirmDialog";
 import { StarRating }      from "@/components/common/StarRating";
-import { KakaoAdFitInFeed } from "@/components/common/KakaoAdFitInFeed"; // ★ 추가
+import { KakaoAdFitInFeed } from "@/components/common/KakaoAdFitInFeed";
 import { useUIStore }      from "@/store/uiStore";
 import { useAuthStore }    from "@/store/authStore";
 import { SAMPLE_WISHLIST } from "@/lib/sample-data";
@@ -24,6 +28,7 @@ import { todayStr }        from "@/lib/utils/date";
 import type { WishRecord, VisitedFormData } from "@/types";
 
 const DUMMY_MODE = false;
+const PAGE_SIZE  = 10;
 const ROSE   = "#C96B52";
 const ROSE_LT= "#F2D5CC";
 const SAGE   = "#6B9E7E";
@@ -133,15 +138,16 @@ export default function WishlistPage() {
   const [visitTarget,   setVisitTarget] = useState<WishRecord | null>(null);
   const [visitSaving,   setVisitSaving] = useState(false);
 
+  // ★ 무한 스크롤: 현재 화면에 렌더할 개수
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // ★ 무한 스크롤 sentinel ref
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
   const router = useRouter();
   const { myName, partnerName, coupleId, myUid } = useAuthStore();
   const { confirmTarget, closeConfirm } = useUIStore();
 
-  // 미연동 시 위시 추가 시도 → 커플 연동 안내 팝업
-  const [showCouplePrompt, setShowCouplePrompt] = useState(false);
-
   const handleFabClick = () => {
-    // 미연동 상태에서도 위시 추가 허용 (coupleId: "" 로 저장됨)
     setEditingWish(null);
     setWishModal(true);
   };
@@ -160,6 +166,40 @@ export default function WishlistPage() {
     activeTab === "partner" ? partnerItems :
     activeTab === "both"    ? bothItems    :
     records;
+
+  // ★ 탭 전환 시 visibleCount 리셋
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [activeTab]);
+
+  // ★ 현재 화면에 보여줄 항목
+  const visibleDisplayed = useMemo(
+    () => displayed.slice(0, visibleCount),
+    [displayed, visibleCount]
+  );
+  const hasMoreVisible = visibleCount < displayed.length;
+
+  // ★ IntersectionObserver — sentinel이 뷰포트에 들어오면 다음 PAGE_SIZE 렌더
+  const handleLoadMore = useCallback(() => {
+    setVisibleCount(prev => Math.min(prev + PAGE_SIZE, displayed.length));
+  }, [displayed.length]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreVisible) {
+          handleLoadMore();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreVisible, handleLoadMore]);
 
   // ── 위시 추가 / 수정 ──────────────────────────────────────
   const handleSaveWish = async (data: {
@@ -299,13 +339,12 @@ export default function WishlistPage() {
         ))}
       </div>
 
-      {/* ★ 카드 목록 — 최상단 + 3개마다 인피드 광고 삽입 */}
+      {/* ★ 카드 목록 — visibleDisplayed 기준 렌더 (무한 스크롤) */}
       <div style={{ padding: "0 16px" }}>
         {displayed.length > 0 && (
-          // 최상단 광고
           <KakaoAdFitInFeed />
         )}
-        {displayed.map((r, i) => (
+        {visibleDisplayed.map((r, i) => (
           <div key={r.id}>
             <WishCard
               record={r}
@@ -313,12 +352,23 @@ export default function WishlistPage() {
               onVisited={() => setVisitTarget(r)}
               onEdit={() => { setEditingWish(r); setWishModal(true); }}
             />
-            {/* 3개마다 광고 (0-based index 기준: 2, 5, 8 ...) */}
-            {(i + 1) % 3 === 0 && i + 1 < displayed.length && (
+            {/* 3개마다 광고 */}
+            {(i + 1) % 3 === 0 && i + 1 < visibleDisplayed.length && (
               <KakaoAdFitInFeed />
             )}
           </div>
         ))}
+
+        {/* ★ 무한 스크롤 sentinel */}
+        <div ref={sentinelRef} style={{ height: 1 }} />
+
+        {/* 마지막 도달 메시지 */}
+        {!hasMoreVisible && displayed.length > PAGE_SIZE && (
+          <p style={{ textAlign: "center", fontSize: 12, color: "#C0B8B0", padding: "16px 0 24px" }}>
+            모든 위시를 불러왔어요 🎉
+          </p>
+        )}
+
         {displayed.length === 0 && (
           <div style={{ textAlign: "center", padding: "48px 0", color: "#C0B8B0" }}>
             <div style={{ fontSize: 44 }}>{activeTab === "both" ? "💑" : "⭐"}</div>

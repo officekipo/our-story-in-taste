@@ -1,11 +1,9 @@
 // src/app/community/page.tsx
 //
-// 성능 개선 (2026-07-03):
-//   ★ limit(20) 초기 로딩 — 전체 로딩에서 첫 20개만 로드로 변경
-//   ★ 커서 페이지네이션 — "더 보기" 버튼 클릭 시 다음 20개 추가 로드
-//     (onSnapshot 대신 getDocs 사용 — 페이지네이션과 실시간 구독 혼용 불가)
-//     → 새 게시물은 가장 위에 실시간 노출되고 나머지는 정적 로드 방식
-//   ★ 초기 로딩 스켈레톤 UI 개선 (기존 단순 div → 카드 형태)
+// 성능 개선:
+//   ★ limit(10) 초기 로딩 — PAGE_SIZE 20 → 10 으로 변경
+//   ★ 더 보기 버튼 → 무한 스크롤로 전환
+//     (스크롤 감지: IntersectionObserver — sentinel div가 뷰포트에 들어오면 자동 로드)
 //   기존 기능 전부 유지:
 //     필터(지역/음식/태그), 정렬(최신/인기), 좋아요, 위시, 신고, 수정됨 뱃지
 "use client";
@@ -32,7 +30,7 @@ const BORDER = "#E2DDD8";
 const WARM   = "#FAF7F3";
 const ROSE   = "#C96B52";
 const HIDE_THRESHOLD = 3;
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 function wasEdited(raw: any): boolean {
   if (typeof raw.isEdited === "boolean") return raw.isEdited;
@@ -96,15 +94,17 @@ export default function CommunityPage() {
   const { myUid, coupleId, myName } = useAuthStore();
   const firebaseWish                = useWishlist();
 
-  // ★ 실시간 구독: 최신 20개만 (새 게시물 감지용)
+  // ★ 실시간 구독: 최신 10개만 (새 게시물 감지용)
   const [records,      setRecords]      = useState<RecordType[]>([]);
-  // ★ 페이지네이션: 20개 이후 추가 로드된 게시물
+  // ★ 페이지네이션: 10개 이후 추가 로드된 게시물
   const [moreRecords,  setMoreRecords]  = useState<RecordType[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [loadingMore,  setLoadingMore]  = useState(false);
   const [hasMore,      setHasMore]      = useState(true);
   // ★ 마지막으로 로드된 문서 커서 (페이지네이션용)
   const lastDocRef = useRef<DocumentSnapshot | null>(null);
+  // ★ 무한 스크롤 sentinel ref
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const [reportTarget, setReportTarget] = useState<RecordType | null>(null);
   const [toast,        setToast]        = useState<string | null>(null);
@@ -115,11 +115,11 @@ export default function CommunityPage() {
   const [filterTag,     setFilterTag]     = useState("");
   const [sortBy,        setSortBy]        = useState<"recent" | "likes">("recent");
 
-  // 전체 레코드 (실시간 20개 + 더 보기로 추가된 것들)
+  // 전체 레코드 (실시간 10개 + 더 로드된 것들)
   const allRecords = [...records, ...moreRecords];
   const allTags = Array.from(new Set(allRecords.flatMap((r) => r.tags))).sort();
 
-  // ★ 초기 로딩: limit(20)으로 첫 페이지만
+  // ★ 초기 로딩: limit(10)으로 첫 페이지만 실시간 구독
   useEffect(() => {
     const q = query(
       collection(db, "community"),
@@ -135,16 +135,16 @@ export default function CommunityPage() {
       );
       // ★ 마지막 문서 커서 저장
       lastDocRef.current = docs[docs.length - 1] ?? null;
-      // 20개 미만이면 더 이상 없음
+      // 10개 미만이면 더 이상 없음
       setHasMore(docs.length === PAGE_SIZE);
       setLoading(false);
     });
     return () => unsub();
   }, []);
 
-  // ★ 더 보기: 커서 기반 추가 로드 (getDocs — 정적 로드)
+  // ★ 추가 로드: 커서 기반 (getDocs — 정적 로드)
   const handleLoadMore = useCallback(async () => {
-    if (!lastDocRef.current || loadingMore) return;
+    if (!lastDocRef.current || loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
       const q = query(
@@ -160,7 +160,6 @@ export default function CommunityPage() {
         .filter((r) => r.reportedBy.length < HIDE_THRESHOLD);
 
       setMoreRecords((prev) => {
-        // 중복 제거
         const existingIds = new Set(prev.map((r) => r.id));
         return [...prev, ...newRecords.filter((r) => !existingIds.has(r.id))];
       });
@@ -168,11 +167,29 @@ export default function CommunityPage() {
       lastDocRef.current = docs[docs.length - 1] ?? null;
       setHasMore(docs.length === PAGE_SIZE);
     } catch (e) {
-      console.error("더 보기 로드 오류:", e);
+      console.error("추가 로드 오류:", e);
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore]);
+  }, [loadingMore, hasMore]);
+
+  // ★ IntersectionObserver — sentinel이 뷰포트에 들어오면 자동 로드
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
+          handleLoadMore();
+        }
+      },
+      { rootMargin: "200px" } // 하단 200px 전에 미리 트리거
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, handleLoadMore]);
 
   const displayed = allRecords
     .filter((r) => !filterSido    || r.sido    === filterSido)
@@ -190,16 +207,18 @@ export default function CommunityPage() {
     const liked = record.likedBy.includes(myUid);
     try {
       await updateDoc(doc(db, "community", record.id), {
-        likedBy:   liked ? arrayRemove(myUid) : arrayUnion(myUid),
         likeCount: increment(liked ? -1 : 1),
+        likedBy:   liked ? arrayRemove(myUid) : arrayUnion(myUid),
       });
-    } catch (e) { console.error("좋아요 오류:", e); }
+    } catch (e) {
+      console.error("좋아요 오류:", e);
+    }
   }, [myUid]);
 
   // ── 위시 추가
   const handleWish = useCallback(async (record: RecordType) => {
-    if (!coupleId || !myUid || !myName) return;
-    if (wishedIds.has(record.id)) { setToast("이미 위시리스트에 추가했어요 ⭐"); return; }
+    if (!myUid) return;
+    if (wishedIds.has(record.id)) { setToast("이미 위시리스트에 있어요."); return; }
     try {
       await firebaseWish.add({
         name:     record.name,
@@ -306,7 +325,7 @@ export default function CommunityPage() {
           <p style={{ fontSize: 12, color: MUTED, margin: "0 16px 8px" }}>검색 결과 {displayed.length}개</p>
         )}
 
-        {/* ★ 스켈레톤 카드 — 단순 div 대신 카드 형태 */}
+        {/* 스켈레톤 카드 */}
         {loading && (
           <div style={{ padding: "0 16px" }}>
             {[1, 2, 3].map((i) => <SkeletonCard key={i} />)}
@@ -352,26 +371,15 @@ export default function CommunityPage() {
               </div>
             ))}
 
-            {/* ★ 더 보기 버튼 */}
-            {hasMore && (
-              <button
-                onClick={handleLoadMore}
-                disabled={loadingMore}
-                className="tap"
-                style={{
-                  width: "100%", padding: "14px 0", marginTop: 8, marginBottom: 16,
-                  background: loadingMore ? "#F0EBE3" : "#fff",
-                  border: `1.5px solid ${BORDER}`, borderRadius: 12,
-                  color: loadingMore ? MUTED : INK, fontSize: 14, fontWeight: 600,
-                  cursor: loadingMore ? "not-allowed" : "pointer",
-                  fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                }}
-              >
-                {loadingMore
-                  ? <><span style={{ width: 16, height: 16, border: "2px solid #E2DDD8", borderTopColor: ROSE, borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} /><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>불러오는 중...</>
-                  : "더 보기 ↓"
-                }
-              </button>
+            {/* ★ 무한 스크롤 sentinel — 이 div가 뷰포트에 들어오면 자동 로드 */}
+            <div ref={sentinelRef} style={{ height: 1 }} />
+
+            {/* 추가 로딩 중 스피너 */}
+            {loadingMore && (
+              <div style={{ display: "flex", justifyContent: "center", padding: "16px 0" }}>
+                <div style={{ width: 22, height: 22, border: "2.5px solid #E2DDD8", borderTopColor: ROSE, borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+              </div>
             )}
 
             {!hasMore && displayed.length > 0 && (
