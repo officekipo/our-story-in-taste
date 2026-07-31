@@ -374,7 +374,7 @@ export default function HomePage() {
         activeTab="visited"
         fab={
           <button onClick={openAddModal} className="tap" style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: ROSE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(201,107,82,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
-            <span className="tap" style={{ fontSize: 28, lineHeight: "47px" }}>+</span>
+            <span className="tap" style={{ display: "inline-block", marginTop: -3, fontSize: 28, lineHeight: "47px" }}>+</span>
           </button>
         }
         filterBar={

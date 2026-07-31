@@ -308,7 +308,7 @@ export default function WishlistPage() {
         onClick={handleFabClick}
         className="tap"
         style={{ position: "fixed", bottom: 76, right: 20, width: 52, height: 52, borderRadius: "50%", background: SAGE, border: "none", color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(107,158,126,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
-        <span className="tap" style={{ fontSize: 28, lineHeight: "47px" }}>+</span>
+        <span className="tap" style={{ display: "inline-block", marginTop: -3, fontSize: 28, lineHeight: "47px" }}>+</span>
       </button>
     }>
       <div style={{ padding: "20px 20px 12px" }}>
