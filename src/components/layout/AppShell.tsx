@@ -5,6 +5,19 @@
 //     → Auth 확정 전 permission-denied 오류 및 불필요한 구독 제거
 //   ★ notifications 구독 에러 시 setActivityUnread(0) 처리
 //     → notifications 컬렉션 미존재 시 앱 무한 로딩 방지
+//
+// 버그 수정 (v20):
+//   ★ 필터바 show/hide 깜빡임(달각거림) 버그 수정
+//     원인: scrollTop > 40 단일 임계값만 사용 → 게시글이 적어(예: 2개)
+//           스크롤 가능 영역이 작을 때, 필터바가 접히며 main 높이가 늘어나
+//           브라우저가 scrollTop을 40 아래로 강제 클램프 → scrolled=false
+//           → 필터바 재확장 → main 높이 다시 줄어듦 → scrollTop 재상승
+//           → scrolled=true … 무한 반복(되먹임 루프)
+//     해결: (1) 히스테리시스 적용 — 숨김 80px / 표시 24px로 분리해
+//               경계값 근처 미세 흔들림에 즉시 반응하지 않도록 함
+//           (2) 스크롤 가능 여유 높이가 작을 때(MIN_SCROLLABLE 미만)는
+//               숨김 동작 자체를 하지 않고 항상 필터바 표시 상태로 고정
+//               → 되먹임 루프의 근본 원인 차단
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
@@ -33,12 +46,38 @@ export function AppShell({ children, activeTab, headerProps, filterBar, noPad, f
   const { animClass, onAnimationEnd } = useTabAnim();
   const { myUid, initialized } = useAuthStore();
 
-  /* ── 스크롤 감지 ── */
+  /* ── 스크롤 감지 (v20: 히스테리시스 + 최소 스크롤 잠금) ── */
   const [scrolled, setScrolled] = useState(false);
+
+  // 필터바를 숨기는 임계값 / 다시 보여주는 임계값을 분리(히스테리시스)
+  // → 경계값(옛 40px) 근처에서 1px 단위로 흔들려도 즉시 토글되지 않음
+  const HIDE_AT = 80;
+  const SHOW_AT = 24;
+  // 스크롤 가능한 여유 높이가 이보다 작으면(콘텐츠가 짧으면) 숨김 동작 자체를 하지 않음
+  // → 필터바 접힘/펼침이 스크롤 가능 범위 자체를 뒤집어버리는 되먹임 루프 차단
+  const MIN_SCROLLABLE = 120;
+
   const handleScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
-    const next = (e.currentTarget as HTMLElement).scrollTop > 40;
-    setScrolled(next);
-    onScrolledChange?.(next);
+    const el = e.currentTarget as HTMLElement;
+    const scrollTop    = el.scrollTop;
+    const maxScrollTop = el.scrollHeight - el.clientHeight;
+
+    setScrolled(prev => {
+      let next = prev;
+
+      if (maxScrollTop < MIN_SCROLLABLE) {
+        // 콘텐츠가 짧아 필터바 접힘/펼침만으로 스크롤 가능 범위가 뒤집힐 수 있는 구간
+        // → 항상 필터바를 보여준 상태로 고정
+        next = false;
+      } else if (!prev && scrollTop > HIDE_AT) {
+        next = true;
+      } else if (prev && scrollTop < SHOW_AT) {
+        next = false;
+      }
+
+      if (next !== prev) onScrolledChange?.(next);
+      return next;
+    });
   }, [onScrolledChange]);
 
   /* ── 알림 센터 상태 ── */

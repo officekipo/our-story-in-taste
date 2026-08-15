@@ -8,6 +8,23 @@
 //      1. 마커 사이즈 축소 (32→24px, font-size 15→11px)
 //      2. 하단 팝업에 카카오맵 / 네이버지도 "자세히 보기" 링크 추가
 //      3. [클러스터링] 순수 Leaflet으로 직접 구현 — 외부 플러그인 없음
+//
+//  버그 수정 (v20):
+//    ★ 근접 핀 개별 클릭 불가 문제 해결
+//      원인: 클러스터 클릭 시 fitBounds(maxZoom:16)로만 확대 → 좌표가
+//            사실상 동일하거나(같은 건물 등) 픽셀 거리가 CLUSTER_RADIUS(60px)를
+//            못 벗어나는 핀들은 아무리 확대해도 영원히 하나로 묶여 클릭 불가
+//      해결: 이미 최대 줌(19)이거나 두 핀 사이 실거리가 15m 미만이면
+//            더 이상 확대 대신 "스파이더파이(spiderfy)" — 핀들을 부채꼴로
+//            펼쳐서 각각 개별 클릭 가능하게 표시. 중앙 허브나 지도 빈 곳을
+//            탭하면 다시 원래 클러스터로 접힘
+//    ★ 카카오/네이버 지도 이동 시 전체 지점이 나오는 문제 해결
+//      원인: 카카오 링크가 `link/search/{이름}` — 좌표 파라미터가 아예 없는
+//            상호명 검색이라 동일 상호의 전국 모든 지점이 검색됨
+//      해결: `link/map/{이름},{위도},{경도}` 좌표 지정 방식으로 전환
+//            (카카오맵 공식 링크 스펙 — 검색이 아니라 등록된 정확한 좌표를
+//             지도에 바로 표시). 네이버는 POI ID가 없어 검색 자체를 완전히
+//            배제할 수는 없으나 정밀도(zoom 15→19)를 최대로 높임
 // ============================================================
 "use client";
 
@@ -26,10 +43,43 @@ const WARM   = "#FAF7F3";
 const BG     = "#F5F0EB";
 
 const CLUSTER_RADIUS = 60; // px 단위 클러스터링 반경
+const MAX_ZOOM = 19;               // 지도 최대 줌 (tileLayer maxZoom과 동일)
+const SPIDERFY_MIN_METERS = 15;    // 두 핀 사이 실거리가 이보다 가까우면 확대해도 분리 불가 → spiderfy
 
 type PinTarget =
   | { type: "visited"; data: VisitedRecord }
   | { type: "wish";    data: WishRecord };
+
+// ★ 핀 고유 키 — 어떤 클러스터가 현재 스파이더파이 상태인지 식별하는 데 사용
+function pinKey(p: PinTarget): string {
+  return `${p.type}:${p.data.id}`;
+}
+function clusterKey(pins: PinTarget[]): string {
+  return pins.map(pinKey).sort().join("|");
+}
+
+// ★ 스파이더파이 시 개별 핀을 중심점 기준으로 펼칠 픽셀 오프셋 계산
+//   8개 이하 → 정원형 배치, 그 이상 → 나선형 배치(겹침 방지)
+function spiderfyOffsets(count: number): Array<{ dx: number; dy: number }> {
+  const offsets: Array<{ dx: number; dy: number }> = [];
+  if (count <= 8) {
+    const radius    = 32 + count * 4;
+    const angleStep = (2 * Math.PI) / count;
+    for (let i = 0; i < count; i++) {
+      const angle = i * angleStep - Math.PI / 2;
+      offsets.push({ dx: radius * Math.cos(angle), dy: radius * Math.sin(angle) });
+    }
+  } else {
+    let angle = 0;
+    let radius = 30;
+    for (let i = 0; i < count; i++) {
+      offsets.push({ dx: radius * Math.cos(angle), dy: radius * Math.sin(angle) });
+      angle  += 0.6;
+      radius += 3.5;
+    }
+  }
+  return offsets;
+}
 
 // ── 순수 JS 클러스터 알고리즘 ──────────────────────────────────
 function buildClusters(
@@ -71,6 +121,34 @@ function getTotalVisits(record: VisitedRecord): number {
   return 1 + (record.visits?.length ?? 0);
 }
 
+// ★ 개별 핀 아이콘 생성 — 일반 렌더링과 spiderfy 렌더링에서 공통 사용
+function buildPinIcon(pin: PinTarget, L: any) {
+  const color = pin.type === "visited" ? ROSE : SAGE;
+  const emoji = pin.data.emoji || (pin.type === "visited" ? "🍽️" : "⭐");
+
+  const totalVisits = pin.type === "visited"
+    ? getTotalVisits(pin.data as VisitedRecord)
+    : 0;
+  const showBadge = totalVisits >= 2;
+  const wrapSize  = showBadge ? 34 : 24;
+
+  const badgeHtml = showBadge
+    ? `<div style="position:absolute;top:-7px;right:-7px;background:#fff;color:${ROSE};border-radius:20px;min-width:16px;height:16px;padding:0 3px;font-size:8px;font-weight:800;display:flex;align-items:center;justify-content:center;border:1.5px solid ${ROSE};line-height:1;box-shadow:0 1px 4px rgba(0,0,0,0.18);">${totalVisits}</div>`
+    : "";
+
+  return L.divIcon({
+    className: "",
+    html: `<div style="position:relative;display:inline-block;width:${wrapSize}px;height:${wrapSize}px;">
+      <div style="position:absolute;bottom:0;left:${showBadge ? 5 : 0}px;background:${color};color:#fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,0.22);">
+        <span style="transform:rotate(45deg)">${emoji}</span>
+      </div>
+      ${badgeHtml}
+    </div>`,
+    iconSize:   [wrapSize, wrapSize],
+    iconAnchor: [showBadge ? 17 : 12, wrapSize],
+  });
+}
+
 interface Props {
   filter?: MapFilter;
 }
@@ -80,6 +158,13 @@ export default function MapView({ filter = "all" }: Props) {
   const mapInst    = useRef<any>(null);
   const leafletRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+
+  // ★ v20: 현재 스파이더파이(펼침) 상태인 클러스터의 key (없으면 null)
+  const spiderfiedKeyRef = useRef<string | null>(null);
+  // ★ v20: renderMarkers에 마지막으로 전달된 pins — spiderfy 토글 시 재사용
+  const pinsRef = useRef<PinTarget[]>([]);
+  // ★ v20: spiderfy 상태에서 지도 빈 곳 탭 시 접기 위한 핸들러 참조 (중복 등록 방지)
+  const collapseHandlerRef = useRef<(() => void) | null>(null);
 
   const { records: visited,  loading: vLoad } = useVisited();
   const { records: wishlist, loading: wLoad } = useWishlist();
@@ -145,6 +230,15 @@ export default function MapView({ filter = "all" }: Props) {
     const map = mapInst.current;
     if (!L || !map) return;
 
+    // ★ v20: 다음 spiderfy 토글(허브 클릭 등)에서 재사용할 수 있도록 최신 pins 저장
+    pinsRef.current = pins;
+
+    // ★ v20: 이전에 등록된 "빈 곳 탭 → 접힘" 핸들러 정리 (중복 등록 방지)
+    if (collapseHandlerRef.current) {
+      map.off("click", collapseHandlerRef.current);
+      collapseHandlerRef.current = null;
+    }
+
     // 기존 마커 제거
     markersRef.current.forEach((m) => { try { m.remove(); } catch {} });
     markersRef.current = [];
@@ -155,7 +249,58 @@ export default function MapView({ filter = "all" }: Props) {
 
     clusters.forEach((cluster) => {
       if (cluster.pins.length > 1) {
-        // ── 클러스터 마커 ──────────────────────────────
+        const key = clusterKey(cluster.pins);
+
+        // ── v20: 스파이더파이 상태 — 핀들을 부채꼴로 펼쳐 개별 클릭 가능하게 ──
+        if (spiderfiedKeyRef.current === key) {
+          const centerLatLng: [number, number] = [cluster.lat, cluster.lng];
+          const centerPt = map.latLngToContainerPoint(centerLatLng);
+          const offsets  = spiderfyOffsets(cluster.pins.length);
+
+          cluster.pins.forEach((pin, i) => {
+            const { dx, dy } = offsets[i];
+            const spiderPt     = L.point(centerPt.x + dx, centerPt.y + dy);
+            const spiderLatLng = map.containerPointToLatLng(spiderPt);
+
+            // 중심 ↔ 펼쳐진 핀을 잇는 안내선
+            const leg = L.polyline([centerLatLng, spiderLatLng], {
+              color: MUTED, weight: 1.4, opacity: 0.55, dashArray: "2,5",
+            }).addTo(map);
+            markersRef.current.push(leg);
+
+            const m = L.marker(spiderLatLng, { icon: buildPinIcon(pin, L), zIndexOffset: 500 })
+              .addTo(map)
+              .on("click", () => setSelected(pin));
+            markersRef.current.push(m);
+          });
+
+          // 중앙 허브 — 다시 탭하면 원래 클러스터로 접힘
+          const hubIcon = L.divIcon({
+            className: "",
+            html: `<div style="width:22px;height:22px;border-radius:50%;background:#fff;border:2.5px solid ${ROSE};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:${ROSE};box-shadow:0 2px 6px rgba(0,0,0,0.25);">${cluster.pins.length}</div>`,
+            iconSize:   [22, 22],
+            iconAnchor: [11, 11],
+          });
+          const hub = L.marker(centerLatLng, { icon: hubIcon, zIndexOffset: 1000 })
+            .addTo(map)
+            .on("click", () => {
+              spiderfiedKeyRef.current = null;
+              renderMarkers(pinsRef.current);
+            });
+          markersRef.current.push(hub);
+
+          // 지도 빈 곳을 탭하면 접힘
+          const collapse = () => {
+            spiderfiedKeyRef.current = null;
+            renderMarkers(pinsRef.current);
+          };
+          collapseHandlerRef.current = collapse;
+          map.once("click", collapse);
+
+          return;
+        }
+
+        // ── 일반 클러스터 마커 ──────────────────────────
         const count   = cluster.pins.length;
         const size    = count < 10 ? 36 : count < 30 ? 44 : 52;
         const allWish = cluster.pins.every(p => p.type === "wish");
@@ -174,42 +319,23 @@ export default function MapView({ filter = "all" }: Props) {
             const bounds = L.latLngBounds(
               cluster.pins.map(p => [p.data.lat!, p.data.lng!] as [number, number])
             );
-            map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+            const spreadMeters = bounds.getNorthEast().distanceTo(bounds.getSouthWest());
+
+            // ★ v20: 이미 최대 줌이거나, 확대해도 더는 분리되지 않을 만큼
+            //         가까운 핀들이면(예: 같은 건물) 줌 대신 스파이더파이로 펼침
+            if (map.getZoom() >= MAX_ZOOM || spreadMeters < SPIDERFY_MIN_METERS) {
+              spiderfiedKeyRef.current = key;
+              renderMarkers(pinsRef.current);
+            } else {
+              map.fitBounds(bounds, { padding: [60, 60], maxZoom: MAX_ZOOM });
+            }
           });
         markersRef.current.push(m);
 
       } else {
         // ── 개별 핀 마커 ──────────────────────────────
-        const pin   = cluster.pins[0];
-        const color = pin.type === "visited" ? ROSE : SAGE;
-        const emoji = pin.data.emoji || (pin.type === "visited" ? "🍽️" : "⭐");
-
-        // ★ 재방문 횟수 계산 (visited 타입만)
-        const totalVisits = pin.type === "visited"
-          ? getTotalVisits(pin.data as VisitedRecord)
-          : 0;
-        const showBadge = totalVisits >= 2;
-
-        // ★ 뱃지가 있으면 핀 크기를 살짝 키워 뱃지가 잘리지 않게
-        const wrapSize = showBadge ? 34 : 24;
-
-        const badgeHtml = showBadge
-          ? `<div style="position:absolute;top:-7px;right:-7px;background:#fff;color:${ROSE};border-radius:20px;min-width:16px;height:16px;padding:0 3px;font-size:8px;font-weight:800;display:flex;align-items:center;justify-content:center;border:1.5px solid ${ROSE};line-height:1;box-shadow:0 1px 4px rgba(0,0,0,0.18);">${totalVisits}</div>`
-          : "";
-
-        const icon = L.divIcon({
-          className: "",
-          html: `<div style="position:relative;display:inline-block;width:${wrapSize}px;height:${wrapSize}px;">
-            <div style="position:absolute;bottom:0;left:${showBadge ? 5 : 0}px;background:${color};color:#fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 2px 5px rgba(0,0,0,0.22);">
-              <span style="transform:rotate(45deg)">${emoji}</span>
-            </div>
-            ${badgeHtml}
-          </div>`,
-          iconSize:   [wrapSize, wrapSize],
-          iconAnchor: [showBadge ? 17 : 12, wrapSize],
-        });
-
-        const m = L.marker([pin.data.lat!, pin.data.lng!], { icon })
+        const pin = cluster.pins[0];
+        const m = L.marker([pin.data.lat!, pin.data.lng!], { icon: buildPinIcon(pin, L) })
           .addTo(map)
           .on("click", () => setSelected(pin));
         markersRef.current.push(m);
@@ -255,13 +381,21 @@ export default function MapView({ filter = "all" }: Props) {
   }, [mapReady, visited, wishlist, filter, renderMarkers]);
 
   // ★ 카카오맵 / 네이버지도 링크 생성
+  //   v20: 카카오는 이름만으로 검색(link/search)하던 방식 → 좌표를 직접
+  //        지정하는 link/map 방식으로 전환. link/search는 좌표 파라미터가
+  //        없어 동일 상호명의 전국 모든 지점이 검색되는 문제가 있었음.
+  //        link/map/{이름},{위도},{경도}은 검색이 아니라 등록된 정확한
+  //        좌표를 지도에 바로 표시하는 카카오맵 공식 링크 스펙.
+  //        네이버는 POI ID 없이는 좌표만으로 완전히 특정 지점을 지정하는
+  //        공식 링크가 없어 검색 자체를 완전히 배제할 수 없음 — 대신 줌
+  //        레벨을 15→19로 최대한 높여 정밀도를 개선.
   const getMapLinks = (pin: PinTarget) => {
     const name = encodeURIComponent(pin.data.name);
     const lat  = pin.data.lat!;
     const lng  = pin.data.lng!;
     return {
-      kakao:  `https://map.kakao.com/link/search/${name}`,
-      naver:  `https://map.naver.com/v5/search/${name}?c=${lng},${lat},15,0,0,0,dh`,
+      kakao: `https://map.kakao.com/link/map/${name},${lat},${lng}`,
+      naver: `https://map.naver.com/v5/search/${name}?c=${lng},${lat},19,0,0,0,dh`,
     };
   };
 
