@@ -25,19 +25,6 @@
 //            (카카오맵 공식 링크 스펙 — 검색이 아니라 등록된 정확한 좌표를
 //             지도에 바로 표시). 네이버는 POI ID가 없어 검색 자체를 완전히
 //            배제할 수는 없으나 정밀도(zoom 15→19)를 최대로 높임
-//
-//  버그 수정 (v21):
-//    ★ 네이버지도 — 프랜차이즈 등 지점명이 여러 개인 경우 검색 결과
-//      리스트가 먼저 뜨는 문제 해결 (v20까지는 웹 검색 링크만 사용했음)
-//      원인: map.naver.com/v5/search/{query}는 앱으로 열려도 내부적으로
-//            동일한 "검색"을 실행 → 이름이 정확해도 리스트 화면이 뜸
-//      해결: nmap://place?lat=..&lng=..&name=.. 앱 딥링크로 전환.
-//            검색이 아니라 좌표 하나를 직접 지정해 앱을 여는 공식 스킴이라
-//            리스트 없이 해당 지점만 바로 표시됨. 모바일 기기에서만 시도하며,
-//            앱 미설치/실행 실패 시 기존 웹 검색 링크(naverWeb)로 자동 폴백
-//            (커스텀 스킴은 https:// 와 달리 OS가 자동 웹 폴백을 해주지
-//             않으므로, 일정 시간 내 페이지 이탈이 없으면 미설치로 판단해
-//             직접 웹 링크로 전환하는 타임아웃 방식 사용)
 // ============================================================
 "use client";
 
@@ -399,51 +386,17 @@ export default function MapView({ filter = "all" }: Props) {
   //        없어 동일 상호명의 전국 모든 지점이 검색되는 문제가 있었음.
   //        link/map/{이름},{위도},{경도}은 검색이 아니라 등록된 정확한
   //        좌표를 지도에 바로 표시하는 카카오맵 공식 링크 스펙.
-  //   v21: 네이버는 naverApp(앱 딥링크, 좌표 직접 지정) / naverWeb(웹 검색,
-  //        폴백용) 두 가지를 함께 반환. 실제 사용은 아래 handleNaverClick 참고.
+  //        네이버는 POI ID 없이는 좌표만으로 완전히 특정 지점을 지정하는
+  //        공식 링크가 없어 검색 자체를 완전히 배제할 수 없음 — 대신 줌
+  //        레벨을 15→19로 최대한 높여 정밀도를 개선.
   const getMapLinks = (pin: PinTarget) => {
     const name = encodeURIComponent(pin.data.name);
     const lat  = pin.data.lat!;
     const lng  = pin.data.lng!;
     return {
-      kakao:    `https://map.kakao.com/link/map/${name},${lat},${lng}`,
-      naverApp: `nmap://place?lat=${lat}&lng=${lng}&name=${name}&appname=com.kipo.ourtaste`,
-      naverWeb: `https://map.naver.com/v5/search/${name}?c=${lng},${lat},19,0,0,0,dh`,
+      kakao: `https://map.kakao.com/link/map/${name},${lat},${lng}`,
+      naver: `https://map.naver.com/v5/search/${name}?c=${lng},${lat},19,0,0,0,dh`,
     };
-  };
-
-  // ★ v21: 모바일 기기 여부 — nmap:// 딥링크는 모바일 앱에서만 의미가 있음
-  const isMobileDevice = () =>
-    typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
-  // ★ v21: 네이버지도 버튼 클릭 핸들러
-  //   - 모바일: nmap:// 딥링크로 앱 실행 시도 → 일정 시간 내 페이지 이탈이
-  //     없으면(= 앱 미설치로 판단) naverWeb(검색)으로 자동 폴백
-  //   - PC 등 비모바일: 딥링크 시도 없이 바로 naverWeb으로 이동
-  const handleNaverClick = (e: React.MouseEvent, pin: PinTarget) => {
-    e.preventDefault();
-    const { naverApp, naverWeb } = getMapLinks(pin);
-
-    if (!isMobileDevice()) {
-      window.open(naverWeb, "_blank", "noopener,noreferrer");
-      return;
-    }
-
-    let fellBack = false;
-    const fallbackTimer = setTimeout(() => {
-      // 1.5초 내 페이지 이탈(=앱 전환)이 감지되지 않으면 앱 미설치로 간주
-      fellBack = true;
-      window.location.href = naverWeb;
-    }, 1500);
-
-    const cancelFallback = () => {
-      if (!fellBack) clearTimeout(fallbackTimer);
-    };
-    // 앱으로 전환되면 페이지가 숨겨짐(pagehide/visibilitychange) → 폴백 취소
-    window.addEventListener("pagehide", cancelFallback, { once: true });
-    document.addEventListener("visibilitychange", cancelFallback, { once: true });
-
-    window.location.href = naverApp;
   };
 
   const noPinCount =
@@ -581,15 +534,14 @@ export default function MapView({ filter = "all" }: Props) {
               >
                 <span style={{ fontSize: 14 }}>🗺️</span> 카카오맵
               </a>
-              {/* ★ v21: 검색이 아니라 좌표를 직접 지정하는 nmap:// 딥링크로 전환
-                   (앱 미설치/PC 등은 handleNaverClick 내부에서 자동으로 웹 검색 링크로 폴백) */}
-              <button
-                onClick={(e) => handleNaverClick(e, selected)}
-                className="tap"
-                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 0", background: "#03C75A", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700, color: "#fff", fontFamily: "inherit", cursor: "pointer" }}
+              <a
+                href={getMapLinks(selected).naver}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 0", background: "#03C75A", borderRadius: 10, fontSize: 12, fontWeight: 700, color: "#fff", textDecoration: "none" }}
               >
                 <span style={{ fontSize: 14 }}>📍</span> 네이버지도
-              </button>
+              </a>
             </div>
           )}
         </div>

@@ -168,6 +168,8 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
   const [authInfo,    setAuthInfo]    = useState<{email:string|null;emailVerified:boolean;lastSignInTime:string|null;creationTime:string|null}|null>(null);
   const [coupleInfo,  setCoupleInfo]  = useState<{partnerName:string;partnerUid:string;startDate:string}|null>(null);
   const [posts,       setPosts]       = useState<UserPost[]>([]);
+  // ★ v22: "게시글" = 커뮤니티 공유글(posts)이 아니라 다녀온 곳 + 위시리스트 전체 기록 수
+  const [totalCount,  setTotalCount]  = useState(0);
   const [reportTotal, setReportTotal] = useState(0);
   const [loading,     setLoading]     = useState(true);
   const [newPw,       setNewPw]       = useState("");
@@ -179,14 +181,21 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
     setLoading(true);
     const loadAll = async () => {
       try {
-        const [authRes, communitySnap] = await Promise.all([
+        const [authRes, communitySnap, visitedCountSnap, wishCountSnap] = await Promise.all([
           adminFetch(`/api/admin/user/${user.id}`),
           getDocs(query(collection(db, "community"), where("authorUid", "==", user.id))),
+          // ★ v22: 전체 게시글 개수 = 다녀온 곳(visited) + 위시리스트(wishlist) 합산
+          getCountFromServer(query(collection(db, "visited"),  where("authorUid",  "==", user.id))),
+          getCountFromServer(query(collection(db, "wishlist"), where("addedByUid", "==", user.id))),
         ]);
         if (cancelled) return;
 
         const authData = await authRes.json();
         if (!cancelled) setAuthInfo(authData);
+
+        if (!cancelled) {
+          setTotalCount(visitedCountSnap.data().count + wishCountSnap.data().count);
+        }
 
         const postList: UserPost[] = communitySnap.docs.map(d => {
           const v = d.data();
@@ -333,13 +342,15 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
 
             <Section title="활동 통계">
               <div style={{ display:"flex", gap:10, marginTop:4 }}>
-                <StatCard label="게시글" value={posts.length} color={SAGE}/>
+                {/* ★ v22: 다녀온 곳 + 위시리스트 전체 기록 수 (기존엔 커뮤니티 공유글만 카운팅되던 버그) */}
+                <StatCard label="전체 게시글" value={totalCount} color={SAGE}/>
+                <StatCard label="추천글 공유" value={posts.length} color={PURPLE}/>
                 <StatCard label="신고 횟수" value={reportTotal} color={reportTotal > 0 ? RED : MUTED}/>
               </div>
             </Section>
 
             {posts.length > 0 && (
-              <Section title="게시글 목록">
+              <Section title="추천글 목록 (커뮤니티 공유)">
                 {posts.map(p => (
                   <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom:`1px solid ${BORDER}` }}>
                     <span style={{ fontSize:20 }}>{p.emoji}</span>
