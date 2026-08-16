@@ -4,6 +4,15 @@
 //   ★ 헤더 우측에 벨 아이콘 추가 (설정 버튼 왼쪽)
 //   ★ unreadCount > 0 이면 빨간 dot 뱃지 표시
 //   ★ onBell prop으로 NotificationDrawer 열기 연결
+//
+// 다크모드 전환 (v1 파일럿):
+//   ★ 하드코딩 hex(#C96B52 등) → globals.css @theme의 var(--color-*)로 전환
+//     → OS 다크모드 설정 시 자동으로 색이 바뀜 (별도 로직 불필요)
+//   ★ 기존 BORDER 상수(#E2DDD8)는 실제로는 --color-muted-light와 값이
+//     같았고 --color-border(#EBE5DF)와는 미세하게 달랐음 — 의미상 맞는
+//     --color-border로 통일 (구분선 용도이므로)
+//   ★ 로고 SVG(사각 아이콘)는 브랜드 마크로 테마와 무관하게 고정 유지
+//     (다크모드에서도 로고 색이 바뀌면 브랜드 인식에 방해되므로 의도적으로 제외)
 "use client";
 
 import { useRouter }      from "next/navigation";
@@ -12,10 +21,10 @@ import { useStatsStore }  from "@/store/statsStore";
 import { calcDDay }       from "@/lib/utils/date";
 import type { TabId }     from "./BottomNav";
 
-const ROSE   = "#C96B52";
-const INK    = "#1A1412";
-const MUTED  = "#8A8078";
-const BORDER = "#E2DDD8";
+const ROSE   = "var(--color-rose)";
+const INK    = "var(--color-ink)";
+const MUTED  = "var(--color-muted)";
+const BORDER = "var(--color-border)";
 
 function tn(name: string, max = 8): string {
   return name.length > max ? name.slice(0, max) + "…" : name;
@@ -65,7 +74,7 @@ export function Header({
   const isVisited = activeTab === "visited";
 
   return (
-    <header style={{ background: "#fff", borderBottom: `1px solid ${BORDER}`, padding: "0 16px", position: "sticky", top: 0, zIndex: 20, flexShrink: 0 }}>
+    <header style={{ background: "var(--color-warm)", borderBottom: `1px solid ${BORDER}`, padding: "0 16px", position: "sticky", top: 0, zIndex: 20, flexShrink: 0 }}>
 
       {/* ── 1행: 로고 + 통계 + 벨 + 설정 ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 8, paddingBottom: 7 }}>
@@ -85,14 +94,14 @@ export function Header({
             </svg>
           </div>
           <div>
-            <p style={{ fontSize: 7, fontWeight: 700, color: "#D4956A", letterSpacing: 2.2, textTransform: "uppercase", lineHeight: 1, marginBottom: 2 }}>OUR STORY IN TASTE</p>
+            <p style={{ fontSize: 7, fontWeight: 700, color: "var(--color-accent)", letterSpacing: 2.2, textTransform: "uppercase", lineHeight: 1, marginBottom: 2 }}>OUR STORY IN TASTE</p>
             <p style={{ fontSize: 16, fontWeight: 800, color: INK, letterSpacing: -0.5, lineHeight: 1 }}>우리의 맛지도</p>
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           {/* 통계 칩 */}
-          <div style={{ display: "flex", alignItems: "center", background: "#FAF7F3", borderRadius: 20, border: `1px solid ${BORDER}`, padding: "4px 9px", gap: 9 }}>
+          <div style={{ display: "flex", alignItems: "center", background: "var(--color-warm)", borderRadius: 20, border: `1px solid ${BORDER}`, padding: "4px 9px", gap: 9 }}>
             {[
               { v: _visitedCount, l: "방문" },
               { v: _avgRating,    l: "평균" },
@@ -110,15 +119,15 @@ export function Header({
             onClick={onBell}
             className="tap"
             aria-label="알림"
-            style={{ position: "relative", width: 36, height: 36, borderRadius: "50%", background: "#FAF7F3", border: `1px solid ${BORDER}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+            style={{ position: "relative", width: 36, height: 36, borderRadius: "50%", background: "var(--color-warm)", border: `1px solid ${BORDER}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
           >
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
               <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke={unreadCount > 0 ? ROSE : MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke={unreadCount > 0 ? ROSE : MUTED} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            {/* 읽지 않은 알림 dot 뱃지 */}
+            {/* 읽지 않은 알림 dot 뱃지 — 테두리는 버튼 배경과 동일하게 맞춰 컷아웃처럼 보이도록 처리 */}
             {unreadCount > 0 && (
-              <span style={{ position: "absolute", top: 6, right: 6, width: 8, height: 8, borderRadius: "50%", background: ROSE, border: "1.5px solid #fff", display: "block" }} />
+              <span style={{ position: "absolute", top: 6, right: 6, width: 8, height: 8, borderRadius: "50%", background: ROSE, border: "1.5px solid var(--color-warm)", display: "block" }} />
             )}
           </button>
 
@@ -141,7 +150,7 @@ export function Header({
           <span style={{ fontSize: 11, flexShrink: 0 }}>❤️</span>
           <span style={{ fontSize: 12, fontWeight: 600, color: INK, flexShrink: 0, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{partnerName ? tn(partnerName) : ""}</span>
           {startDate && (
-            <div style={{ marginLeft: 4, background: "#F2D5CC", borderRadius: 20, padding: "0px 8px 2px", flexShrink: 0 }}>
+            <div style={{ marginLeft: 4, background: "var(--color-rose-light)", borderRadius: 20, padding: "0px 8px 2px", flexShrink: 0 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: ROSE }}>💑 D+{dday}</span>
             </div>
           )}
@@ -152,23 +161,23 @@ export function Header({
 
           {/* 뷰 토글 — 다녀온 곳 탭 */}
           {isVisited && viewMode && onViewMode && (
-            <div style={{ display: "flex", background: "#F5F0EB", borderRadius: 10, padding: "3px 3px 2px", border: `1px solid ${BORDER}`, gap: 2 }}>
+            <div style={{ display: "flex", background: "var(--color-bg)", borderRadius: 10, padding: "3px 3px 2px", border: `1px solid ${BORDER}`, gap: 2 }}>
               {(["list", "gallery"] as const).map((v) => {
                 const active = viewMode === v;
                 return (
-                  <button key={v} onClick={() => onViewMode(v)} className="tap" style={{ width: 28, height: 24, borderRadius: 7, border: "none", background: active ? "#fff" : "transparent", boxShadow: active ? "0 1px 4px rgba(0,0,0,0.1)" : "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <button key={v} onClick={() => onViewMode(v)} className="tap" style={{ width: 28, height: 24, borderRadius: 7, border: "none", background: active ? "var(--color-warm)" : "transparent", boxShadow: active ? "0 1px 4px rgba(0,0,0,0.1)" : "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     {v === "list" ? (
                       <svg width="13" height="11" viewBox="0 0 14 12" fill="none">
-                        <rect x="0" y="0"  width="14" height="2" rx="1" fill={active ? ROSE : "#C0B8B0"} />
-                        <rect x="0" y="5"  width="14" height="2" rx="1" fill={active ? ROSE : "#C0B8B0"} />
-                        <rect x="0" y="10" width="14" height="2" rx="1" fill={active ? ROSE : "#C0B8B0"} />
+                        <rect x="0" y="0"  width="14" height="2" rx="1" fill={active ? ROSE : "var(--color-muted-mid)"} />
+                        <rect x="0" y="5"  width="14" height="2" rx="1" fill={active ? ROSE : "var(--color-muted-mid)"} />
+                        <rect x="0" y="10" width="14" height="2" rx="1" fill={active ? ROSE : "var(--color-muted-mid)"} />
                       </svg>
                     ) : (
                       <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
-                        <rect x="0" y="0" width="6" height="6" rx="1.5" fill={active ? ROSE : "#C0B8B0"} />
-                        <rect x="8" y="0" width="6" height="6" rx="1.5" fill={active ? ROSE : "#C0B8B0"} />
-                        <rect x="0" y="8" width="6" height="6" rx="1.5" fill={active ? ROSE : "#C0B8B0"} />
-                        <rect x="8" y="8" width="6" height="6" rx="1.5" fill={active ? ROSE : "#C0B8B0"} />
+                        <rect x="0" y="0" width="6" height="6" rx="1.5" fill={active ? ROSE : "var(--color-muted-mid)"} />
+                        <rect x="8" y="0" width="6" height="6" rx="1.5" fill={active ? ROSE : "var(--color-muted-mid)"} />
+                        <rect x="0" y="8" width="6" height="6" rx="1.5" fill={active ? ROSE : "var(--color-muted-mid)"} />
+                        <rect x="8" y="8" width="6" height="6" rx="1.5" fill={active ? ROSE : "var(--color-muted-mid)"} />
                       </svg>
                     )}
                   </button>
@@ -183,7 +192,7 @@ export function Header({
               onClick={onToggleSearch}
               className="tap"
               aria-label="검색 및 필터 열기"
-              style={{ width: 32, height: 32, borderRadius: "50%", border: `1.5px solid ${showSearch ? ROSE : BORDER}`, background: showSearch ? "#F2D5CC" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", transition: "background 0.18s, border-color 0.18s" }}
+              style={{ width: 32, height: 32, borderRadius: "50%", border: `1.5px solid ${showSearch ? ROSE : BORDER}`, background: showSearch ? "var(--color-rose-light)" : "var(--color-warm)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", transition: "background 0.18s, border-color 0.18s" }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <circle cx="11" cy="11" r="7" stroke={showSearch ? ROSE : MUTED} strokeWidth="2.2" />
