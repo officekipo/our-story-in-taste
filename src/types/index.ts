@@ -89,6 +89,9 @@ export interface WishRecord {
   lat?:        number;
   lng?:        number;
   addedDate:   string;
+  // ★ 커뮤니티 게시물에서 "위시 추가" 버튼으로 담은 경우, 원본 community 문서 id
+  //   값이 없으면(undefined) 직접 추가했거나, 이 필드 도입 이전(과거) 데이터
+  fromCommunityId?: string;
 }
 
 export type WishFormData = Omit<

@@ -33,6 +33,8 @@ interface AddWishInput {
   cuisine: string; note: string; emoji: string;
   imgUrls: string[];
   lat?: number; lng?: number;
+  // ★ 커뮤니티 게시물에서 "위시 추가"로 담은 경우, 원본 community 문서 id
+  fromCommunityId?: string;
 }
 
 export function useWishlist() {
@@ -115,6 +117,8 @@ export function useWishlist() {
     };
     if (input.lat != null) record.lat = input.lat;
     if (input.lng != null) record.lng = input.lng;
+    // ★ 위시 출처 기록 — admin "가고싶어요" 탭에서 추천 여부 표시용
+    if (input.fromCommunityId) record.fromCommunityId = input.fromCommunityId;
     const ref = await addDoc(collection(db, "wishlist"), record);
     return ref.id;
   };

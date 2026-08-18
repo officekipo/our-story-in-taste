@@ -12,6 +12,7 @@ import {
   QueryDocumentSnapshot, writeBatch,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { ImageSlider } from "@/components/common/ImageSlider";
 
 /* ── 색상 ── */
 const ROSE   = "#C96B52";
@@ -42,6 +43,18 @@ interface PostItem     { id: string; name: string; emoji: string; coupleLabel: s
 interface ConfigItem   { appVersion: string; supportEmail: string; notice: string; companyName: string; termsDate: string; }
 interface UserItem     { id: string; name: string; role: "admin"|"user"; coupleId: string|null; profileImgUrl: string|null; }
 interface UserPost     { id: string; name: string; emoji: string; likes: number; createdAt: string; }
+// ★ 유저 게시글 전체 조회용 — 다녀온 곳
+interface UserVisitedItem {
+  id: string; name: string; sido: string; district: string; cuisine: string;
+  rating: number; date: string; memo: string; tags: string[]; imgUrls: string[];
+  emoji: string; shareToComm: boolean; revisit: boolean|null; createdAt: string;
+}
+// ★ 유저 게시글 전체 조회용 — 가고싶은 곳(위시리스트)
+interface UserWishItem {
+  id: string; name: string; sido: string; district: string; cuisine: string;
+  note: string; imgUrls: string[]; emoji: string; addedDate: string;
+  fromCommunityId?: string;   // 값 있으면 커뮤니티 추천에서 담은 것
+}
 interface AnnounceItem { id: string; title: string; body: string; type: "notice"|"event"; pinned: boolean; visible: boolean; startAt: string; endAt: string; imgUrls: string[]; createdAt: string; }
 
 /* ── 페이지네이션 상태 ── */
@@ -174,6 +187,8 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
   const [loading,     setLoading]     = useState(true);
   const [newPw,       setNewPw]       = useState("");
   const [pwLoading,   setPwLoading]   = useState(false);
+  // ★ 유저 게시글 전체 보기 모달
+  const [showPosts,   setShowPosts]   = useState(false);
 
   /* ★ 모든 데이터 Promise.all 병렬 로드 */
   useEffect(() => {
@@ -347,6 +362,13 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
                 <StatCard label="추천글 공유" value={posts.length} color={PURPLE}/>
                 <StatCard label="신고 횟수" value={reportTotal} color={reportTotal > 0 ? RED : MUTED}/>
               </div>
+              {/* ★ v23: 다녀온 곳 + 위시리스트 개별 게시글 조회/검색 진입 */}
+              <button
+                onClick={() => setShowPosts(true)}
+                style={{ width:"100%", marginTop:10, padding:"10px 0", background:"#fff", border:`1px solid ${BORDER}`, borderRadius:10, color:ROSE, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}
+              >
+                📋 게시글 전체 보기
+              </button>
             </Section>
 
             {posts.length > 0 && (
@@ -364,6 +386,220 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
             )}
           </>
         )}
+      </div>
+
+      {showPosts && <UserPostsModal user={user} onClose={() => setShowPosts(false)} />}
+    </div>
+  );
+}
+
+/* ════════════════ 유저 게시글 전체 조회 (다녀온 곳 / 가고싶어요) ════════════════ */
+function UserPostsModal({ user, onClose }: { user: UserItem; onClose: () => void }) {
+  const [tab,     setTab]     = useState<"visited"|"wish">("visited");
+  const [search,  setSearch]  = useState("");
+  const [visited, setVisited] = useState<UserVisitedItem[]|null>(null);
+  const [wish,    setWish]    = useState<UserWishItem[]|null>(null);
+  const [loading, setLoading] = useState(true);
+  const [detail,  setDetail]  = useState<{ type:"visited"|"wish"; item: UserVisitedItem|UserWishItem } | null>(null);
+
+  /* ★ 다녀온 곳(authorUid) + 위시리스트(addedByUid) 전체 문서를 한 번에 로드 */
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const [visitedSnap, wishSnap] = await Promise.all([
+          getDocs(query(collection(db, "visited"),  where("authorUid",  "==", user.id), orderBy("createdAt", "desc"))),
+          getDocs(query(collection(db, "wishlist"), where("addedByUid", "==", user.id), orderBy("createdAt", "desc"))),
+        ]);
+        if (cancelled) return;
+
+        setVisited(visitedSnap.docs.map(d => {
+          const v = d.data();
+          return {
+            id: d.id,
+            name: v.name ?? "", sido: v.sido ?? "", district: v.district ?? "", cuisine: v.cuisine ?? "",
+            rating: typeof v.rating === "number" ? v.rating : 0,
+            date: v.date ?? "", memo: v.memo ?? "",
+            tags: Array.isArray(v.tags) ? v.tags : [],
+            imgUrls: Array.isArray(v.imgUrls) ? v.imgUrls : [],
+            emoji: v.emoji ?? "🍽️",
+            shareToComm: !!v.shareToComm,
+            revisit: v.revisit ?? null,
+            createdAt: v.createdAt ?? "",
+          } as UserVisitedItem;
+        }));
+
+        setWish(wishSnap.docs.map(d => {
+          const v = d.data();
+          return {
+            id: d.id,
+            name: v.name ?? "", sido: v.sido ?? "", district: v.district ?? "", cuisine: v.cuisine ?? "",
+            note: v.note ?? "",
+            imgUrls: Array.isArray(v.imgUrls) ? v.imgUrls : [],
+            emoji: v.emoji ?? "⭐",
+            addedDate: v.addedDate ?? "",
+            fromCommunityId: v.fromCommunityId || undefined,
+          } as UserWishItem;
+        }));
+      } catch (e) {
+        console.error("UserPostsModal load error:", e);
+        setVisited([]);
+        setWish([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user.id]);
+
+  const visitedCount = visited?.length ?? 0;
+  const wishCount     = wish?.length ?? 0;
+
+  const q = search.trim().toLowerCase();
+  const matchQuery = (name: string, sido: string, district: string) =>
+    !q || name.toLowerCase().includes(q) || sido.toLowerCase().includes(q) || district.toLowerCase().includes(q);
+
+  const filteredVisited = (visited ?? []).filter(i => matchQuery(i.name, i.sido, i.district));
+  const filteredWish    = (wish ?? []).filter(i => matchQuery(i.name, i.sido, i.district));
+
+  const rowBase: CSSProperties = { width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom:`1px solid ${BORDER}`, background:"none", border:"none", borderBottomStyle:"solid", borderBottomWidth:1, borderBottomColor:BORDER, cursor:"pointer", textAlign:"left", fontFamily:"inherit" };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:250, display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background:"#fff", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"90vh", overflowY:"auto", padding:"20px 20px 40px" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+          <p style={{ fontSize:16, fontWeight:700, color:INK }}>{user.name}님의 게시글</p>
+          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, color:MUTED, cursor:"pointer" }}>×</button>
+        </div>
+
+        {/* 탭 */}
+        <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+          <button
+            onClick={() => setTab("visited")}
+            style={{ flex:1, padding:"9px 0", background:tab==="visited"?ROSE:WARM, border:tab==="visited"?"none":`1px solid ${BORDER}`, borderRadius:10, color:tab==="visited"?"#fff":INK, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}
+          >
+            다녀온 곳{!loading && ` (${visitedCount})`}
+          </button>
+          <button
+            onClick={() => setTab("wish")}
+            style={{ flex:1, padding:"9px 0", background:tab==="wish"?ROSE:WARM, border:tab==="wish"?"none":`1px solid ${BORDER}`, borderRadius:10, color:tab==="wish"?"#fff":INK, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}
+          >
+            가고싶어요{!loading && ` (${wishCount})`}
+          </button>
+        </div>
+
+        <SearchBar value={search} onChange={setSearch} placeholder="식당명·지역 검색"/>
+
+        {loading ? (
+          <div style={{ padding:"40px 0", textAlign:"center" }}>
+            <div style={{ width:32, height:32, border:`3px solid ${BORDER}`, borderTopColor:ROSE, borderRadius:"50%", margin:"0 auto", animation:"spin 0.8s linear infinite" }}/>
+            <p style={{ fontSize:13, color:MUTED, marginTop:12 }}>불러오는 중...</p>
+          </div>
+        ) : tab === "visited" ? (
+          filteredVisited.length === 0 ? (
+            <EmptyBox icon="🍽️" text={search ? "검색 결과가 없어요" : "다녀온 곳 기록이 없어요"}/>
+          ) : (
+            <div>
+              {filteredVisited.map(item => (
+                <button key={item.id} onClick={() => setDetail({ type:"visited", item })} style={rowBase}>
+                  <span style={{ fontSize:22, flexShrink:0 }}>{item.emoji}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <p style={{ fontSize:13, fontWeight:600, color:INK, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.name}</p>
+                      {item.shareToComm && <Badge text="추천글" color={ROSE}/>}
+                    </div>
+                    <p style={{ fontSize:11, color:MUTED, marginTop:2 }}>{item.sido}{item.district?` ${item.district}`:""} · {item.cuisine} · {item.date}</p>
+                  </div>
+                  <span style={{ fontSize:11, color:"#E8A020", flexShrink:0 }}>{"★".repeat(item.rating)}</span>
+                </button>
+              ))}
+            </div>
+          )
+        ) : (
+          filteredWish.length === 0 ? (
+            <EmptyBox icon="⭐" text={search ? "검색 결과가 없어요" : "위시리스트가 없어요"}/>
+          ) : (
+            <div>
+              {filteredWish.map(item => (
+                <button key={item.id} onClick={() => setDetail({ type:"wish", item })} style={rowBase}>
+                  <span style={{ fontSize:22, flexShrink:0 }}>{item.emoji}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <p style={{ fontSize:13, fontWeight:600, color:INK, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.name}</p>
+                      {item.fromCommunityId && <Badge text="추천에서 담음" color={SAGE}/>}
+                    </div>
+                    <p style={{ fontSize:11, color:MUTED, marginTop:2 }}>{item.sido}{item.district?` ${item.district}`:""} · {item.cuisine} · {item.addedDate}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )
+        )}
+      </div>
+
+      {detail && <PostDetailModal type={detail.type} item={detail.item} onClose={() => setDetail(null)}/>}
+    </div>
+  );
+}
+
+/* ════════════════ 유저 게시글 상세 (다녀온 곳 / 가고싶어요 공통) ════════════════ */
+function PostDetailModal({ type, item, onClose }: { type: "visited"|"wish"; item: UserVisitedItem|UserWishItem; onClose: () => void }) {
+  const v    = item as UserVisitedItem;
+  const w    = item as UserWishItem;
+  const area = item.district ? `${item.sido} ${item.district}` : item.sido;
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background:"#fff", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"92vh", overflowY:"auto" }}>
+        <ImageSlider images={item.imgUrls} emoji={item.emoji} height={item.imgUrls.length > 0 ? 220 : 90} rounded={false} lightbox/>
+
+        <div style={{ padding:"18px 20px 28px" }}>
+          <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8, marginBottom:4 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+              <h2 style={{ fontSize:19, fontWeight:800, color:INK }}>{item.name}</h2>
+              {type === "visited" && v.shareToComm && <Badge text="추천글" color={ROSE}/>}
+              {type === "wish" && w.fromCommunityId && <Badge text="추천에서 담음" color={SAGE}/>}
+            </div>
+            <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, color:MUTED, cursor:"pointer", flexShrink:0 }}>×</button>
+          </div>
+          <p style={{ fontSize:12, color:MUTED, marginBottom:14 }}>📍 {area} · {item.cuisine}</p>
+
+          {type === "visited" ? (
+            <>
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                <span style={{ fontSize:14, color:"#E8A020" }}>{"★".repeat(v.rating)}{"☆".repeat(Math.max(0, 5 - v.rating))}</span>
+                <span style={{ fontSize:12, color:MUTED }}>{v.date}</span>
+              </div>
+              {v.memo && (
+                <p style={{ fontSize:14, color:INK, lineHeight:1.7, whiteSpace:"pre-wrap", marginBottom:12 }}>{v.memo}</p>
+              )}
+              {v.tags.length > 0 && (
+                <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:12 }}>
+                  {v.tags.map(t => <span key={t} style={{ fontSize:12, padding:"3px 10px", background:"#F0EBE3", color:"#8A6A5A", borderRadius:20 }}>#{t}</span>)}
+                </div>
+              )}
+              {v.revisit !== null && (
+                <p style={{ fontSize:13, color:MUTED }}>{v.revisit ? "❤️ 또 가고 싶어요" : "🤍 한 번이면 충분해요"}</p>
+              )}
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize:12, color:MUTED, marginBottom:10 }}>추가일: {w.addedDate || "—"}</p>
+              {w.note && (
+                <p style={{ fontSize:14, color:INK, lineHeight:1.7, whiteSpace:"pre-wrap", marginBottom:12 }}>{w.note}</p>
+              )}
+              {w.fromCommunityId && (
+                <p style={{ fontSize:11, color:MUTED }}>원본 게시물 ID: {w.fromCommunityId.slice(0, 16)}…</p>
+              )}
+            </>
+          )}
+
+          <button
+            onClick={onClose}
+            style={{ width:"100%", marginTop:16, padding:13, background:ROSE, border:"none", borderRadius:12, color:"#fff", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}
+          >닫기</button>
+        </div>
       </div>
     </div>
   );

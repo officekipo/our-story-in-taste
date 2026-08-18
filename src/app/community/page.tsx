@@ -228,6 +228,8 @@ export default function CommunityPage() {
         note:     `추천 탭에서 담은 맛집 (${record.authorName || "익명"})`,
         emoji:    record.emoji    ?? "🍽️",
         imgUrls:  record.imgUrls  ?? [],
+        // ★ 위시 출처 기록 — admin에서 "추천에서 가져온 건지" 확인용
+        fromCommunityId: record.id,
       });
       setWishedIds((prev) => new Set([...prev, record.id]));
       setToast("⭐ 위시리스트에 추가했어요!");
