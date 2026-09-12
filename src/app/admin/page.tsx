@@ -177,7 +177,7 @@ function SearchBar({ value, onChange, placeholder }: { value: string; onChange: 
 }
 
 /* ════════════════ 유저 상세 팝업 ════════════════ */
-function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: ()=>void; onToast: (m:string)=>void }) {
+function UserDetailModal({ user, onClose, onToast, onForceDeleted }: { user: UserItem; onClose: ()=>void; onToast: (m:string)=>void; onForceDeleted: (uid: string) => void }) {
   const [authInfo,    setAuthInfo]    = useState<{email:string|null;emailVerified:boolean;lastSignInTime:string|null;creationTime:string|null}|null>(null);
   const [coupleInfo,  setCoupleInfo]  = useState<{partnerName:string;partnerUid:string;startDate:string}|null>(null);
   const [posts,       setPosts]       = useState<UserPost[]>([]);
@@ -189,6 +189,10 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
   const [pwLoading,   setPwLoading]   = useState(false);
   // ★ 유저 게시글 전체 보기 모달
   const [showPosts,   setShowPosts]   = useState(false);
+  // ★ v24: 커플 코드 제거 / 강제 탈퇴 (위험 구역)
+  const [currentCoupleId, setCurrentCoupleId] = useState<string|null>(user.coupleId);
+  const [disconnecting,   setDisconnecting]   = useState(false);
+  const [withdrawing,     setWithdrawing]     = useState(false);
 
   /* ★ 모든 데이터 Promise.all 병렬 로드 */
   useEffect(() => {
@@ -274,6 +278,49 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
     else { onToast("❌ 인증 처리 실패"); }
   }, [user.id, onToast]);
 
+  // ★ v24: 커플 연동 강제 해제 — 양쪽 계정의 coupleId만 정리, 기록은 삭제하지 않음
+  const forceDisconnectCouple = useCallback(async () => {
+    if (!currentCoupleId) return;
+    if (!window.confirm("이 유저의 커플 연동을 강제로 해제할까요?\n양쪽 계정의 기록은 삭제되지 않습니다.")) return;
+    setDisconnecting(true);
+    try {
+      const res = await adminFetch(`/api/admin/user/${user.id}`, { method: "PATCH", body: JSON.stringify({ disconnectCouple: true }) });
+      if (res.ok) {
+        setCurrentCoupleId(null);
+        setCoupleInfo(null);
+        onToast("✅ 커플 연동을 해제했어요");
+      } else {
+        const e = await res.json();
+        onToast(`❌ ${e.error ?? "해제 실패"}`);
+      }
+    } catch {
+      onToast("❌ 해제 중 오류가 발생했어요");
+    } finally {
+      setDisconnecting(false);
+    }
+  }, [currentCoupleId, user.id, onToast]);
+
+  // ★ v24: 계정 강제 탈퇴 — 방문 기록·위시리스트·커플 연동·계정을 모두 삭제 (복구 불가)
+  const forceWithdraw = useCallback(async () => {
+    if (user.role === "admin") return;
+    if (!window.confirm(`정말 "${user.name}" 님을 강제 탈퇴시킬까요?\n방문 기록·위시리스트·계정이 모두 삭제되며 복구할 수 없습니다.`)) return;
+    setWithdrawing(true);
+    try {
+      const res = await adminFetch(`/api/admin/user/${user.id}`, { method: "DELETE" });
+      if (res.ok) {
+        onToast(`✅ "${user.name}" 님을 강제 탈퇴 처리했어요`);
+        onForceDeleted(user.id);
+      } else {
+        const e = await res.json();
+        onToast(`❌ ${e.error ?? "탈퇴 처리 실패"}`);
+      }
+    } catch {
+      onToast("❌ 탈퇴 처리 중 오류가 발생했어요");
+    } finally {
+      setWithdrawing(false);
+    }
+  }, [user.id, user.name, user.role, onToast, onForceDeleted]);
+
   const fmt = (s: string | null | undefined) => {
     if (!s) return "—";
     try { return new Date(s).toLocaleString("ko-KR", { year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" }); }
@@ -294,7 +341,7 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
               <p style={{ fontSize:16, fontWeight:700, color:INK }}>{user.name}</p>
               <div style={{ display:"flex", gap:4, marginTop:2 }}>
                 <Badge text={user.role==="admin"?"관리자":"유저"} color={user.role==="admin"?PURPLE:SAGE}/>
-                {user.coupleId && <Badge text="커플 연동" color={ROSE}/>}
+                {currentCoupleId && <Badge text="커플 연동" color={ROSE}/>}
               </div>
             </div>
           </div>
@@ -384,6 +431,42 @@ function UserDetailModal({ user, onClose, onToast }: { user: UserItem; onClose: 
                 ))}
               </Section>
             )}
+
+            {/* ★ v24: 위험 구역 — 커플 코드 제거 / 강제 탈퇴 */}
+            <Section title="위험 구역">
+              {currentCoupleId && (
+                <div style={{ padding:"10px 0", borderBottom:`1px solid ${BORDER}` }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+                    <span style={{ fontSize:13, color:MUTED }}>커플 연동 강제 해제</span>
+                    <button
+                      onClick={forceDisconnectCouple}
+                      disabled={disconnecting}
+                      style={{ padding:"7px 14px", background:PURPLE+"1A", border:`1px solid ${PURPLE}60`, borderRadius:10, color:PURPLE, fontSize:12, fontWeight:600, cursor:disconnecting?"default":"pointer", fontFamily:"inherit" }}
+                    >
+                      {disconnecting ? "처리 중..." : "커플 코드 제거"}
+                    </button>
+                  </div>
+                  <p style={{ fontSize:11, color:MUTED, lineHeight:1.5 }}>양쪽 계정의 커플 연동만 해제됩니다. 각자의 기록은 삭제되지 않아요.</p>
+                </div>
+              )}
+              <div style={{ padding:"10px 0" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+                  <span style={{ fontSize:13, color:MUTED }}>계정 강제 탈퇴</span>
+                  <button
+                    onClick={forceWithdraw}
+                    disabled={withdrawing || user.role==="admin"}
+                    style={{ padding:"7px 14px", background:user.role==="admin"?"#C0B8B020":RED+"1A", border:`1px solid ${user.role==="admin"?"#C0B8B0":RED}60`, borderRadius:10, color:user.role==="admin"?MUTED:RED, fontSize:12, fontWeight:600, cursor:(withdrawing||user.role==="admin")?"default":"pointer", fontFamily:"inherit" }}
+                  >
+                    {withdrawing ? "처리 중..." : "강제 탈퇴"}
+                  </button>
+                </div>
+                <p style={{ fontSize:11, color:MUTED, lineHeight:1.5 }}>
+                  {user.role === "admin"
+                    ? "관리자 계정은 강제 탈퇴할 수 없어요. 먼저 역할을 해제해주세요."
+                    : "방문 기록·위시리스트·계정이 모두 삭제되며 복구할 수 없습니다."}
+                </p>
+              </div>
+            </Section>
           </>
         )}
       </div>
@@ -895,6 +978,12 @@ export default function AdminPage() {
   const doneContact = useCallback(async (id: string) => { await updateDoc(doc(db, "contacts", id), { status: "done" }); showToast("문의 처리 완료"); }, [showToast]);
   const saveConfig  = useCallback(async () => { await setDoc(doc(db, "config", "app"), cfgDraft, { merge: true }); setCfgEdit(false); showToast("설정 저장됨"); }, [cfgDraft, showToast]);
 
+  // ★ v24: 관리자 강제 탈퇴 처리 후 유저 목록에서 즉시 제거 + 모달 닫기
+  const handleUserForceDeleted = useCallback((uid: string) => {
+    setUsers(p => ({ ...p, items: p.items.filter(u => u.id !== uid) }));
+    setSelectedUser(null);
+  }, []);
+
   const sendPushAll = useCallback(async () => {
     if (!pushTitle.trim() || !pushBody.trim()) return;
     setPushLoading(true);
@@ -1355,7 +1444,7 @@ export default function AdminPage() {
 
       </div>
 
-      {selectedUser && <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onToast={showToast}/>}
+      {selectedUser && <UserDetailModal user={selectedUser} onClose={() => setSelectedUser(null)} onToast={showToast} onForceDeleted={handleUserForceDeleted}/>}
       {toast && <Toast msg={toast}/>}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
