@@ -126,8 +126,14 @@ export async function createCouple(
       const existingCouple = await getDocFromServer(doc(db, "couples", existing));
       if (existingCouple.exists()) {
         const cd = existingCouple.data() as CoupleDoc;
-        if (cd.user1Uid === myUid || cd.user2Uid === myUid) {
+        const isMine = cd.user1Uid === myUid || cd.user2Uid === myUid;
+        // ★ user2Uid가 채워져 있어야만 "실제 연동" — 파트너 없이 혼자
+        //   대기 중이던 예전 코드는 연동으로 취급하지 않고 자동 정리
+        if (isMine && cd.user2Uid) {
           throw new Error("이미 커플 연동이 되어 있어요. 먼저 연동을 해제해주세요.");
+        }
+        if (isMine) {
+          await deleteDoc(doc(db, "couples", existing)).catch(() => {});
         }
       }
       await updateDoc(doc(db, "users", myUid), { coupleId: null });
@@ -175,21 +181,6 @@ export async function joinCouple(
   inviteCode: string,
   myUid: string,
 ): Promise<string> {
-  const mySnap = await getDocFromServer(doc(db, "users", myUid));
-  if (mySnap.exists()) {
-    const existing = mySnap.data().coupleId;
-    if (existing) {
-      const existingCouple = await getDocFromServer(doc(db, "couples", existing));
-      if (existingCouple.exists()) {
-        const cd = existingCouple.data() as CoupleDoc;
-        if (cd.user1Uid === myUid || cd.user2Uid === myUid) {
-          throw new Error("이미 커플 연동이 되어 있어요. 먼저 연동을 해제해주세요.");
-        }
-      }
-      await updateDoc(doc(db, "users", myUid), { coupleId: null });
-    }
-  }
-
   const q    = query(
     collection(db, "couples"),
     where("inviteCode", "==", inviteCode.trim().toUpperCase()),
@@ -203,8 +194,34 @@ export async function joinCouple(
   const coupleData  = coupleDoc.data() as CoupleDoc;
   const newCoupleId = coupleDoc.id;
 
+  // ★ "본인이 만든 코드" 체크를 가장 먼저 수행
+  //   → 코드 생성 직후에는 본인 users.coupleId가 이미 이 코드를 가리키고
+  //     있어서, 이 체크보다 "이미 연동됨" 체크가 먼저 걸리면
+  //     본인 코드를 본인이 입력했을 뿐인데 혼란스러운 에러 메시지가 뜸
   if (coupleData.user1Uid === myUid)
-    throw new Error("본인이 만든 코드는 사용할 수 없습니다.");
+    throw new Error("본인이 만든 코드는 사용할 수 없어요. 파트너에게 전달해주세요.");
+
+  const mySnap = await getDocFromServer(doc(db, "users", myUid));
+  if (mySnap.exists()) {
+    const existing = mySnap.data().coupleId;
+    if (existing) {
+      const existingCouple = await getDocFromServer(doc(db, "couples", existing));
+      if (existingCouple.exists()) {
+        const cd = existingCouple.data() as CoupleDoc;
+        const isMine = cd.user1Uid === myUid || cd.user2Uid === myUid;
+        // ★ user2Uid가 채워져 있어야만 "실제 연동" — 파트너 없이 혼자
+        //   대기 중이던 예전 코드는 연동으로 취급하지 않고 자동 정리
+        //   (양쪽이 각자 코드를 만든 뒤 서로의 코드를 입력하는 경우를 위함)
+        if (isMine && cd.user2Uid) {
+          throw new Error("이미 커플 연동이 되어 있어요. 먼저 연동을 해제해주세요.");
+        }
+        if (isMine) {
+          await deleteDoc(doc(db, "couples", existing)).catch(() => {});
+        }
+      }
+      await updateDoc(doc(db, "users", myUid), { coupleId: null });
+    }
+  }
 
   if (coupleData.user2Uid) {
     const u2Snap     = await getDocFromServer(doc(db, "users", coupleData.user2Uid));

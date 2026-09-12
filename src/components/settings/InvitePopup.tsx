@@ -4,12 +4,16 @@
 //    ★ 커플 연동 완료 후 authStore coupleId 설정 → 실시간 리스너 자동 시작
 //    ★ 연동 해제 후 UI 즉시 반영 (authStore reset → 리스너가 감지)
 //    ★ 마운트 시 Firestore에서 최신 coupleId 직접 조회 (stale 캐시 방지)
+//    ★ 파트너 미연동 상태(코드 생성 후 대기 중)에서도 초대 코드 삭제 가능
+//      → disconnectCouple() 재사용 (파트너 없으므로 내 쪽만 정리됨)
+//      → 삭제 후 팝업을 닫지 않고 "create" 탭으로 전환 → 언제든 즉시 재생성 가능
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAuthStore }        from "@/store/authStore";
-import { doc, getDoc }         from "firebase/firestore";
-import { db }                  from "@/lib/firebase/config";
+import { useState, useEffect }   from "react";
+import type { CSSProperties }    from "react";
+import { useAuthStore }          from "@/store/authStore";
+import { doc, getDoc }           from "firebase/firestore";
+import { db }                    from "@/lib/firebase/config";
 
 const ROSE    = "#C96B52";
 const ROSE_LT = "#F2D5CC";
@@ -20,7 +24,7 @@ const BORDER  = "#E2DDD8";
 const WARM    = "#FAF7F3";
 const RED     = "#EF4444";
 
-const inp: React.CSSProperties = {
+const inp: CSSProperties = {
   width: "100%", padding: "12px 14px", background: WARM,
   border: `1.5px solid ${BORDER}`, borderRadius: 10,
   color: INK, fontSize: 14, fontFamily: "inherit",
@@ -89,9 +93,11 @@ function CreateTab({
 function ShowCodeTab({
   myCode,
   onSwitchToEnter,
+  onDelete,
 }: {
   myCode: string;
   onSwitchToEnter: () => void;
+  onDelete: () => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -111,8 +117,14 @@ function ShowCodeTab({
         </button>
       </div>
       <button onClick={onSwitchToEnter}
-        style={{ width: "100%", padding: 12, background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+        className="tap"
+        style={{ width: "100%", padding: 12, background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, color: MUTED, fontSize: 13, cursor: "pointer", fontFamily: "inherit", marginBottom: 10 }}>
         파트너 코드 입력하기
+      </button>
+      <button onClick={onDelete}
+        className="tap"
+        style={{ width: "100%", padding: 12, background: "transparent", border: `1.5px solid ${RED}`, borderRadius: 12, color: RED, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+        🗑️ 초대 코드 삭제
       </button>
     </div>
   );
@@ -219,11 +231,12 @@ function ConnectedTab({ onDisconnect }: { onDisconnect: () => void }) {
   );
 }
 
-// ── 연동 해제 확인 다이얼로그 ────────────────────────────
+// ── 연동 해제 / 코드 삭제 확인 다이얼로그 ────────────────
 function DisconnectConfirm({
-  onConfirm, onClose, loading,
+  onConfirm, onClose, loading, variant,
 }: {
   onConfirm: () => void; onClose: () => void; loading: boolean;
+  variant: "disconnect" | "cancelCode";
 }) {
   const [closing, setClosing] = useState(false);
 
@@ -235,6 +248,8 @@ function DisconnectConfirm({
       onClose();
     }, 160);
   };
+
+  const isCancel = variant === "cancelCode";
 
   return (
     <div
@@ -265,10 +280,14 @@ function DisconnectConfirm({
             : "scaleIn 0.18s ease both",
         }}
       >
-        <div style={{ fontSize: 40, marginBottom: 12 }}>💔</div>
-        <p style={{ fontSize: 16, fontWeight: 700, color: INK, marginBottom: 8 }}>연동을 해제할까요?</p>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>{isCancel ? "🗑️" : "💔"}</div>
+        <p style={{ fontSize: 16, fontWeight: 700, color: INK, marginBottom: 8 }}>
+          {isCancel ? "초대 코드를 삭제할까요?" : "연동을 해제할까요?"}
+        </p>
         <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.6, marginBottom: 20 }}>
-          기록 데이터는 유지되지만<br />서로의 기록을 볼 수 없게 됩니다.
+          {isCancel
+            ? <>삭제 후에도 언제든 새 코드를<br />다시 만들 수 있어요.</>
+            : <>기록 데이터는 유지되지만<br />서로의 기록을 볼 수 없게 됩니다.</>}
         </p>
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={handleClose} disabled={loading}
@@ -277,7 +296,9 @@ function DisconnectConfirm({
           </button>
           <button onClick={onConfirm} disabled={loading}
             style={{ flex: 2, padding: 12, background: loading ? "#C0B8B0" : RED, border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "inherit" }}>
-            {loading ? "해제 중…" : "연동 해제"}
+            {loading
+              ? (isCancel ? "삭제 중…" : "해제 중…")
+              : (isCancel ? "코드 삭제" : "연동 해제")}
           </button>
         </div>
       </div>
@@ -294,6 +315,7 @@ export function InvitePopup({ onClose }: { onClose: () => void }) {
   const [realCoupleId,  setRealCoupleId]  = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const [showConfirm,   setShowConfirm]   = useState(false);
+  const [confirmVariant, setConfirmVariant] = useState<"disconnect" | "cancelCode">("disconnect");
 
   // ★ 마운트 시 Firestore에서 최신 coupleId 직접 조회
   useEffect(() => {
@@ -332,18 +354,31 @@ export function InvitePopup({ onClose }: { onClose: () => void }) {
 
   const handleDisconnect = async () => {
     if (!realCoupleId) return;
+    const isCancelCode = confirmVariant === "cancelCode";
     setDisconnecting(true);
     try {
       const { disconnectCouple } = await import("@/lib/firebase/auth");
+      // ★ 파트너 미연동 상태에서의 "코드 삭제"도 내부적으로는 동일한
+      //   disconnectCouple 사용 — 파트너가 없으므로 내 쪽 정리만 일어남
       await disconnectCouple(myUid, realCoupleId);
       // authStore 초기화 → 실시간 리스너가 감지하여 UI 갱신
       setCoupleId(null);
       setRealCoupleId(null);
+      setMyCode("");
       setShowConfirm(false);
-      onClose();
+      if (isCancelCode) {
+        // 코드만 삭제한 경우 팝업은 유지하고 바로 재생성할 수 있도록 전환
+        setMode("create");
+      } else {
+        onClose();
+      }
     } catch (e: any) {
       console.error("disconnectCouple error:", e.code, e.message);
-      alert(`연동 해제에 실패했습니다.\n오류: ${e.message ?? e.code ?? "알 수 없는 오류"}`);
+      alert(
+        isCancelCode
+          ? `초대 코드 삭제에 실패했습니다.\n오류: ${e.message ?? e.code ?? "알 수 없는 오류"}`
+          : `연동 해제에 실패했습니다.\n오류: ${e.message ?? e.code ?? "알 수 없는 오류"}`,
+      );
     } finally {
       setDisconnecting(false);
     }
@@ -373,9 +408,9 @@ export function InvitePopup({ onClose }: { onClose: () => void }) {
           )}
 
           {mode === "create"    && <CreateTab onCreated={(id, code) => { setRealCoupleId(id); setMyCode(code); setMode("show"); }} onSwitchToEnter={() => setMode("enter")} />}
-          {mode === "show"      && <ShowCodeTab myCode={myCode} onSwitchToEnter={() => setMode("enter")} />}
+          {mode === "show"      && <ShowCodeTab myCode={myCode} onSwitchToEnter={() => setMode("enter")} onDelete={() => { setConfirmVariant("cancelCode"); setShowConfirm(true); }} />}
           {mode === "enter"     && <EnterCodeTab onBack={() => setMode(realCoupleId ? "show" : "create")} onSuccess={onClose} />}
-          {mode === "connected" && <ConnectedTab onDisconnect={() => setShowConfirm(true)} />}
+          {mode === "connected" && <ConnectedTab onDisconnect={() => { setConfirmVariant("disconnect"); setShowConfirm(true); }} />}
         </div>
       </div>
 
@@ -384,6 +419,7 @@ export function InvitePopup({ onClose }: { onClose: () => void }) {
           onConfirm={handleDisconnect}
           onClose={() => setShowConfirm(false)}
           loading={disconnecting}
+          variant={confirmVariant}
         />
       )}
     </>
