@@ -1,7 +1,7 @@
 // src/app/admin/page.tsx
 "use client";
 
-import { useEffect, useState, useCallback, useRef, CSSProperties, ReactNode } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, CSSProperties, ReactNode } from "react";
 import { useRouter }    from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { auth, db, storage } from "@/lib/firebase/config";
@@ -41,7 +41,7 @@ interface ContactItem  { id: string; name: string; email: string; message: strin
 interface ReportItem   { id: string; postId: string; postName: string; reason: string; reportedAt: string; status: "pending"|"resolved"; }
 interface PostItem     { id: string; name: string; emoji: string; coupleLabel: string; likes: number; authorUid: string; createdAt: string; imgUrls: string[]; }
 interface ConfigItem   { appVersion: string; supportEmail: string; notice: string; companyName: string; termsDate: string; }
-interface UserItem     { id: string; name: string; role: "admin"|"user"; coupleId: string|null; profileImgUrl: string|null; }
+interface UserItem     { id: string; name: string; role: "admin"|"user"; coupleId: string|null; profileImgUrl: string|null; partnerName?: string|null; }
 interface UserPost     { id: string; name: string; emoji: string; likes: number; createdAt: string; }
 // ★ 유저 게시글 전체 조회용 — 다녀온 곳
 interface UserVisitedItem {
@@ -74,6 +74,41 @@ async function adminFetch(path: string, options: RequestInit = {}) {
   return fetch(path, {
     ...options,
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(options.headers ?? {}) },
+  });
+}
+
+// ★ 유저 목록에 파트너 닉네임(partnerName) 채워 넣기
+//   coupleId가 있는 유저들만 모아 couples 문서를 배치 조회 → user1Uid/user2Uid 확인
+//   → 파트너 이름은 우선 같이 로드된 목록(items) 안에서 찾고, 없으면 users 문서 개별 조회
+async function attachPartnerNames(items: UserItem[]): Promise<UserItem[]> {
+  const coupleIds = Array.from(new Set(items.filter(u => u.coupleId).map(u => u.coupleId as string)));
+  if (coupleIds.length === 0) return items.map(u => ({ ...u, partnerName: null }));
+
+  const coupleSnaps = await Promise.all(coupleIds.map(cid => getDoc(doc(db, "couples", cid))));
+  const coupleMap = new Map<string, { user1Uid: string; user2Uid: string | null }>();
+  coupleSnaps.forEach((snap, i) => {
+    if (snap.exists()) {
+      const d = snap.data();
+      coupleMap.set(coupleIds[i], { user1Uid: d.user1Uid, user2Uid: d.user2Uid ?? null });
+    }
+  });
+
+  const nameById = new Map(items.map(u => [u.id, u.name]));
+  const missingUids = new Set<string>();
+  coupleMap.forEach(cd => {
+    [cd.user1Uid, cd.user2Uid].forEach(uid => { if (uid && !nameById.has(uid)) missingUids.add(uid); });
+  });
+  if (missingUids.size > 0) {
+    const missingArr  = Array.from(missingUids);
+    const extraSnaps  = await Promise.all(missingArr.map(uid => getDoc(doc(db, "users", uid))));
+    extraSnaps.forEach((snap, i) => { if (snap.exists()) nameById.set(missingArr[i], snap.data().name ?? "이름 없음"); });
+  }
+
+  return items.map(u => {
+    if (!u.coupleId) return { ...u, partnerName: null };
+    const cd = coupleMap.get(u.coupleId);
+    const partnerUid = cd ? (cd.user1Uid === u.id ? cd.user2Uid : cd.user1Uid) : null;
+    return { ...u, partnerName: partnerUid ? (nameById.get(partnerUid) ?? null) : null };
   });
 }
 
@@ -718,6 +753,13 @@ export default function AdminPage() {
   // 서버 prefix 쿼리: name >= keyword AND name < keyword + '\uf8ff'
   const [userSearchActive, setUserSearchActive] = useState(false);
 
+  /* ── ★ 유저 연동 필터 / 커플 묶어보기 ──
+     필터·묶어보기가 켜지면 페이지네이션 대신 전체 유저를 한 번에 불러와서
+     클라이언트에서 필터/정렬 처리 (Firestore 복합 인덱스 없이 처리하기 위함) */
+  const [coupleFilter,  setCoupleFilter]  = useState<"all" | "connected" | "unconnected">("all");
+  const [groupByCouple, setGroupByCouple] = useState(false);
+  const needsFullLoad = coupleFilter !== "all" || groupByCouple;
+
   /* ── FAQ ── */
   const [faqEdit,      setFaqEdit]      = useState<FAQItem|null>(null);
   const [faqQ,         setFaqQ]         = useState("");
@@ -796,10 +838,11 @@ export default function AdminPage() {
           : query(collection(db, "users"), orderBy("name"), limit(USER_PAGE));
       }
       const snap = await getDocs(q);
-      const items: UserItem[] = snap.docs.map(x => {
+      const rawItems: UserItem[] = snap.docs.map(x => {
         const v = x.data();
         return { id: x.id, name: v.name ?? "이름 없음", role: v.role ?? "user", coupleId: v.coupleId ?? null, profileImgUrl: v.profileImgUrl ?? null };
       });
+      const items = await attachPartnerNames(rawItems);
       const lastSnap = snap.docs[snap.docs.length - 1] ?? null;
       setUsers(p => ({
         items: append ? [...p.items, ...items] : items,
@@ -810,20 +853,81 @@ export default function AdminPage() {
     } catch { setUsers(p => ({ ...p, loading: false })); }
   }, []);
 
-  /* ── 유저 검색 debounce ── */
+  // ★ 연동 필터 / 커플 묶어보기가 켜졌을 때 — 전체 유저를 한 번에 불러와 client-side로 처리
+  const fetchAllUsers = useCallback(async () => {
+    setUsers(p => ({ ...p, loading: true }));
+    try {
+      const snap = await getDocs(query(collection(db, "users"), orderBy("name")));
+      const rawItems: UserItem[] = snap.docs.map(x => {
+        const v = x.data();
+        return { id: x.id, name: v.name ?? "이름 없음", role: v.role ?? "user", coupleId: v.coupleId ?? null, profileImgUrl: v.profileImgUrl ?? null };
+      });
+      const items = await attachPartnerNames(rawItems);
+      setUsers({ items, lastDoc: null, hasMore: false, loading: false });
+    } catch { setUsers(p => ({ ...p, loading: false })); }
+  }, []);
+
+  /* ── 유저 검색 debounce (기본 모드 — 서버 prefix 검색) ── */
   useEffect(() => {
-    if (tab !== "users") return;
+    if (tab !== "users" || needsFullLoad) return;
     if (userTimerRef.current) clearTimeout(userTimerRef.current);
     userTimerRef.current = setTimeout(() => {
       setUserSearchActive(!!searchUsers.trim());
       fetchUsers(searchUsers, false, null);
     }, 350);
-  }, [searchUsers, tab, fetchUsers]);
+  }, [searchUsers, tab, needsFullLoad, fetchUsers]);
+
+  // ★ 연동 필터 / 커플 묶어보기 모드 — 전체 유저 로드 (켜지거나, 탭 진입 시)
+  useEffect(() => {
+    if (tab !== "users" || !needsFullLoad) return;
+    fetchAllUsers();
+  }, [tab, needsFullLoad, fetchAllUsers]);
 
   const loadMoreUsers = useCallback(() => {
     if (!users.lastDoc || users.loading) return;
     fetchUsers(searchUsers, true, users.lastDoc);
   }, [users.lastDoc, users.loading, searchUsers, fetchUsers]);
+
+  // ★ 필터/검색/묶어보기 적용된 최종 표시 목록
+  //   기본 모드(전체+묶어보기 off)에서는 서버 prefix 검색 결과를 그대로 사용
+  //   필터/묶어보기 모드에서는 전체 목록(users.items)에 client-side 검색/필터/정렬 적용
+  const displayedUsers = useMemo(() => {
+    let list = users.items;
+
+    if (needsFullLoad && searchUsers.trim()) {
+      const kw = searchUsers.trim().toLowerCase();
+      list = list.filter(u => u.name.toLowerCase().startsWith(kw));
+    }
+
+    if (coupleFilter === "connected")   list = list.filter(u => !!u.coupleId);
+    if (coupleFilter === "unconnected") list = list.filter(u => !u.coupleId);
+
+    if (groupByCouple) {
+      list = [...list].sort((a, b) => {
+        if (!a.coupleId && !b.coupleId) return a.name.localeCompare(b.name);
+        if (!a.coupleId) return 1;
+        if (!b.coupleId) return -1;
+        if (a.coupleId === b.coupleId) return a.name.localeCompare(b.name); // 같은 커플은 이름순으로 나란히
+        return a.coupleId.localeCompare(b.coupleId);
+      });
+    }
+
+    return list;
+  }, [users.items, needsFullLoad, searchUsers, coupleFilter, groupByCouple]);
+
+  // ★ 커플끼리 묶어보기 — 커플 쌍마다 배경 톤을 번갈아 입혀 시각적으로 묶어줌
+  const coupleTintMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!groupByCouple) return map;
+    let idx = 0;
+    displayedUsers.forEach(u => {
+      if (u.coupleId && !map.has(u.coupleId)) {
+        map.set(u.coupleId, idx % 2 === 0 ? ROSE + "0D" : SAGE + "0D");
+        idx++;
+      }
+    });
+    return map;
+  }, [displayedUsers, groupByCouple]);
 
   /* ── 탭별 lazy 구독 / 초기 로드 ── */
   useEffect(() => {
@@ -887,8 +991,7 @@ export default function AdminPage() {
         break;
       }
       case "users": {
-        /* 유저 탭은 fetchUsers로 관리 (onSnapshot 아님) */
-        fetchUsers("", false, null);
+        /* 유저 탭 데이터 로드는 위의 두 전용 useEffect(디바운스 검색 / 전체 로드)가 담당 */
         break;
       }
       case "config": {
@@ -915,7 +1018,7 @@ export default function AdminPage() {
       }
     }
     return () => { if (unsubRef.current) { unsubRef.current(); unsubRef.current = null; } };
-  }, [tab, fetchUsers]);
+  }, [tab]);
 
   /* ── 더 보기 공통 (신고/게시물/문의) ── */
   const loadMoreGeneric = useCallback(async (
@@ -1249,43 +1352,94 @@ export default function AdminPage() {
         {/* ════ 유저 탭 ════ */}
         {tab === "users" && (
           <>
-            {/* ★ 서버 prefix 검색 */}
+            {/* ★ 서버 prefix 검색 (필터/묶어보기 모드에서는 client-side 검색으로 전환) */}
             <SearchBar value={searchUsers} onChange={setSearchUsers} placeholder="이름 검색 (앞글자 기준)"/>
-            {userSearchActive && searchUsers && (
+            {!needsFullLoad && userSearchActive && searchUsers && (
               <p style={{ fontSize:11, color:MUTED, marginBottom:8 }}>'{searchUsers}'으로 시작하는 유저를 표시 중</p>
             )}
+
+            {/* ★ 연동 여부 필터 탭 + 커플끼리 묶어보기 토글 */}
+            <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap" }}>
+              {([
+                { v:"all",         l:"전체"   },
+                { v:"connected",   l:"연동됨" },
+                { v:"unconnected", l:"미연동" },
+              ] as const).map(f => (
+                <button key={f.v} onClick={() => setCoupleFilter(f.v)}
+                  style={{
+                    padding:"6px 14px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
+                    border: coupleFilter===f.v ? "none" : `1px solid ${BORDER}`,
+                    background: coupleFilter===f.v ? ROSE : "#fff",
+                    color: coupleFilter===f.v ? "#fff" : MUTED,
+                  }}>
+                  {f.l}
+                </button>
+              ))}
+              <button onClick={() => setGroupByCouple(g => !g)}
+                style={{
+                  marginLeft:"auto", padding:"6px 14px", borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit",
+                  border: groupByCouple ? "none" : `1px solid ${BORDER}`,
+                  background: groupByCouple ? SAGE : "#fff",
+                  color: groupByCouple ? "#fff" : MUTED,
+                }}>
+                👫 커플끼리 묶어보기
+              </button>
+            </div>
+
             {/* 유저 수 표시 */}
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
               <p style={{ fontSize:12, color:MUTED }}>
-                {users.loading && users.items.length === 0 ? "불러오는 중..." : `${users.items.length}명 표시 중`}
+                {users.loading && users.items.length === 0
+                  ? (needsFullLoad ? "전체 유저 불러오는 중..." : "불러오는 중...")
+                  : `${displayedUsers.length}명 표시 중`}
               </p>
               <div style={{ display:"flex", gap:8 }}>
                 <Badge text={`관리자 ${users.items.filter(u => u.role==="admin").length}`} color={PURPLE}/>
                 <Badge text={`커플 ${users.items.filter(u => u.coupleId).length}`} color={ROSE}/>
               </div>
             </div>
+
             {users.loading && users.items.length === 0 ? (
               <div style={{ padding:"40px 0", textAlign:"center" }}>
                 <div style={{ width:28, height:28, border:`3px solid ${BORDER}`, borderTopColor:ROSE, borderRadius:"50%", margin:"0 auto", animation:"spin 0.8s linear infinite" }}/>
               </div>
-            ) : users.items.length === 0 ? (
-              <EmptyBox icon="👥" text={searchUsers ? `'${searchUsers}'으로 시작하는 유저가 없어요` : "유저가 없어요"}/>
-            ) : users.items.map(u => (
-              <button key={u.id} onClick={() => setSelectedUser(u)} style={{ width:"100%", background:"#fff", borderRadius:14, marginBottom:10, padding:"14px 16px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 1px 4px rgba(0,0,0,0.05)", border:"none", cursor:"pointer", fontFamily:"inherit", textAlign:"left" }}>
+            ) : displayedUsers.length === 0 ? (
+              <EmptyBox icon="👥" text={
+                searchUsers ? `'${searchUsers}'으로 시작하는 유저가 없어요`
+                : coupleFilter === "connected" ? "연동된 유저가 없어요"
+                : coupleFilter === "unconnected" ? "미연동 유저가 없어요"
+                : "유저가 없어요"
+              }/>
+            ) : displayedUsers.map(u => (
+              <button key={u.id} onClick={() => setSelectedUser(u)}
+                style={{
+                  width:"100%", background: groupByCouple && u.coupleId ? coupleTintMap.get(u.coupleId) ?? "#fff" : "#fff",
+                  borderRadius:14, marginBottom:10, padding:"14px 16px", display:"flex", alignItems:"center", gap:12,
+                  boxShadow:"0 1px 4px rgba(0,0,0,0.05)", border:"none", cursor:"pointer", fontFamily:"inherit", textAlign:"left",
+                }}>
                 <div style={{ width:38, height:38, borderRadius:"50%", background:u.role==="admin"?PURPLE+"20":WARM, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
                   {u.role === "admin" ? "👑" : "👤"}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <p style={{ fontSize:14, fontWeight:600, color:INK }}>{u.name}</p>
-                  <div style={{ display:"flex", gap:4, marginTop:3 }}>
+                  <div style={{ display:"flex", gap:4, marginTop:3, flexWrap:"wrap", alignItems:"center" }}>
                     <Badge text={u.role==="admin"?"관리자":"유저"} color={u.role==="admin"?PURPLE:MUTED}/>
-                    {u.coupleId && <Badge text="커플" color={ROSE}/>}
+                    {u.coupleId && (
+                      u.partnerName
+                        ? (
+                          <span style={{ display:"inline-flex", alignItems:"center", gap:3, background:SAGE+"1A", borderRadius:20, padding:"2px 8px" }}>
+                            <span style={{ fontSize:10 }}>💑</span>
+                            <span style={{ fontSize:10, fontWeight:700, color:SAGE }}>{u.partnerName}</span>
+                          </span>
+                        )
+                        : <Badge text="파트너 대기중" color={ROSE}/>
+                    )}
                   </div>
                 </div>
                 <span style={{ color:BORDER, fontSize:18 }}>›</span>
               </button>
             ))}
-            {users.hasMore && <LoadMoreBtn loading={users.loading} onClick={loadMoreUsers}/>}
+            {!needsFullLoad && users.hasMore && <LoadMoreBtn loading={users.loading} onClick={loadMoreUsers}/>}
           </>
         )}
 
